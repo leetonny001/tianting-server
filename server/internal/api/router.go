@@ -13,8 +13,8 @@ type Info struct {
 	StartedAt time.Time
 }
 
-// NewRouter 注册所有 HTTP 路由。
-func NewRouter(info Info) http.Handler {
+// NewRouter 注册客户端和运维用的 HTTP 路由；/ws、/admin 由 app 包另外挂载。
+func NewRouter(info Info) *http.ServeMux {
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /healthz", healthz(info))
 	return mux

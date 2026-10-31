@@ -174,7 +174,8 @@
     },
     "Ack": {
       "type": "object",
-      "required": ["id", "cmd"],
+      "description": "id 只在请求帧本身无法解析出 id 时缺省（此时必带 error）",
+      "required": ["cmd"],
       "properties": {
         "id": { "$ref": "#/$defs/ReqId" },
         "cmd": { "const": "ack" },

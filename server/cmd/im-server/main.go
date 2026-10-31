@@ -2,10 +2,14 @@
 //
 // 配置走环境变量：
 //
-//	IM_ADDR  监听地址，默认 :8080
+//	IM_ADDR        监听地址，默认 :8080
+//	IM_DB          SQLite 文件路径，默认 im.db
+//	IM_JWT_SECRET  用户 token 签名密钥（>= 16 字节），不设置时使用开发密钥
+//	IM_ADMIN_KEY   管理接口密钥（请求头 X-Admin-Key），不设置时使用开发密钥
 package main
 
 import (
+	"cmp"
 	"context"
 	"errors"
 	"log/slog"
@@ -15,23 +19,47 @@ import (
 	"syscall"
 	"time"
 
-	"im-mvp/server/internal/api"
+	"im-mvp/server/internal/app"
+	"im-mvp/server/internal/gateway"
 )
 
 // version 构建时用 -ldflags "-X main.version=x.y.z" 注入。
 var version = "dev"
 
+const (
+	devJWTSecret = "dev-secret-change-me-0123456789"
+	devAdminKey  = "dev-admin-key"
+)
+
 func main() {
 	logger := slog.New(slog.NewTextHandler(os.Stdout, nil))
 
-	addr := os.Getenv("IM_ADDR")
-	if addr == "" {
-		addr = ":8080"
+	addr := env("IM_ADDR", ":8080")
+	jwtSecret := env("IM_JWT_SECRET", "")
+	adminKey := env("IM_ADMIN_KEY", "")
+	if jwtSecret == "" || adminKey == "" {
+		logger.Warn("IM_JWT_SECRET / IM_ADMIN_KEY not set, using development defaults — never do this in production")
+		jwtSecret = cmp.Or(jwtSecret, devJWTSecret)
+		adminKey = cmp.Or(adminKey, devAdminKey)
 	}
+
+	a, err := app.New(app.Config{
+		DBPath:    env("IM_DB", "im.db"),
+		JWTSecret: jwtSecret,
+		AdminKey:  adminKey,
+		Gateway:   gateway.DefaultConfig(),
+		Version:   version,
+		Logger:    logger,
+	})
+	if err != nil {
+		logger.Error("init failed", "err", err)
+		os.Exit(1)
+	}
+	defer a.Close()
 
 	srv := &http.Server{
 		Addr:              addr,
-		Handler:           api.NewRouter(api.Info{Version: version, StartedAt: time.Now()}),
+		Handler:           a.Handler(),
 		ReadHeaderTimeout: 5 * time.Second,
 	}
 
@@ -55,4 +83,11 @@ func main() {
 	if err := srv.Shutdown(shutdownCtx); err != nil {
 		logger.Error("shutdown failed", "err", err)
 	}
+}
+
+func env(key, def string) string {
+	if v := os.Getenv(key); v != "" {
+		return v
+	}
+	return def
 }
