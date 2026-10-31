@@ -6,7 +6,7 @@
 | 作者 | 产品（AI） |
 | 拍板人 | Frank |
 | 日期 | 2026-10-31 |
-| 状态 | 评审通过，冻结。修改需走变更流程（见 [docs/process](../process/README.md)） |
+| 状态 | 已被 [v1.1](PRD-core-v1.1.md) 取代 |
 | 依据 | [PRD v0.1](PRD-core-v0.1.md) + [评审记录](../review/REVIEW-core-v0.1.md)（R-01～R-31、D1～D6） |
 | 关联 | 错误码 [protocol/ERRORS.md](../../protocol/ERRORS.md)、协议 [protocol/README.md](../../protocol/README.md) |
 

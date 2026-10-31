@@ -1,8 +1,8 @@
 # 测试用例：账号与鉴权（AUTH）
 
-> 依据：[PRD v1.0](../prd/PRD-core-v1.0.md) F-AUTH-01～F-AUTH-05、§5 文案表、§6.1 测试环境要求；[ERRORS.md](../../protocol/ERRORS.md) 第 4 节关闭码。
+> 依据：[PRD v1.1](../prd/PRD-core-v1.1.md) F-AUTH-01～F-AUTH-05、§5 文案表、§6.1 测试环境要求、§9 C-08/C-11～C-15/C-21/C-44；[ERRORS.md](../../protocol/ERRORS.md) 第 4 节关闭码。
 > 约定：管理密钥通过 `X-Admin-Key` 头传递，测试值 `test-admin-key`；连接地址 `ws://{host}/ws?token={token}&platform={platform}`；"测试模式"指 §6.1 的测试环境（token 最短 1 秒，独立数据库）。
-> 强制下线接口、演示登录接口在 PRD §8 中为新增接口，路径未定，下文分别记为"强制下线接口"（示例 `POST /admin/users/{userId}/kick`）和"演示登录接口"（示例 `POST /demo/login`，body `{"username":...}`），以 BE 实现为准。
+> 接口路径（C-15）：强制下线接口 `POST /admin/users/{userId}/force-logout`；演示登录接口 `POST /demo/login`，body `{"username":...}`（测试模式下可带 `ttlSeconds`，C-21）。被踢后的界面行为按 C-01：停留在当前页面弹窗，点"确定"后回到登录页并清空数据。
 
 | 用例 | 标题 | 关联 AC | 层级 | 优先级 |
 |---|---|---|---|---|
@@ -15,6 +15,8 @@
 | TC-AUTH-01-07 | userId 长度 0、65 或含非法字符返回 400/4004 | AC-AUTH-01-3 | 后端 e2e | P0 |
 | TC-AUTH-01-08 | 不传 / 0 / -1 有效期按 7 天签发 | AC-AUTH-01-4 | 后端 e2e | P0 |
 | TC-AUTH-01-09 | 有效期 30 天按 30 天，31 天截为 30 天 | AC-AUTH-01-5 | 后端 e2e | P0 |
+| TC-AUTH-01-10 | 非测试模式下 ttlSeconds 小于 60 按 60 秒签发 | AC-AUTH-01-4 | 后端 e2e | P0 |
+| TC-AUTH-01-11 | 测试模式下 ttlSeconds=1 按 1 秒签发 | AC-AUTH-01-4 | 后端 e2e | P0 |
 | TC-AUTH-02-01 | token 有效时连接成功并可收发消息 | AC-AUTH-02-1 | 后端 e2e | P0 |
 | TC-AUTH-02-02 | 四种合法平台均可连接 | AC-AUTH-02-1 | 后端 e2e | P0 |
 | TC-AUTH-02-03 | token 无效时先升级、下发 kicked/tokenInvalid、以 4010 关闭 | AC-AUTH-02-2 | 后端 e2e | P0 |
@@ -22,11 +24,13 @@
 | TC-AUTH-02-05 | 篡改签名的 token 被判无效 | AC-AUTH-02-2 | 后端 e2e | P0 |
 | TC-AUTH-02-06 | token 已过期时下发 kicked/tokenExpired、以 4011 关闭 | AC-AUTH-02-3 | 后端 e2e | P0 |
 | TC-AUTH-02-07 | SDK 收到 4010/4011 后不再重连 | AC-AUTH-02-4 | SDK 单测 | P0 |
-| TC-AUTH-02-08 | 4010 时界面提示"登录已失效"并回到登录页 | AC-AUTH-02-4 | UI 自动化 | P0 |
-| TC-AUTH-02-09 | 4011 时界面提示"登录已过期"并回到登录页 | AC-AUTH-02-4 | UI 自动化 | P0 |
+| TC-AUTH-02-08 | 4010 时弹窗提示"登录已失效"，点确定回到登录页 | AC-AUTH-02-4 | UI 自动化 | P0 |
+| TC-AUTH-02-09 | 4011 时弹窗提示"登录已过期"，点确定回到登录页 | AC-AUTH-02-4 | UI 自动化 | P0 |
 | TC-AUTH-02-10 | 同一账号 web + pc 同时在线 | AC-AUTH-02-5 | 后端 e2e | P0 |
 | TC-AUTH-02-11 | 同一账号同一平台 web 连两次都在线 | AC-AUTH-02-5 | 后端 e2e | P0 |
 | TC-AUTH-02-12 | platform 为空、缺失或为 tv 时以 4009 关闭 | AC-AUTH-02-6 | 后端 e2e | P0 |
+| TC-AUTH-02-13 | platform 只接受小写 | AC-AUTH-02-6 | 后端 e2e | P0 |
+| TC-AUTH-02-14 | 连接错误优先级：4009 先于 4010/4011 | AC-AUTH-02-6 | 后端 e2e | P0 |
 | TC-AUTH-03-01 | 在线期间 token 到期收到 kicked/tokenExpired、以 4011 关闭 | AC-AUTH-03-1 | 后端 e2e | P0 |
 | TC-AUTH-03-02 | 到期前连接正常可用 | AC-AUTH-03-1 | 后端 e2e | P0 |
 | TC-AUTH-03-03 | 强制下线后该用户所有连接收到 kicked/banned、以 4012 关闭 | AC-AUTH-03-2 | 后端 e2e | P0 |
@@ -36,10 +40,14 @@
 | TC-AUTH-03-07 | 强制下线前签发但从未使用的 token 也作废 | AC-AUTH-03-3 | 后端 e2e | P0 |
 | TC-AUTH-03-08 | 强制下线后重新签发的 token 可正常连接 | AC-AUTH-03-4 | 后端 e2e | P0 |
 | TC-AUTH-03-09 | 强制下线后 1 秒内立即重签的 token 也可用 | AC-AUTH-03-4 | 后端 e2e | P0 |
-| TC-AUTH-03-10 | 被踢（过期）后提示"登录已过期"、回登录页、不重连 | AC-AUTH-03-5 | UI 自动化 | P0 |
-| TC-AUTH-03-11 | 被踢（强制下线）后提示"账号已被下线"、回登录页、不重连 | AC-AUTH-03-5 | UI 自动化 | P0 |
+| TC-AUTH-03-10 | 被踢（过期）后停留原页弹窗"登录已过期"、不重连，确定后回登录页 | AC-AUTH-03-5 | UI 自动化 | P0 |
+| TC-AUTH-03-11 | 被踢（强制下线）后停留原页弹窗"账号已被下线"、不重连，确定后回登录页 | AC-AUTH-03-5 | UI 自动化 | P0 |
 | TC-AUTH-03-12 | SDK 收到 kicked 后把发送中的消息标记失败 | AC-AUTH-03-6 | SDK 单测 | P0 |
-| TC-AUTH-03-13 | 被踢时发送中的消息在界面显示失败 | AC-AUTH-03-6 | UI 自动化 | P0 |
+| TC-AUTH-03-13 | 被踢弹窗期间发送中的消息在当前页显示失败 | AC-AUTH-03-6 | UI 自动化 | P0 |
+| TC-AUTH-03-14 | 同一秒内：下线前签发的作废、下线后签发的可用（iatMs） | AC-AUTH-03-4 | 后端 e2e | P0 |
+| TC-AUTH-03-15 | 强制下线不存在的用户返回 404/4042 | AC-AUTH-03-2 | 后端 e2e | P0 |
+| TC-AUTH-03-16 | 已被强制下线且已过期的 token 报 banned/4012 | AC-AUTH-03-3 | 后端 e2e | P0 |
+| TC-AUTH-03-17 | 强制下线接口缺少或错误密钥返回 401/4013 | AC-AUTH-03-2 | 后端 e2e | P0 |
 | TC-AUTH-04-01 | 开启演示登录后输入用户名可登录并连接 | AC-AUTH-04-1 | UI 自动化 | P0 |
 | TC-AUTH-04-02 | 演示登录接口返回的 token 可连接（接口层） | AC-AUTH-04-1 | 后端 e2e | P0 |
 | TC-AUTH-04-03 | 演示登录即自动注册 | AC-AUTH-04-1 | 后端 e2e | P0 |
@@ -48,6 +56,9 @@
 | TC-AUTH-04-06 | 默认配置下演示登录接口返回 404 | AC-AUTH-04-3 | 后端 e2e | P0 |
 | TC-AUTH-04-07 | 用户名含空格时提示"账号格式不正确" | AC-AUTH-04-4 | UI 自动化 | P0 |
 | TC-AUTH-04-08 | 其他非法用户名均提示"账号格式不正确" | AC-AUTH-04-4 | UI 自动化 | P0 |
+| TC-AUTH-04-09 | 演示登录用户名去首尾空白、空白返回 4004（接口层） | AC-AUTH-04-4 | 后端 e2e | P0 |
+| TC-AUTH-04-10 | 登录页输入首尾带空格的用户名可登录、纯空白提示格式不正确 | AC-AUTH-04-4 | UI 自动化 | P0 |
+| TC-AUTH-04-11 | 演示登录 token 有效期 1 天，测试模式可传 ttlSeconds | AC-AUTH-04-1 | 后端 e2e | P0 |
 | TC-AUTH-05-01 | 退出登录回到登录页、刷新仍停留、服务端记录 1000 | AC-AUTH-05-1 | UI 自动化 | P0 |
 | TC-AUTH-05-02 | 主动关闭（1000）后 SDK 不重连 | AC-AUTH-05-1 | SDK 单测 | P0 |
 | TC-AUTH-05-03 | 退出后清空内存数据，换账号登录看不到上个账号的数据 | AC-AUTH-05-1 | UI 自动化 | P0 |
@@ -157,6 +168,28 @@
 - 预期结果：
   1. 三次 `expiresAt` − T 均在 2592000000 ± 5000 毫秒内。
 
+### TC-AUTH-01-10 非测试模式下 ttlSeconds 小于 60 按 60 秒签发
+- 关联 AC：AC-AUTH-01-4
+- 优先级：P0
+- 层级：后端 e2e
+- 前置条件：服务端以**非测试模式**启动。
+- 步骤：
+  1. 记录 T，分别签发 `ttlSeconds` = 1、59、60、61。
+  2. 记录 T，签发 `ttlSeconds` = 0。
+- 预期结果：
+  1. 1、59、60 → `expiresAt` − T 在 60000 ± 5000 毫秒内；61 → 61000 ± 5000 毫秒（C-13）。
+  2. 0 → 仍按 7 天（604800000 ± 5000 毫秒）。
+
+### TC-AUTH-01-11 测试模式下 ttlSeconds=1 按 1 秒签发
+- 关联 AC：AC-AUTH-01-4
+- 优先级：P0
+- 层级：后端 e2e
+- 前置条件：服务端测试模式。
+- 步骤：
+  1. 记录 T，签发 `ttlSeconds`=1。
+- 预期结果：
+  1. `expiresAt` − T 在 1000 ± 500 毫秒内（不被抬到 60 秒）。
+
 ### TC-AUTH-02-01 token 有效时连接成功并可收发消息
 - 关联 AC：AC-AUTH-02-1
 - 优先级：P0
@@ -242,31 +275,33 @@
   1. 两种情况下，推进期间假传输层的连接尝试次数为 0。
   2. SDK 对上层抛出"被踢"事件，原因分别为 tokenInvalid、tokenExpired；连接状态为未连接。
 
-### TC-AUTH-02-08 4010 时界面提示"登录已失效"并回到登录页
+### TC-AUTH-02-08 4010 时弹窗提示"登录已失效"，点确定回到登录页
 - 关联 AC：AC-AUTH-02-4
 - 优先级：P0
 - 层级：UI 自动化
 - 前置条件：开启演示登录；alice 登录 H5 进入会话列表；Playwright 记录 WebSocket。
 - 步骤：
   1. 在 `sessionStorage` 中把 token 改为 `bad-token` 后刷新页面。
-  2. 等待 60 秒，统计新建的 WebSocket 数量。
+  2. 不点击弹窗，等待 60 秒，统计新建的 WebSocket 数量。
+  3. 点击弹窗的"确定"。
 - 预期结果：
-  1. 页面提示"登录已失效，请重新登录"。
-  2. 跳转到登录页。
-  3. 收到 4010 关闭后，60 秒内没有再发起任何 `/ws` 连接。
+  1. 页面停留在会话列表（URL 不变），弹出提示框，内容"登录已失效，请重新登录"。
+  2. 收到 4010 关闭后 60 秒内没有再发起任何 `/ws` 连接，弹窗一直显示。
+  3. 点"确定"后跳转登录页，`sessionStorage` 中无 token。
 
-### TC-AUTH-02-09 4011 时界面提示"登录已过期"并回到登录页
+### TC-AUTH-02-09 4011 时弹窗提示"登录已过期"，点确定回到登录页
 - 关联 AC：AC-AUTH-02-4
 - 优先级：P0
 - 层级：UI 自动化
 - 前置条件：测试模式；用管理接口为 alice 签发 `ttlSeconds`=1 的 token，等待 2 秒；H5 已打开。
 - 步骤：
   1. 把该过期 token 写入 `sessionStorage` 后刷新页面。
-  2. 等待 60 秒，统计 `/ws` 连接数。
+  2. 不点击弹窗，等待 60 秒，统计 `/ws` 连接数。
+  3. 点击弹窗的"确定"。
 - 预期结果：
-  1. 页面提示"登录已过期，请重新登录"。
-  2. 跳转到登录页。
-  3. 60 秒内只出现 1 次 `/ws` 连接（即被 4011 关闭的那次）。
+  1. 页面停留在原页面，弹出提示框，内容"登录已过期，请重新登录"。
+  2. 60 秒内只出现 1 次 `/ws` 连接（即被 4011 关闭的那次）。
+  3. 点"确定"后跳转登录页。
 
 ### TC-AUTH-02-10 同一账号 web + pc 同时在线
 - 关联 AC：AC-AUTH-02-5
@@ -304,7 +339,30 @@
   3. 连接 `/ws?token={t}`（无 platform 参数）。
 - 预期结果：
   1. 三次连接均以关闭码 4009 关闭。
-  2. 关闭前收到的帧不含 `msg`、`pong` 等业务帧（是否先收到 `kicked` 见疑问 1）。
+  2. 关闭前不收到任何数据帧（不发 `kicked`，C-05）。
+
+### TC-AUTH-02-13 platform 只接受小写
+- 关联 AC：AC-AUTH-02-6
+- 优先级：P0
+- 层级：后端 e2e
+- 前置条件：alice 有效 token。
+- 步骤：
+  1. 分别以 platform = `Web`、`PC`、`IOS`、`Android` 连接。
+- 预期结果：
+  1. 四次均不收到任何数据帧，直接以关闭码 4009 关闭（C-14、C-05）。
+
+### TC-AUTH-02-14 连接错误优先级：4009 先于 4010/4011
+- 关联 AC：AC-AUTH-02-6
+- 优先级：P0
+- 层级：后端 e2e
+- 前置条件：测试模式；alice 已过期 token（`ttlSeconds`=1，等待 2 秒）。
+- 步骤：
+  1. 以 `token=bad-token&platform=tv` 连接。
+  2. 以 `token=<过期 token>&platform=tv` 连接。
+  3. 以 `token=bad-token&platform=web` 连接。
+- 预期结果：
+  1. 步骤 1、2：不发 kicked，以 4009 关闭（C-08：平台最先检查）。
+  2. 步骤 3：`kicked`/`tokenInvalid` + 4010。
 
 ### TC-AUTH-03-01 在线期间 token 到期收到 kicked/tokenExpired、以 4011 关闭
 - 关联 AC：AC-AUTH-03-1
@@ -336,7 +394,7 @@
 - 层级：后端 e2e
 - 前置条件：alice 以 platform=web、pc、ios 共 3 个连接在线。
 - 步骤：
-  1. 调用强制下线接口，目标 `alice`。
+  1. 调用 `POST /admin/users/alice/force-logout`。
 - 预期结果：
   1. 接口返回 HTTP 200。
   2. 3 个连接都收到 `kicked`/`banned`，随后都以关闭码 4012 关闭（1 秒内完成）。
@@ -386,7 +444,7 @@
   1. 强制下线 alice（此时 alice 无在线连接）。
   2. 分别用 T1、T2 连接。
 - 预期结果：
-  1. 强制下线接口返回 HTTP 200（无在线连接也成功）。
+  1. `POST /admin/users/alice/force-logout` 返回 HTTP 200（无在线连接也成功）。
   2. T1、T2 均收到 `kicked`/`banned`，关闭码 4012。
 
 ### TC-AUTH-03-08 强制下线后重新签发的 token 可正常连接
@@ -411,32 +469,35 @@
   1. 强制下线 alice，接口返回后立即（< 100 毫秒，同一秒内）签发新 token T4。
   2. 用 T4 连接并发 `ping`；循环 10 次。
 - 预期结果：
-  1. 10 次 T4 都连接成功并收到 `pong`，无 `kicked`/`banned`（防止按秒精度的签发时间与下线时间比较导致误伤）。
+  1. 10 次 T4 都连接成功并收到 `pong`，无 `kicked`/`banned`（C-11：按 `iatMs` 毫秒比较）。
 
-### TC-AUTH-03-10 被踢（过期）后提示"登录已过期"、回登录页、不重连
+### TC-AUTH-03-10 被踢（过期）后停留原页弹窗"登录已过期"、不重连，确定后回登录页
 - 关联 AC：AC-AUTH-03-5
 - 优先级：P0
 - 层级：UI 自动化
-- 前置条件：测试模式；演示登录签发的 token 有效期配置为 5 秒（或 UI 注入 `ttlSeconds`=5 的 token）；alice 登录进入会话列表。
+- 前置条件：测试模式；登录时 `POST /demo/login` 带 `ttlSeconds`=5（C-21，可由 Playwright 改写登录请求实现）；alice 登录后打开与 bob 的聊天页。
 - 步骤：
   1. 等待 token 到期（约 5 秒）。
-  2. 之后再等待 60 秒，统计 `/ws` 连接数。
+  2. 不点击弹窗，再等待 60 秒，统计 `/ws` 连接数。
+  3. 点击"确定"。
 - 预期结果：
-  1. 页面提示"登录已过期，请重新登录"，跳转登录页。
+  1. 页面停留在聊天页（URL 仍为 `/chat/c2c:alice:bob`），弹窗提示"登录已过期，请重新登录"。
   2. 到期后 60 秒内没有新的 `/ws` 连接。
+  3. 点"确定"后跳转登录页，`sessionStorage` 中无 token。
 
-### TC-AUTH-03-11 被踢（强制下线）后提示"账号已被下线"、回登录页、不重连
+### TC-AUTH-03-11 被踢（强制下线）后停留原页弹窗"账号已被下线"、不重连，确定后回登录页
 - 关联 AC：AC-AUTH-03-5
 - 优先级：P0
 - 层级：UI 自动化
-- 前置条件：alice 在两个浏览器上下文（模拟 web、pc 两端）都已登录。
+- 前置条件：alice 在两个浏览器上下文都已登录：上下文 1 打开 `/`（platform=web），上下文 2 打开 `/?platform=pc`（C-44）；均停在会话列表。
 - 步骤：
-  1. 通过管理接口强制下线 alice。
-  2. 等待 60 秒，统计两个上下文的 `/ws` 连接数。
+  1. 调用 `POST /admin/users/alice/force-logout`。
+  2. 不点击弹窗，等待 60 秒，统计两个上下文的 `/ws` 连接数。
+  3. 两个上下文分别点"确定"，然后刷新页面。
 - 预期结果：
-  1. 两个上下文都提示"账号已被下线"，并跳转登录页。
+  1. 两个上下文都停留在会话列表，弹窗提示"账号已被下线"。
   2. 60 秒内两个上下文都没有新的 `/ws` 连接。
-  3. 刷新页面后停留在登录页（旧 token 不会自动登录成功）。
+  3. 点"确定"后跳转登录页；刷新后仍停留登录页（旧 token 已清空，不会自动登录）。
 
 ### TC-AUTH-03-12 SDK 收到 kicked 后把发送中的消息标记失败
 - 关联 AC：AC-AUTH-03-6
@@ -451,18 +512,69 @@
   2. `cid-k-2`、`cid-k-3` 立即变为发送失败（不等发送超时）。
   3. SDK 不再重连，也不自动重发这两条。
 
-### TC-AUTH-03-13 被踢时发送中的消息在界面显示失败
+### TC-AUTH-03-13 被踢弹窗期间发送中的消息在当前页显示失败
 - 关联 AC：AC-AUTH-03-6
 - 优先级：P0
 - 层级：UI 自动化
 - 前置条件：服务端测试模式开启故障注入；alice、bob 两个上下文登录，alice 打开与 bob 的聊天页。
 - 步骤：
   1. 配置故障注入：丢弃 alice 下一条消息的 ack（按 `clientMsgId`，可通过拦截 WS 获取）。
-  2. alice 发送 "pending-msg"，在显示"发送中"时调用强制下线接口。
-  3. 在跳转登录页前截取聊天页状态（或重新登录后检查同一标签页内存状态，见疑问 6）。
+  2. alice 发送 "pending-msg"，在显示"发送中"时调用 `POST /admin/users/alice/force-logout`。
+  3. 弹窗显示期间（不点确定）检查聊天页；然后点"确定"。
 - 预期结果：
-  1. "pending-msg" 显示为发送失败。
-  2. 页面提示"账号已被下线"并回到登录页。
+  1. 页面停留在聊天页并弹窗"账号已被下线"；弹窗背后 "pending-msg" 显示为发送失败（C-01）。
+  2. 点"确定"后跳转登录页。
+
+### TC-AUTH-03-14 同一秒内：下线前签发的作废、下线后签发的可用（iatMs）
+- 关联 AC：AC-AUTH-03-4
+- 优先级：P0
+- 层级：后端 e2e
+- 前置条件：测试模式；可解码 token 载荷。
+- 步骤：
+  1. 在同一秒内依次执行：为 alice 签发 Ta → 调用 `POST /admin/users/alice/force-logout` → 签发 Tb（若跨秒则重试，最多 20 次）。
+  2. 解码 Ta、Tb 的载荷。
+  3. 分别用 Ta、Tb 以 platform=web 连接。
+- 预期结果：
+  1. 载荷含整数字段 `iatMs`（13 位毫秒时间戳），且 `iatMs(Ta)` < `iatMs(Tb)`，两者同属一秒（C-11）。
+  2. Ta：`kicked`/`banned` + 4012。
+  3. Tb：连接成功，`ping` 收到 `pong`。
+
+### TC-AUTH-03-15 强制下线不存在的用户返回 404/4042
+- 关联 AC：AC-AUTH-03-2
+- 优先级：P0
+- 层级：后端 e2e
+- 前置条件：`ghost-user` 从未注册；bob 在线。
+- 步骤：
+  1. `POST /admin/users/ghost-user/force-logout`。
+  2. `POST /admin/users/bad%20id/force-logout`（userId 含空格）。
+- 预期结果：
+  1. 步骤 1：HTTP 404，body.code = 4042（C-12）；bob 不受影响。
+  2. 步骤 2：HTTP 400，body.code = 4004。
+
+### TC-AUTH-03-16 已被强制下线且已过期的 token 报 banned/4012
+- 关联 AC：AC-AUTH-03-3
+- 优先级：P0
+- 层级：后端 e2e
+- 前置条件：测试模式。
+- 步骤：
+  1. 为 alice 签发 `ttlSeconds`=1 的 token T。
+  2. 强制下线 alice，等待 2 秒（T 已过期）。
+  3. 用 T 以 platform=web 连接。
+- 预期结果：
+  1. 收到 `kicked`/`banned`（不是 `tokenExpired`），关闭码 4012（C-08：4012 先于 4011）。
+
+### TC-AUTH-03-17 强制下线接口缺少或错误密钥返回 401/4013
+- 关联 AC：AC-AUTH-03-2
+- 优先级：P0
+- 层级：后端 e2e
+- 前置条件：alice 以 platform=web 在线。
+- 步骤：
+  1. 不带 `X-Admin-Key` 调用 `POST /admin/users/alice/force-logout`。
+  2. 带 `X-Admin-Key: wrong` 再调一次。
+  3. alice 发 `ping`。
+- 预期结果：
+  1. 两次均 HTTP 401，body.code = 4013。
+  2. alice 未收到 `kicked`，`ping` 收到 `pong`。
 
 ### TC-AUTH-04-01 开启演示登录后输入用户名可登录并连接
 - 关联 AC：AC-AUTH-04-1
@@ -472,7 +584,7 @@
 - 步骤：
   1. 打开登录页，输入 `alice`，点击登录。
 - 预期结果：
-  1. 演示登录接口返回 HTTP 200，含 token。
+  1. `POST /demo/login` 返回 HTTP 200，含 token。
   2. 随后发起 `/ws?token=...&platform=web`，未收到 `kicked`，连接保持。
   3. 页面进入会话列表，顶部无"连接中…"/"网络不可用"提示（连接后 3 秒检查）。
   4. `sessionStorage` 中保存了 token。
@@ -483,7 +595,7 @@
 - 层级：后端 e2e
 - 前置条件：服务端以开启演示登录的配置启动。
 - 步骤：
-  1. 调用演示登录接口 body `{"username":"alice"}`（不带任何管理密钥头）。
+  1. `POST /demo/login`，body `{"username":"alice"}`（不带任何管理密钥头）。
   2. 用返回的 token 以 platform=web 连接，发 `ping`。
 - 预期结果：
   1. HTTP 200，返回 token（及 expiresAt）。
@@ -531,8 +643,8 @@
 - 层级：后端 e2e
 - 前置条件：服务端以默认配置启动（不设置开启演示登录的配置项）。
 - 步骤：
-  1. 调用演示登录接口 body `{"username":"alice"}`。
-  2. 用 GET 方法访问同一路径。
+  1. `POST /demo/login`，body `{"username":"alice"}`。
+  2. 用 GET 方法访问 `/demo/login`。
 - 预期结果：
   1. 两次均 HTTP 404。
   2. 响应体不含 `token`；alice 未被自动注册（之后 bob 给 alice 发消息返回 4042，前提是 alice 此前未注册）。
@@ -559,6 +671,42 @@
 - 预期结果：
   1. 步骤 1 每次都提示"账号格式不正确"，停留登录页。
   2. 步骤 2 登录成功进入会话列表。
+
+### TC-AUTH-04-09 演示登录用户名去首尾空白、空白返回 4004（接口层）
+- 关联 AC：AC-AUTH-04-4
+- 优先级：P0
+- 层级：后端 e2e
+- 前置条件：演示登录开启；bob 已连接。
+- 步骤：
+  1. `POST /demo/login`，body `{"username":"  carol\t"}`；用返回的 token 连接。
+  2. `POST /demo/login`，body 分别为 `{"username":""}`、`{"username":"   "}`、`{"username":"a b"}`。
+- 预期结果：
+  1. 步骤 1：HTTP 200；连接后身份为 `carol`（bob 给 `carol` 发消息，该连接收到，`convId`=`c2c:bob:carol`）（C-21）。
+  2. 步骤 2：三次均 HTTP 400 / 4004。
+
+### TC-AUTH-04-10 登录页输入首尾带空格的用户名可登录、纯空白提示格式不正确
+- 关联 AC：AC-AUTH-04-4
+- 优先级：P0
+- 层级：UI 自动化
+- 前置条件：演示登录开启；打开登录页。
+- 步骤：
+  1. 输入 `   `（3 个空格），点击登录。
+  2. 输入 ` alice `，点击登录。
+- 预期结果：
+  1. 步骤 1：提示"账号格式不正确"，停留登录页。
+  2. 步骤 2：登录成功进入会话列表，右上角菜单显示当前账号 `alice`（无空格）。
+
+### TC-AUTH-04-11 演示登录 token 有效期 1 天，测试模式可传 ttlSeconds
+- 关联 AC：AC-AUTH-04-1
+- 优先级：P0
+- 层级：后端 e2e
+- 前置条件：演示登录开启。
+- 步骤：
+  1. 非测试模式：记录 T，`POST /demo/login` `{"username":"alice"}`。
+  2. 测试模式：`POST /demo/login` `{"username":"alice","ttlSeconds":2}`，立即连接，等待 3 秒。
+- 预期结果：
+  1. `expiresAt` − T 在 86400000 ± 5000 毫秒内（C-21）。
+  2. 3 秒内收到 `kicked`/`tokenExpired`，关闭码 4011。
 
 ### TC-AUTH-05-01 退出登录回到登录页、刷新仍停留、服务端记录 1000
 - 关联 AC：AC-AUTH-05-1
@@ -619,34 +767,38 @@
 - AC-AUTH-01-1：TC-AUTH-01-01、TC-AUTH-01-02
 - AC-AUTH-01-2：TC-AUTH-01-03、TC-AUTH-01-04、TC-AUTH-01-05
 - AC-AUTH-01-3：TC-AUTH-01-06、TC-AUTH-01-07
-- AC-AUTH-01-4：TC-AUTH-01-08
+- AC-AUTH-01-4：TC-AUTH-01-08、TC-AUTH-01-10、TC-AUTH-01-11
 - AC-AUTH-01-5：TC-AUTH-01-09
 - AC-AUTH-02-1：TC-AUTH-02-01、TC-AUTH-02-02
 - AC-AUTH-02-2：TC-AUTH-02-03、TC-AUTH-02-04、TC-AUTH-02-05
 - AC-AUTH-02-3：TC-AUTH-02-06
 - AC-AUTH-02-4：TC-AUTH-02-07、TC-AUTH-02-08、TC-AUTH-02-09
 - AC-AUTH-02-5：TC-AUTH-02-10、TC-AUTH-02-11
-- AC-AUTH-02-6：TC-AUTH-02-12
+- AC-AUTH-02-6：TC-AUTH-02-12、TC-AUTH-02-13、TC-AUTH-02-14
 - AC-AUTH-03-1：TC-AUTH-03-01、TC-AUTH-03-02
-- AC-AUTH-03-2：TC-AUTH-03-03、TC-AUTH-03-04、TC-AUTH-03-05
-- AC-AUTH-03-3：TC-AUTH-03-06、TC-AUTH-03-07
-- AC-AUTH-03-4：TC-AUTH-03-08、TC-AUTH-03-09
+- AC-AUTH-03-2：TC-AUTH-03-03、TC-AUTH-03-04、TC-AUTH-03-05、TC-AUTH-03-15、TC-AUTH-03-17
+- AC-AUTH-03-3：TC-AUTH-03-06、TC-AUTH-03-07、TC-AUTH-03-16
+- AC-AUTH-03-4：TC-AUTH-03-08、TC-AUTH-03-09、TC-AUTH-03-14
 - AC-AUTH-03-5：TC-AUTH-03-10、TC-AUTH-03-11
 - AC-AUTH-03-6：TC-AUTH-03-12、TC-AUTH-03-13
-- AC-AUTH-04-1：TC-AUTH-04-01、TC-AUTH-04-02、TC-AUTH-04-03
+- AC-AUTH-04-1：TC-AUTH-04-01、TC-AUTH-04-02、TC-AUTH-04-03、TC-AUTH-04-11
 - AC-AUTH-04-2：TC-AUTH-04-04、TC-AUTH-04-05
 - AC-AUTH-04-3：TC-AUTH-04-06
-- AC-AUTH-04-4：TC-AUTH-04-07、TC-AUTH-04-08
+- AC-AUTH-04-4：TC-AUTH-04-07、TC-AUTH-04-08、TC-AUTH-04-09、TC-AUTH-04-10
 - AC-AUTH-05-1：TC-AUTH-05-01、TC-AUTH-05-02、TC-AUTH-05-03、TC-AUTH-05-04
+
+## 已澄清
+
+1. 4009 前是否下发 kicked → C-05：不发，直接以 4009 关闭；修订 TC-AUTH-02-12，新增 TC-AUTH-02-13、TC-AUTH-02-14 也按此断言。
+2. 多错误同时出现的优先级 → C-08：4009 → 4010 → 4012 → 4011；新增 TC-AUTH-02-14、TC-AUTH-03-16。
+3. platform 大小写 → C-14：只接受小写；新增 TC-AUTH-02-13。
+4. 强制下线 / 演示登录接口路径，强制下线不存在用户 → C-15：`POST /admin/users/{userId}/force-logout`、`POST /demo/login`；C-12：404/4042；修订相关步骤，新增 TC-AUTH-03-15、TC-AUTH-03-17。
+5. 非测试模式 ttlSeconds 下限 → C-13：最小 60 秒；新增 TC-AUTH-01-10、TC-AUTH-01-11。
+6. 被踢后失败消息在哪里看到 → C-01（PRD v1.1 F-AUTH-03 规则 4、AC-AUTH-02-4/03-5/03-6 改写）：停留当前页弹窗，点"确定"后回登录页；修订 TC-AUTH-02-08、02-09、03-10、03-11、03-13。
+7. 强制下线判定精度 → C-11：token 带 `iatMs`，按毫秒比较；修订 TC-AUTH-03-09，新增 TC-AUTH-03-14。
+8. 演示登录用户名去空白、空用户名 → C-21：先去首尾空白，空返回 4004；新增 TC-AUTH-04-09、TC-AUTH-04-10。
+9. 演示登录 token 有效期、测试模式短有效期 → C-21：1 天，测试模式可传 `ttlSeconds`；修订 TC-AUTH-03-10，新增 TC-AUTH-04-11。另据 C-44，TC-AUTH-03-11 用 `?platform=pc` 模拟 pc 端。
 
 ## 疑问
 
-1. 平台不合法（4009）：F-SYS-01 规则 2 把它列为"连接级致命错误，先下发 kicked"，但 F-AUTH-02 规则 4 只说"用 4009 关闭"，`kickReasons` 也没有对应原因。4009 前是否下发 kicked？reason 是什么？
-2. token 无效和 platform 不合法同时出现时，用 4009 还是 4010？token 既被强制下线作废、又已过期时，返回 banned/4012 还是 tokenExpired/4011？
-3. platform 是否区分大小写（`Web`、`PC` 是否合法）？
-4. 强制下线接口、演示登录接口的路径与响应未定义；对不存在的 userId 强制下线返回什么（200 还是 404/4042）？
-5. 非测试模式下 `ttlSeconds` 传 1～59 等很小的正数是否有下限？AC-AUTH-01-4/5 只覆盖 ≤0 和 >30 天。`ttlSeconds` 传非整数 / 字符串时返回 4000 还是按默认 7 天？
-6. AC-AUTH-03-6 要求"发送中的消息显示为发送失败"，但 F-AUTH-03 规则 4 同时要求回到登录页，且 F-AUTH-05 规则说清空内存数据。被踢回登录页后用户还能在哪里看到这条失败消息？是否只要求 SDK 状态正确即可？
-7. "强制下线前签发的 token 全部失效"的判定精度：若签发时间按秒记录，下线后同一秒内重签的 token 可能被误判失效（TC-AUTH-03-09 按"必须可用"验证），需 BE 确认实现方式。
-8. 演示登录的用户名是否先去首尾空白再校验（§3.1 的去空白规则只说文本）？输入 ` alice ` 是登录成功还是提示格式不正确？空用户名是前端禁用按钮还是提示"账号格式不正确"？
-9. 演示登录开启时签发的 token 有效期是多少（沿用 7 天默认？），测试模式下能否配置成短有效期（TC-AUTH-03-10 依赖此能力）？
+1. `ttlSeconds` 传非整数或字符串（如 `"abc"`、`1.5`）时返回 4000，还是按默认 7 天？C-13 只定了下限，暂不设用例。

@@ -2,7 +2,7 @@
 
 | 项 | 内容 |
 |---|---|
-| 依据 | [PRD v1.0](../prd/PRD-core-v1.0.md)、[错误码](../../protocol/ERRORS.md) |
+| 依据 | [PRD v1.1](../prd/PRD-core-v1.1.md)、[错误码](../../protocol/ERRORS.md) |
 | 负责 | 后端（AI） |
 | 起点 | M1 代码（`server/`）：鉴权、WS 网关、单聊 / 群聊、seq、去重、sync、已读位置 |
 | 完成定义 | 任务内列出的 AC 都有通过的自动化测试（后端 e2e 或单测）；`go test -race ./...` 全过；协议文档 / Schema / 用例同步更新 |
@@ -53,7 +53,7 @@
 - 内容：
   1. 配置项 `IM_TEST_MODE`（默认关闭，开启时启动日志打印醒目警告）。
   2. 测试模式下：`ttlSeconds` 最小可以是 1；空闲超时、写超时可以配置（已有 `gateway.Config`，补充环境变量）。
-  3. 故障注入管理接口（仅测试模式注册路由）：`POST /admin/test/drop-ack {clientMsgId}`（保存消息但不回 ack）、`POST /admin/test/skip-delivery {clientMsgId}`（保存消息但不做实时投递，用来制造 seq 缺口）。
+  3. 故障注入管理接口（仅测试模式注册路由）：`POST /admin/test/drop-ack {clientMsgId}`（保存消息但不回 ack）、`POST /admin/test/skip-delivery {clientMsgId}`（保存消息但不做实时投递，用来制造 seq 缺口）、`POST /admin/test/clock {nowMs}`（注入服务端时钟，C-43）。
   4. `auth.Signer` 暴露可注入的时钟。
 - 完成标准：非测试模式下这些路由返回 404（e2e 断言）。
 
@@ -212,18 +212,18 @@
 ### BE-040 会话列表 `convs`
 - 优先级：P0
 - 依赖：BE-001、BE-030
-- AC：AC-CONV-01-1、AC-CONV-01-3、AC-CONV-01-4、AC-CONN-01-7
+- AC：AC-CONV-01-1、AC-CONV-01-3、AC-CONV-01-4、AC-CONV-01-7、AC-CONN-01-7
 - 内容：
   1. 新表 `user_conv(user_id, conv_id, join_seq, created_at)`：单聊在 send 事务里为双方 upsert；入群时写入，被移除时删除。
   2. 新表 `conv_last(conv_id, last_msg_id, last_from, last_text, last_ts)`：在 send 事务里更新（每个会话一行）。
-  3. `convs` 命令返回 `{convId, type, name, maxSeq, readSeq, minSeq, unread, lastMsg, updatedAt}`，按 `updatedAt` 倒序、`convId` 升序排列，上限 500 个。
+  3. `convs` 命令返回 `{convId, type, name, maxSeq, readSeq, minSeq, unread, lastMsg, updatedAt}`，按 `updatedAt` 倒序、`convId` 升序排列，上限 500 个，超出时带 `truncated: true`（C-03）；`lastMsg` 摘要截断为 100 个码点，没有消息时为 `null`。
   4. 对已有数据做迁移：从 `messages` 和 `group_members` 回填这两张表。
 
 ### BE-041 未读数与已读规则
 - 优先级：P0
 - 依赖：BE-040、BE-032
-- AC：AC-CONV-02-1、AC-CONV-02-2、AC-CONV-02-3、AC-CONV-02-5、AC-CONV-02-6
-- 内容：未读 = maxSeq − max(readSeq, minSeq − 1)；send 事务里把发送者的 readSeq 推进到新 seq（发言即已读）；`read` 上报的 seq 截断为 min(seq, maxSeq)，只进不退。
+- AC：AC-CONV-02-1、AC-CONV-02-2、AC-CONV-02-3、AC-CONV-02-5、AC-CONV-02-6、AC-GRP-01-12
+- 内容：未读 = maxSeq − max(readSeq, joinSeq)（C-02，与 historyVisible 无关）；send 事务里把发送者的 readSeq 推进到新 seq（发言即已读）；`read` 上报的 seq 截断为 min(seq, maxSeq)，只进不退。
 
 ### BE-042 已读多端同步（P1）
 - 优先级：P1
@@ -252,3 +252,17 @@
 - 依赖：BE-015
 - AC：AC-AUTH-05-1
 - 内容：连接断开日志记录关闭码和原因；`IM_ALLOWED_ORIGINS` 配置 WS Origin 白名单（不配置时只允许本机来源，演示模式例外）；`IM_ENV=production` 时，如果没有配置密钥或开启了测试模式 / 演示登录，拒绝启动。
+
+---
+
+## 实现约定（回答用例编写阶段的遗留问题）
+
+| # | 问题 | 约定 | 相关用例 |
+|---|---|---|---|
+| IMP-1 | `GET /admin/users/{userId}` 查询不存在的用户 | 返回 HTTP 404 / 4042 | TC-USER-01-12/13/16 |
+| IMP-2 | `ttlSeconds` 传了非整数或字符串 | 返回 HTTP 400 / 4000 | — |
+| IMP-3 | 去重命中的重发恰好遇上令牌桶为空 | **先查重，再扣令牌**：命中重复时直接返回原 ack，不扣令牌，也不会返回 4290（与 C-29 一致） | TC-MSG 中 C-29 相关用例 |
+| IMP-4 | 新用户令牌桶的初始状态；新建连接是否影响 | 初始为满（20 个令牌）；令牌桶按用户维度统计，新建连接不重置也不增加 | TC-MSG-07-* |
+| IMP-5 | 同一请求里重复出现同一个 userId | 先去重，计数按 1 个算（500 / 2000 两个上限都是） | TC-GRP-01-* |
+| IMP-6 | groupId 和群名都不合法；4090 和 4042 的先后 | 先校验 ID 格式（4004），再校验其他参数（4000）；建群时先判断群是否已存在（4090），再校验成员是否存在（4042） | TC-GRP 中 C-08 相关用例 |
+| IMP-7 | `POST /admin/test/clock` 是冻结时间还是设置偏移 | **冻结**：设置后服务端的"当前时间"固定为该值，直到再次设置；传 `{"nowMs": null}` 恢复真实时钟。对服务端所有用到时间的地方生效：消息时间戳、token 过期、限流、会话排序 | TC-CONV-01-07/10/11 |

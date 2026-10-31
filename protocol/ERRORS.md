@@ -24,7 +24,8 @@
 |---|---|
 | WebSocket 请求 | `{"id":"r1","cmd":"ack","error":{"code":4042,"msg":"用户不存在"}}` |
 | 管理接口（HTTP） | HTTP 状态码取 `errors.json` 的 `http` 字段，响应体为 `{"code":4042,"msg":"用户不存在"}` |
-| 连接级致命错误 | 先下发 `{"cmd":"event","data":{"type":"kicked","reason":"tokenExpired"}}`，再用同号关闭码（如 4011）关闭连接 |
+| 凭证类致命错误（4010～4012） | 先下发 `{"cmd":"event","data":{"type":"kicked","reason":"tokenExpired"}}`，再用同号关闭码（如 4011）关闭连接 |
+| 平台不合法（4009） | 不发 `kicked`，直接以关闭码 4009 关闭（开发期缺陷） |
 
 `msg` 只用于日志和排查，**客户端展示给用户的文案要根据 `code` 映射**，不要直接展示 `msg`。
 

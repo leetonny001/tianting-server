@@ -1,7 +1,7 @@
 # 测试用例：用户（USER）
 
-> 依据：[PRD v1.0](../prd/PRD-core-v1.0.md) F-USER-01、F-USER-02，§3.1 通用约定。
-> 导入用户接口在 PRD §8 中列为新增管理接口，路径尚未落到 protocol/。下文记为"导入用户接口"，示例路径 `POST /admin/users/import`，body `{"users":[{"userId":...,"nickname":...,"avatar":...}]}`，以 BE 实现为准。管理密钥通过 `X-Admin-Key` 头传递，测试值 `test-admin-key`。
+> 依据：[PRD v1.1](../prd/PRD-core-v1.1.md) F-USER-01、F-USER-02，§3.1 通用约定，§9 C-15～C-20。
+> 接口路径（C-15）：导入用户 `POST /admin/users/import`，body `{"users":[{"userId":...,"nickname":...,"avatar":...}]}`；查询用户 `GET /admin/users/{userId}`，用于核对导入结果（返回 `userId`、`nickname`、`avatar`）。管理密钥通过 `X-Admin-Key` 头传递，测试值 `test-admin-key`。
 
 | 用例 | 标题 | 关联 AC | 层级 | 优先级 |
 |---|---|---|---|---|
@@ -16,10 +16,18 @@
 | TC-USER-01-09 | 导入接口缺少或错误密钥返回 401/4013 | AC-USER-01-1 | 后端 e2e | P0 |
 | TC-USER-01-10 | 签发凭证自动注册用户 | AC-USER-01-5 | 后端 e2e | P0 |
 | TC-USER-01-11 | 自动注册不覆盖已导入的昵称 | AC-USER-01-5 | 后端 e2e | P0 |
+| TC-USER-01-12 | 昵称 33 字返回 400/4000 且整批不写入 | AC-USER-01-4 | 后端 e2e | P0 |
+| TC-USER-01-13 | 头像 513 字符返回 400/4000 且整批不写入 | AC-USER-01-4 | 后端 e2e | P0 |
+| TC-USER-01-14 | 导入空数组返回 400/4000 | AC-USER-01-3 | 后端 e2e | P0 |
+| TC-USER-01-15 | 同一批内 userId 重复以最后一条为准 | AC-USER-01-2 | 后端 e2e | P0 |
+| TC-USER-01-16 | userId 区分大小写 | AC-USER-01-1 | 后端 e2e | P0 |
+| TC-USER-01-17 | 查询用户接口返回导入结果 | AC-USER-01-1 | 后端 e2e | P0 |
 | TC-USER-02-01 | 有昵称的用户在会话列表和聊天页显示昵称 | AC-USER-02-1 | UI 自动化 | P1 |
 | TC-USER-02-02 | 无昵称的用户显示 userId | AC-USER-02-1 | UI 自动化 | P1 |
 | TC-USER-02-03 | 群消息发送者显示昵称或 userId | AC-USER-02-1 | UI 自动化 | P1 |
 | TC-USER-02-04 | 头像为空时显示首字母占位 | AC-USER-02-1 | UI 自动化 | P1 |
+| TC-USER-02-05 | 昵称修改后下次拉 convs 时生效 | AC-USER-02-1 | UI 自动化 | P1 |
+| TC-USER-02-06 | 占位取第一个码点、背景色按 userId 稳定 | AC-USER-02-1 | UI 自动化 | P1 |
 
 ---
 
@@ -30,7 +38,7 @@
 - 前置条件：服务端测试模式，独立数据库；alice 已签发 token 并以 platform=web 连接；`u-imp-1`、`u-imp-2`、`u-imp-3` 从未注册。
 - 步骤：
   1. alice 给 `u-imp-2` 发单聊（`clientMsgId`=`cid-u-0001`，文本 "before"）。
-  2. 调用导入用户接口，users = `[{"userId":"u-imp-1","nickname":"一号"},{"userId":"u-imp-2","nickname":"二号","avatar":"https://example.com/a2.png"},{"userId":"u-imp-3"}]`。
+  2. 调用 `POST /admin/users/import`，users = `[{"userId":"u-imp-1","nickname":"一号"},{"userId":"u-imp-2","nickname":"二号","avatar":"https://example.com/a2.png"},{"userId":"u-imp-3"}]`。
   3. alice 分别给 `u-imp-1`、`u-imp-2`、`u-imp-3` 发单聊（`clientMsgId` 依次为 `cid-u-0002`～`cid-u-0004`）。
 - 预期结果：
   1. 步骤 1：ack.error.code = 4042。
@@ -56,11 +64,12 @@
 - 前置条件：已导入 `[{"userId":"bob","nickname":"小红"}]`；alice 与 bob 已有一条单聊消息。
 - 步骤：
   1. 再次导入 `[{"userId":"bob","nickname":"红红"}]`。
-  2. alice 发 `convs`，读取 `c2c:alice:bob` 的 `name`（或通过 BE 提供的用户查询途径读取 bob 的昵称）。
+  2. `GET /admin/users/bob`。
+  3. alice 重新发 `convs`，读取 `c2c:alice:bob` 的 `name`。
 - 预期结果：
   1. 步骤 1：HTTP 200，不报错（不返回 4090 之类冲突码）。
-  2. 步骤 2：bob 的昵称为"红红"，不再是"小红"。
-  3. 用户表中 bob 只有 1 条记录。
+  2. 步骤 2：HTTP 200，`nickname`="红红"。
+  3. 步骤 3：`name` 为"红红"（C-19：下次拉 `convs` 生效）。
 
 ### TC-USER-01-04 昵称 32 字（中文码点）、头像 512 字符边界可导入
 - 关联 AC：AC-USER-01-2
@@ -69,7 +78,7 @@
 - 前置条件：服务端已启动。
 - 步骤：
   1. 导入 `[{"userId":"u-edge","nickname":"<32 个汉字，如'测'×32>","avatar":"https://example.com/<补齐到总长 512 字符>"}]`。
-  2. 读取 `u-edge` 的昵称和头像。
+  2. `GET /admin/users/u-edge`。
 - 预期结果：
   1. HTTP 200。
   2. 昵称为完整 32 个汉字（按码点计数，未被截断），头像 URL 为完整 512 字符。
@@ -106,7 +115,7 @@
 - 步骤：
   1. 导入 `[{"userId":"u-ok-1"},{"userId":"bad id"},{"userId":"u-ok-2"},{"userId":"u-exist","nickname":"新名"}]`。
   2. alice 给 `u-ok-1`、`u-ok-2` 各发单聊。
-  3. 读取 `u-exist` 的昵称。
+  3. `GET /admin/users/u-exist`。
 - 预期结果：
   1. HTTP 400，body.code = 4004。
   2. 两条 send 均返回 4042。
@@ -158,10 +167,82 @@
 - 前置条件：已导入 `[{"userId":"erin","nickname":"艾琳"}]`。
 - 步骤：
   1. 为 `erin` 签发 token。
-  2. 读取 `erin` 的昵称。
+  2. `GET /admin/users/erin`。
 - 预期结果：
   1. 签发成功。
   2. 昵称仍为"艾琳"（签发凭证只在用户不存在时注册，不清空已有资料）。
+
+### TC-USER-01-12 昵称 33 字返回 400/4000 且整批不写入
+- 关联 AC：AC-USER-01-4
+- 优先级：P0
+- 层级：后端 e2e
+- 前置条件：`u-n-1`、`u-n-2` 从未注册。
+- 步骤：
+  1. 导入 `[{"userId":"u-n-1","nickname":"<'测'×32>"},{"userId":"u-n-2","nickname":"<'测'×33>"}]`。
+  2. `GET /admin/users/u-n-1`。
+- 预期结果：
+  1. HTTP 400，body.code = 4000（C-16）。
+  2. 步骤 2：HTTP 404 / 4042（`u-n-1` 也未写入）。
+
+### TC-USER-01-13 头像 513 字符返回 400/4000 且整批不写入
+- 关联 AC：AC-USER-01-4
+- 优先级：P0
+- 层级：后端 e2e
+- 前置条件：`u-v-1`、`u-v-2` 从未注册。
+- 步骤：
+  1. 导入 `[{"userId":"u-v-1"},{"userId":"u-v-2","avatar":"https://example.com/<补齐到 513 字符>"}]`。
+  2. `GET /admin/users/u-v-1`。
+- 预期结果：
+  1. HTTP 400，body.code = 4000（C-16）。
+  2. 步骤 2：HTTP 404 / 4042。
+
+### TC-USER-01-14 导入空数组返回 400/4000
+- 关联 AC：AC-USER-01-3
+- 优先级：P0
+- 层级：后端 e2e
+- 前置条件：服务端已启动。
+- 步骤：
+  1. 导入 `{"users":[]}`。
+- 预期结果：
+  1. HTTP 400，body.code = 4000（C-17）。
+
+### TC-USER-01-15 同一批内 userId 重复以最后一条为准
+- 关联 AC：AC-USER-01-2
+- 优先级：P0
+- 层级：后端 e2e
+- 前置条件：`u-dup` 从未注册。
+- 步骤：
+  1. 导入 `[{"userId":"u-dup","nickname":"第一"},{"userId":"u-dup","nickname":"第二"}]`。
+  2. `GET /admin/users/u-dup`。
+- 预期结果：
+  1. HTTP 200。
+  2. `nickname`="第二"（C-17）。
+
+### TC-USER-01-16 userId 区分大小写
+- 关联 AC：AC-USER-01-1
+- 优先级：P0
+- 层级：后端 e2e
+- 前置条件：已导入 `[{"userId":"alice","nickname":"小明"}]`；`Alice` 从未注册。
+- 步骤：
+  1. `GET /admin/users/Alice`。
+  2. 导入 `[{"userId":"Alice","nickname":"大写"}]`。
+  3. `GET /admin/users/alice`、`GET /admin/users/Alice`。
+- 预期结果：
+  1. 步骤 1：HTTP 404 / 4042。
+  2. 步骤 2：HTTP 200。
+  3. alice 的 `nickname` 仍为"小明"，Alice 为"大写"（两个不同用户，C-18）。
+
+### TC-USER-01-17 查询用户接口返回导入结果
+- 关联 AC：AC-USER-01-1
+- 优先级：P0
+- 层级：后端 e2e
+- 前置条件：已导入 `[{"userId":"u-q","nickname":"查询","avatar":"https://example.com/q.png"}]`。
+- 步骤：
+  1. `GET /admin/users/u-q`，带正确密钥。
+  2. 同一请求不带 `X-Admin-Key`。
+- 预期结果：
+  1. HTTP 200，`userId`="u-q"、`nickname`="查询"、`avatar`="https://example.com/q.png"。
+  2. HTTP 401 / 4013。
 
 ### TC-USER-02-01 有昵称的用户在会话列表和聊天页显示昵称
 - 关联 AC：AC-USER-02-1
@@ -209,25 +290,54 @@
   1. alice 查看会话列表中三个会话的头像位置。
 - 预期结果：
   1. bob 的头像位置显示文字占位"小"。
-  2. carol 的头像位置显示文字占位"C"或"c"（见疑问 3）。
+  2. carol 的头像位置显示文字占位"C"（大写，C-20）。
   3. dave 显示图片头像，`src` 为 `https://example.com/d.png`。
+
+### TC-USER-02-05 昵称修改后下次拉 convs 时生效
+- 关联 AC：AC-USER-02-1
+- 优先级：P1
+- 层级：UI 自动化
+- 前置条件：bob 昵称"小红"；alice 已登录，会话列表显示与 bob 的会话"小红"。
+- 步骤：
+  1. 管理接口导入 `[{"userId":"bob","nickname":"红红"}]`。
+  2. alice 不刷新，等待 3 秒。
+  3. alice 刷新页面（重新拉 `convs`）。
+- 预期结果：
+  1. 步骤 2：仍显示"小红"属于预期（一期不做实时推送，C-19），页面不报错。
+  2. 步骤 3：会话列表和聊天页顶栏显示"红红"。
+
+### TC-USER-02-06 占位取第一个码点、背景色按 userId 稳定
+- 关联 AC：AC-USER-02-1
+- 优先级：P1
+- 层级：UI 自动化
+- 前置条件：`u-emoji` 昵称"😀abc"、无头像；`dave2` 无昵称、无头像；两人都与 alice 有单聊。
+- 步骤：
+  1. alice 查看会话列表，记录两人头像占位的文字和背景色。
+  2. 刷新页面后再次记录；在另一个浏览器上下文以 alice 登录再次记录。
+- 预期结果：
+  1. `u-emoji` 占位为"😀"（完整一个码点，不是半个代理对）；`dave2` 占位为"D"。
+  2. 三次记录中，同一 userId 的背景色完全相同（按 userId 哈希，C-20）。
 
 ---
 
 ## 覆盖检查
 
-- AC-USER-01-1：TC-USER-01-01、TC-USER-01-02、TC-USER-01-09
-- AC-USER-01-2：TC-USER-01-03、TC-USER-01-04
-- AC-USER-01-3：TC-USER-01-05、TC-USER-01-06
-- AC-USER-01-4：TC-USER-01-07、TC-USER-01-08
+- AC-USER-01-1：TC-USER-01-01、TC-USER-01-02、TC-USER-01-09、TC-USER-01-16、TC-USER-01-17
+- AC-USER-01-2：TC-USER-01-03、TC-USER-01-04、TC-USER-01-15
+- AC-USER-01-3：TC-USER-01-05、TC-USER-01-06、TC-USER-01-14
+- AC-USER-01-4：TC-USER-01-07、TC-USER-01-08、TC-USER-01-12、TC-USER-01-13
 - AC-USER-01-5：TC-USER-01-10、TC-USER-01-11
-- AC-USER-02-1：TC-USER-02-01、TC-USER-02-02、TC-USER-02-03、TC-USER-02-04
+- AC-USER-02-1：TC-USER-02-01、TC-USER-02-02、TC-USER-02-03、TC-USER-02-04、TC-USER-02-05、TC-USER-02-06
+
+## 已澄清
+
+1. 导入 / 查询用户接口路径，昵称如何读回 → C-15：`POST /admin/users/import`、`GET /admin/users/{userId}`；TC-USER-01-03/04/07/11 改为用查询接口核对，新增 TC-USER-01-17。
+2. 昵称超长、头像超长的错误码 → C-16：4000，整批不写入；新增 TC-USER-01-12、TC-USER-01-13。
+3. 首字母占位规则 → C-20：显示名第一个码点，英文转大写，背景色按 userId 哈希；修订 TC-USER-02-04，新增 TC-USER-02-06。
+4. 导入空数组、同批 userId 重复 → C-17：空数组 4000，重复以最后一条为准；新增 TC-USER-01-14、TC-USER-01-15。
+5. 昵称修改后在线客户端如何刷新 → C-19：下次拉 `convs` 生效；修订 TC-USER-01-03，新增 TC-USER-02-05。
+6. userId 是否区分大小写 → C-18：区分；新增 TC-USER-01-16。
 
 ## 疑问
 
-1. 导入用户接口的路径、请求/响应格式未定义（PRD §8 只说"新增"，protocol/ 尚未落实）；也没有"查询用户"接口，AC-USER-01-2 的"昵称被更新"靠什么读回？本文暂用 `convs` 的 `name` 字段，需 BE 确认。
-2. 昵称超过 32 字、为空串，或头像超过 512 字符、不是 URL 时返回什么错误码（4000？）？是否同样整批不写入？
-3. "首字母占位"对中文昵称取第一个汉字，对英文 userId 是否转大写？有昵称时取昵称首字还是 userId 首字母？
-4. 导入空数组（0 个用户）、同一批次内 userId 重复时的行为未定义（成功 / 4000 / 以后一条为准？）。
-5. 昵称更新后，已在线的客户端是否需要实时刷新（无对应事件），还是刷新页面 / 重新拉 `convs` 后才更新？
-6. `userId` 比较是否区分大小写（`Bob` 与 `bob` 是否同一用户）？
+1. `GET /admin/users/{userId}` 查询不存在的用户时，C-15 没写返回值。TC-USER-01-12/13/16 按 HTTP 404 / 4042 断言（与 C-12 强制下线不存在用户一致），需 BE 确认。

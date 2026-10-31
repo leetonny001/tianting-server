@@ -2,7 +2,7 @@
 
 | 项 | 内容 |
 |---|---|
-| 依据 | [PRD v1.0](../prd/PRD-core-v1.0.md)、[错误码](../../protocol/ERRORS.md)、[协议](../../protocol/README.md) |
+| 依据 | [PRD v1.1](../prd/PRD-core-v1.1.md)、[错误码](../../protocol/ERRORS.md)、[协议](../../protocol/README.md) |
 | 负责 | 前端（AI） |
 | 技术栈 | TypeScript；SDK 不依赖任何框架（`sdk-ts/`）；H5 用 React + Vite（`web/`）；测试：Vitest（SDK）、Playwright（UI） |
 | 开工条件 | 后端 BE-001（协议定稿）完成 |

@@ -1,6 +1,8 @@
 # 测试用例：群聊（GRP）
 
-> 依据：[PRD v1.0](../prd/PRD-core-v1.0.md) F-GRP-01～F-GRP-03、[ERRORS.md](../../protocol/ERRORS.md)。
+> 依据：[PRD v1.1](../prd/PRD-core-v1.1.md) F-GRP-01～F-GRP-03 及 §9 补充规则（C-04、C-08、C-35～C-38）、[需求澄清](../review/CLARIFY-core-v1.0.md)、[ERRORS.md](../../protocol/ERRORS.md)。
+>
+> 未读数 = maxSeq − max(readSeq, joinSeq)，与 historyVisible 无关（C-02）。群管理多错误优先级：格式（4004 / 4000）→ 4043 → 4131 → 4042 → 4130（C-08）。
 >
 > 通用约定：
 > - 每个用例使用独立数据库，服务端测试模式。
@@ -35,6 +37,14 @@
 | TC-GRP-01-23 | 群名边界：空 / 纯空白 / 51 字返回 400 / 4000；1 / 50 字成功 | AC-GRP-01-11 | 后端 e2e | P0 |
 | TC-GRP-01-24 | 修改群设置时群名不合法返回 400 / 4000 | AC-GRP-01-11 | 后端 e2e | P0 |
 | TC-GRP-01-25 | 群 ID 不合法返回 400 / 4004；长度 64 成功 | AC-GRP-01-11 | 后端 e2e | P0 |
+| TC-GRP-01-26 | 建群初始成员 501 / 1000 人成功（不受 500 批量限制） | AC-GRP-01-3 | 后端 e2e | P0 |
+| TC-GRP-01-27 | 错误优先级：格式错误 > 4043 | AC-GRP-01-10 | 后端 e2e | P0 |
+| TC-GRP-01-28 | 错误优先级：4043 > 4131 > 4042 | AC-GRP-01-10 | 后端 e2e | P0 |
+| TC-GRP-01-29 | 错误优先级：4042 > 4130（加成员与建群） | AC-GRP-01-10 | 后端 e2e | P0 |
+| TC-GRP-01-30 | historyVisible 从 false 改为 true 后，D 的未读仍为 0 | AC-GRP-01-12 | 后端 e2e | P0 |
+| TC-GRP-01-31 | 未读从 joinSeq 算起：改回 false、重新入群、historyVisible=true 入群均不计入群前消息 | AC-GRP-01-12 | 后端 e2e | P0 |
+| TC-GRP-01-32 | 重复添加已有成员：幂等成功，不重置 joinSeq | AC-GRP-01-6 | 后端 e2e | P0 |
+| TC-GRP-01-33 | 移除不是成员的用户：幂等成功 | AC-GRP-01-4 | 后端 e2e | P0 |
 | TC-GRP-02-01 | 成员发群消息：其他在线成员都收到，发送设备不重复收到（界面） | AC-GRP-02-1 | UI 自动化 | P0 |
 | TC-GRP-02-02 | 群消息投递：其他成员和发送者其他端收到，发送连接只收 ack | AC-GRP-02-1 | 后端 e2e | P0 |
 | TC-GRP-02-03 | 群消息同一 clientMsgId 重发，成员只收到一条 | AC-GRP-02-1 | 后端 e2e | P0 |
@@ -47,6 +57,8 @@
 | TC-GRP-03-03 | 在线用户被移出群，所有连接收到 convRemoved，其他成员不收到 | AC-GRP-03-2 | 后端 e2e | P0 |
 | TC-GRP-03-04 | 收到 convAdded 后会话列表出现该群 | AC-GRP-03-3 | UI 自动化 | P0 |
 | TC-GRP-03-05 | 收到 convRemoved 后打开该群显示"你已不在该群"，输入框禁用 | AC-GRP-03-3 | UI 自动化 | P0 |
+| TC-GRP-03-06 | 幂等的加 / 删成员不下发 convAdded / convRemoved | AC-GRP-03-1 | 后端 e2e | P0 |
+| TC-GRP-03-07 | 被移出的群在刷新 / 重新登录后不再出现在会话列表 | AC-GRP-03-3 | UI 自动化 | P0 |
 
 ---
 
@@ -93,7 +105,7 @@
 - 层级：后端 e2e
 - 前置条件：u0001～u2000 已导入。
 - 步骤：建群 gBig，members = u0001～u2000（2000 人，一次请求）；查询 gBig；u2000 发一条消息。
-- 预期结果：HTTP 200；成员数 = 2000；u2000 发送成功（seq=1）。（单次批量 500 的限制是否适用于建群，见"疑问"Q1。）
+- 预期结果：HTTP 200（建群初始成员不受单次 500 的批量限制，只受 2000 总数限制，不返回 4131，C-04）；成员数 = 2000；u2000 发送成功（seq=1）。
 
 ### TC-GRP-01-05 建群 2001 人返回 400 / 4130，群未创建
 - 关联 AC：AC-GRP-01-3
@@ -135,10 +147,11 @@
 - 步骤：
   1. 移除 carol。
   2. alice 发消息（seq=4）。
-  3. carol 给 g1 发消息；carol sync `group:g1` afterSeq=0；carol 上报 `read {convId:"group:g1", seq:3}`。
+  3. carol 给 g1 发消息；carol sync `group:g1` afterSeq=0；carol 上报 `read {convId:"group:g1", seq:3}`；carol 执行 `convs`。
 - 预期结果：
   1. carol 在 500ms 内没有收到 seq=4 的 `msg`。
-  2. carol 发消息返回 4033；sync 返回 4033（不返回原来能看到的 1～3）；read 返回 4033（见"疑问"Q6）。
+  2. carol 发消息返回 4033；sync 返回 4033（不返回原来能看到的 1～3）；read 返回 4033（C-37）。
+  3. carol 的 convs 中不再有 `group:g1`（C-37）。
   3. bob 正常收到 seq=4。
 
 ### TC-GRP-01-10 查询群名、historyVisible、成员列表
@@ -196,7 +209,7 @@
 - 层级：后端 e2e
 - 前置条件：g1（historyVisible=true）已有 10 条消息。
 - 步骤：加 dave；dave 执行 convs 和 sync afterSeq=0。
-- 预期结果：convs 中 g1 minSeq=1、maxSeq=10；sync 返回 seq 1～10；unread 的值记录下来，与产品确认（按公式应为 10，见"疑问"Q3）。
+- 预期结果：convs 中 g1 minSeq=1、maxSeq=10、unread=0（未读从入群时刻 joinSeq=10 算起，入群前的历史可以看但不算未读，C-02）；sync 返回 seq 1～10。
 
 ### TC-GRP-01-16 false 改为 true 后，D 下次拉取能看到入群前的消息
 - 关联 AC：AC-GRP-01-8
@@ -267,7 +280,7 @@
 - 步骤：分别建群，name 为：`""`、`"   "`、`"群"×51`、不传 name、`"群"`、`"群"×50`、`"😀"×50`、`"  "+"群"×50+"  "`。
 - 预期结果：
   1. 前 4 种返回 HTTP 400 / 4000，群未创建。
-  2. 后 4 种成功；最后一种查询到的群名为 50 个"群"（按 §3.1 去首尾空白、按码点计数，见"疑问"Q7）。
+  2. 后 4 种成功；最后一种查询到的群名为 50 个"群"（去首尾空白后按码点计数，C-38）。
 
 ### TC-GRP-01-24 修改群设置时群名不合法返回 400 / 4000
 - 关联 AC：AC-GRP-01-11
@@ -284,6 +297,98 @@
 - 前置条件：无。
 - 步骤：groupId 分别为 `""`、`"g 1"`、`"群1"`、`"g.1"`、65 个 `g`、64 个 `g`、`"G_1-a"`。
 - 预期结果：前 5 种 HTTP 400 / 4004；后 2 种成功。
+
+### TC-GRP-01-26 建群初始成员 501 / 1000 人成功（不受 500 批量限制）
+- 关联 AC：AC-GRP-01-3
+- 优先级：P0
+- 层级：后端 e2e
+- 前置条件：u0001～u1000 已导入。
+- 步骤：建群 g501（members = u0001～u0501）；建群 g1000（members = u0001～u1000）；查询两个群。
+- 预期结果：两次建群都返回 HTTP 200（不返回 4131，C-04）；成员数分别为 501、1000。
+
+### TC-GRP-01-27 错误优先级：格式错误 > 4043
+- 关联 AC：AC-GRP-01-10
+- 优先级：P0
+- 层级：后端 e2e
+- 前置条件：g404 不存在。
+- 步骤：
+  1. 对 g404 加成员 `["bad id"]`。
+  2. 对 g404 修改群名为 `"群"×51`。
+  3. 对 g404 加成员 `["ghost"]`。
+- 预期结果：
+  1. HTTP 400 / 4004（格式校验先于群是否存在，C-08）。
+  2. HTTP 400 / 4000。
+  3. HTTP 404 / 4043（而不是 4042）。
+
+### TC-GRP-01-28 错误优先级：4043 > 4131 > 4042
+- 关联 AC：AC-GRP-01-10
+- 优先级：P0
+- 层级：后端 e2e
+- 前置条件：空群 gBatch 已存在；g404 不存在；u0001～u0500 已导入。
+- 步骤：
+  1. 对 g404 加 501 人（u0001～u0500 + ghost）。
+  2. 对 gBatch 加 501 人（u0001～u0500 + ghost）。
+  3. 对 gBatch 加 `[u0001, ghost]`。
+- 预期结果：
+  1. HTTP 404 / 4043。
+  2. HTTP 400 / 4131（批量上限先于用户存在性校验）。
+  3. HTTP 404 / 4042。每一步之后 gBatch 成员数都为 0。
+
+### TC-GRP-01-29 错误优先级：4042 > 4130（加成员与建群）
+- 关联 AC：AC-GRP-01-10
+- 优先级：P0
+- 层级：后端 e2e
+- 前置条件：gBig 已有 u0001～u1999；u2000、u2001 已导入。
+- 步骤：
+  1. 对 gBig 加 `[u2000, u2001, ghost]`（既超 2000，又含不存在的用户）。
+  2. 建群 gNew，members = u0001～u2001 + ghost（2002 人）。
+- 预期结果：
+  1. HTTP 404 / 4042（不是 4130，C-08）；gBig 成员仍为 1999。
+  2. HTTP 404 / 4042；gNew 未创建。
+
+### TC-GRP-01-30 historyVisible 从 false 改为 true 后，D 的未读仍为 0
+- 关联 AC：AC-GRP-01-12
+- 优先级：P0
+- 层级：后端 e2e
+- 前置条件：g1（historyVisible=false）成员 alice、bob，已有 10 条消息；加入 dave（joinSeq=10）；dave 执行 convs 得到 minSeq=11、unread=0。
+- 步骤：
+  1. 修改 g1 `historyVisible=true`；dave 执行 convs、sync afterSeq=0。
+  2. alice 再发 1 条（seq=11）；dave 执行 convs。
+- 预期结果：
+  1. minSeq=1，sync 返回 seq 1～10，但 unread 仍为 0（10 − max(0, 10)，C-02）。
+  2. unread=1。
+
+### TC-GRP-01-31 未读从 joinSeq 算起：改回 false、重新入群、historyVisible=true 入群均不计入群前消息
+- 关联 AC：AC-GRP-01-12
+- 优先级：P0
+- 层级：后端 e2e
+- 前置条件：g1（historyVisible=true）已有 10 条消息。
+- 步骤：
+  1. 加 dave；dave 执行 convs。
+  2. 群里发 seq 11～12；把设置改为 false；dave 执行 convs。
+  3. 移除 dave；群里发 seq 13～15；改回 true；再加 dave；dave 执行 convs。
+  4. dave 上报 read seq=5；执行 convs。
+- 预期结果：
+  1. unread=0、minSeq=1。
+  2. unread=2、minSeq=11（切换设置不改变未读）。
+  3. 重新入群 joinSeq=15：unread=0、minSeq=1。
+  4. unread 仍为 0（readSeq=5 低于 joinSeq，按 joinSeq 计算，不会变成 10）。
+
+### TC-GRP-01-32 重复添加已有成员：幂等成功，不重置 joinSeq
+- 关联 AC：AC-GRP-01-6
+- 优先级：P0
+- 层级：后端 e2e
+- 前置条件：g1（false）已有 10 条；dave 入群（joinSeq=10）；之后群里又发 5 条（maxSeq=15），dave 未读 5。
+- 步骤：再次加 dave（请求 `["dave"]`）；查询 g1；dave 执行 convs、sync afterSeq=0。
+- 预期结果：返回 HTTP 200（C-36）；成员数不变（dave 只出现一次）；dave 的 minSeq 仍为 11、unread 仍为 5，sync 仍返回 seq 11～15（joinSeq 没有被重置为 15）。
+
+### TC-GRP-01-33 移除不是成员的用户：幂等成功
+- 关联 AC：AC-GRP-01-4
+- 优先级：P0
+- 层级：后端 e2e
+- 前置条件：g1 成员 alice、bob；carol 不是成员。
+- 步骤：移除 `["carol"]`；再移除 `["bob"]` 两次；查询 g1。
+- 预期结果：三次都返回 HTTP 200（C-36）；成员只剩 alice；carol 仍不能发群消息（4033）。
 
 ## F-GRP-02 群消息收发
 
@@ -366,7 +471,7 @@
 - 层级：后端 e2e
 - 前置条件：alice、bob 在线；无 g5。
 - 步骤：建群 `{groupId:"g5", name:"新群", members:["alice","bob"]}`。
-- 预期结果：alice、bob 1 秒内收到 `convAdded`（convId=`group:g5`、maxSeq=0、minSeq=1）。（PRD 只写"被加入群时"，建群是否下发见"疑问"Q4。）
+- 预期结果：alice、bob 1 秒内收到 `convAdded`（convId=`group:g5`、maxSeq=0、minSeq=1、unread=0、lastMsg=null）（C-35、C-39）。
 
 ### TC-GRP-03-03 在线用户被移出群，所有连接收到 convRemoved，其他成员不收到
 - 关联 AC：AC-GRP-03-2
@@ -394,6 +499,22 @@
   2. 另一组：停留在聊天页时移除 dave。
 - 预期结果：两种情况下都显示"你已不在该群"，输入框和发送按钮禁用；不出现"加载失败，点击重试"等其他错误提示。
 
+### TC-GRP-03-06 幂等的加 / 删成员不下发 convAdded / convRemoved
+- 关联 AC：AC-GRP-03-1
+- 优先级：P0
+- 层级：后端 e2e
+- 前置条件：g1 成员 alice、dave；dave、carol 在线（carol 不是成员）。
+- 步骤：再次加 dave；移除 carol；各观察 1 秒。
+- 预期结果：两次都返回 HTTP 200；dave 没有收到 `convAdded`，carol 没有收到 `convRemoved`（C-36）。
+
+### TC-GRP-03-07 被移出的群在刷新 / 重新登录后不再出现在会话列表
+- 关联 AC：AC-GRP-03-3
+- 优先级：P0
+- 层级：UI 自动化
+- 前置条件：dave 是 g1 成员，在会话列表页看到"活动群"。
+- 步骤：移除 dave；等待 1 秒后刷新页面；再退出并重新登录。
+- 预期结果：刷新后和重新登录后列表中都没有"活动群"（服务端 convs 不再返回该群，C-37）。
+
 ---
 
 ## 覆盖检查
@@ -402,32 +523,40 @@
 |---|---|
 | AC-GRP-01-1 | TC-GRP-01-01、TC-GRP-01-02 |
 | AC-GRP-01-2 | TC-GRP-01-03 |
-| AC-GRP-01-3 | TC-GRP-01-04、TC-GRP-01-05、TC-GRP-01-06、TC-GRP-01-07、TC-GRP-01-08 |
-| AC-GRP-01-4 | TC-GRP-01-09 |
+| AC-GRP-01-3 | TC-GRP-01-04、TC-GRP-01-05、TC-GRP-01-06、TC-GRP-01-07、TC-GRP-01-08、TC-GRP-01-26 |
+| AC-GRP-01-4 | TC-GRP-01-09、TC-GRP-01-33 |
 | AC-GRP-01-5 | TC-GRP-01-10、TC-GRP-01-11 |
-| AC-GRP-01-6 | TC-GRP-01-12、TC-GRP-01-13、TC-GRP-01-14 |
+| AC-GRP-01-6 | TC-GRP-01-12、TC-GRP-01-13、TC-GRP-01-14、TC-GRP-01-32 |
 | AC-GRP-01-7 | TC-GRP-01-15 |
 | AC-GRP-01-8 | TC-GRP-01-16、TC-GRP-01-17、TC-GRP-01-18 |
 | AC-GRP-01-9 | TC-GRP-01-19、TC-GRP-01-20 |
-| AC-GRP-01-10 | TC-GRP-01-21、TC-GRP-01-22 |
+| AC-GRP-01-12 | TC-GRP-01-30、TC-GRP-01-31 |
+| AC-GRP-01-10 | TC-GRP-01-21、TC-GRP-01-22、TC-GRP-01-27、TC-GRP-01-28、TC-GRP-01-29 |
 | AC-GRP-01-11 | TC-GRP-01-23、TC-GRP-01-24、TC-GRP-01-25 |
 | AC-GRP-02-1 | TC-GRP-02-01、TC-GRP-02-02、TC-GRP-02-03 |
 | AC-GRP-02-2 | TC-GRP-02-04 |
 | AC-GRP-02-3 | TC-GRP-02-05 |
 | AC-GRP-02-4 | TC-GRP-02-06 |
 | AC-GRP-02-5 | TC-GRP-02-07 |
-| AC-GRP-03-1 | TC-GRP-03-01、TC-GRP-03-02 |
+| AC-GRP-03-1 | TC-GRP-03-01、TC-GRP-03-02、TC-GRP-03-06 |
 | AC-GRP-03-2 | TC-GRP-03-03 |
-| AC-GRP-03-3 | TC-GRP-03-04、TC-GRP-03-05 |
+| AC-GRP-03-3 | TC-GRP-03-04、TC-GRP-03-05、TC-GRP-03-07 |
 
-共 19 条 AC，全部覆盖。
+共 20 条 AC，全部覆盖。
+
+## 已澄清
+
+| 原问题 | 结论 | 已更新 / 新增用例 |
+|---|---|---|
+| Q1 批量上限与建群 2000 人冲突 | C-04：500 上限只适用于加成员接口（和导入用户接口）；建群只受 2000 总数限制，2001 → 4130 | 更新 TC-GRP-01-04；新增 TC-GRP-01-26 |
+| Q2 多错误时的优先级 | C-08：格式（4004 / 4000）→ 4043 → 4131 → 4042 → 4130 | 新增 TC-GRP-01-27、TC-GRP-01-28、TC-GRP-01-29 |
+| Q3 historyVisible=true 时新成员的未读 | C-02：未读 = maxSeq − max(readSeq, joinSeq)，与 historyVisible 无关（新增 AC-GRP-01-12） | 更新 TC-GRP-01-15；新增 TC-GRP-01-30、TC-GRP-01-31 |
+| Q4 建群是否推 convAdded | C-35：建群时在线的初始成员会收到 `convAdded` | 更新 TC-GRP-03-02 |
+| Q5 重复加入 / 重复移除 | C-36：都是幂等操作，返回成功，不重置 joinSeq，不发事件 | 新增 TC-GRP-01-32、TC-GRP-01-33、TC-GRP-03-06 |
+| Q6 被移除成员的 read 与 convs | C-37：`read` 返回 4033；`convs` 中不再出现该群 | 更新 TC-GRP-01-09；新增 TC-GRP-03-07 |
+| Q7 群名计数 | C-38：去首尾空白后按码点计数，1～50 | 更新 TC-GRP-01-23 |
 
 ## 疑问
 
-- Q1（批量上限与建群 2000 人冲突）：规则 2 说"单次批量最多 500 人"，但 AC-GRP-01-3 要求"建群时有 2000 个成员可以成功"。500 的上限是否只适用于加成员、不适用于建群？若适用，2000 人建群必然返回 4131；建群 2001 人时 4130 与 4131 哪个优先？
-- Q2（错误优先级）：一次请求同时违反多条规则（如含不存在的 userId 且超出 2000 上限）时，返回 4042 还是 4130？
-- Q3（historyVisible=true 新成员未读数）：AC-GRP-01-7 没写未读数。按公式 unread = maxSeq − max(readSeq, minSeq−1)，新成员 readSeq 若为 0，则入群即有 10 条未读；从 false 改为 true 后，老的新成员未读会从 0 突增到 10。是否预期？还是入群时把 readSeq 初始化为 joinSeq？
-- Q4（建群是否推 convAdded）：F-GRP-03 只说"被加入群时"，建群时的在线初始成员是否收到 `convAdded`？（AC-CONN-01-7 的场景也依赖新群出现在会话列表。）
-- Q5（重复加入 / 重复移除）：加一个已是成员的用户、移除一个不是成员的用户，是幂等成功还是报错？是否重新计算 joinSeq、是否再次推 `convAdded`？请求里同一个 userId 出现两次如何计数？
-- Q6（被移除成员的其他命令）：被移除成员上报 `read`、或在会话列表中是否还保留该群（`convs` 是否还返回），PRD 未规定；TC-GRP-01-09 暂按 `read` 返回 4033 预期。AC-GRP-03-3 "打开该群显示你已不在该群"暗示本地可能保留该会话。
-- Q7（群名计数）：群名"1～50 字"是否同样按 §3.1 去首尾空白、按码点计数？纯空白群名是否视为空？
+- Q8（同一请求内 userId 重复）：加成员 / 建群请求里同一个 userId 出现两次（如 `["dave","dave"]`），按 1 人还是 2 人计入 500 批量上限和 2000 总数上限？C-17 只规定了导入用户时以最后一条为准。
+- Q9（4004 与 4000 的先后、4090 的位置）：C-08 把"格式（4004 / 4000）"放在同一级，groupId 和群名同时不合法时返回哪个？建群时 groupId 已存在（4090）且成员含不存在的用户（4042），返回哪个？
