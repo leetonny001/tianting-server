@@ -13,26 +13,30 @@ import (
 	"im-mvp/server/internal/clock"
 	"im-mvp/server/internal/hub"
 	"im-mvp/server/internal/protocol"
+	"im-mvp/server/internal/ratelimit"
 	"im-mvp/server/internal/store"
 )
 
 // Service 实现 gateway.Handler。
 type Service struct {
-	store  store.Store
-	hub    *hub.Hub
-	log    *slog.Logger
-	clock  clock.Clock
-	faults *Faults // 仅测试模式非 nil
-	newID  func() string
+	store   store.Store
+	hub     *hub.Hub
+	log     *slog.Logger
+	clock   clock.Clock
+	faults  *Faults // 仅测试模式非 nil
+	limiter *ratelimit.Limiter
+	newID   func() string
 }
 
-func New(st store.Store, h *hub.Hub, clk clock.Clock, faults *Faults, log *slog.Logger) *Service {
+// New 创建 Service。sendRate 为每个用户每秒可发的消息数（所有连接合计，PRD F-MSG-07）。
+func New(st store.Store, h *hub.Hub, clk clock.Clock, faults *Faults, sendRate int, log *slog.Logger) *Service {
 	return &Service{
-		store:  st,
-		hub:    h,
-		log:    log,
-		clock:  clk,
-		faults: faults,
+		store:   st,
+		hub:     h,
+		log:     log,
+		clock:   clk,
+		faults:  faults,
+		limiter: ratelimit.New(sendRate, sendRate, clk),
 		// UUIDv7 按时间递增，作为主键插入时对 B 树更友好。
 		newID: func() string { return uuid.Must(uuid.NewV7()).String() },
 	}
@@ -82,10 +86,34 @@ func (s *Service) send(ctx context.Context, c hub.Client, raw json.RawMessage) (
 	}
 	uid := c.UserID()
 
+	// 先识别重发（IMP-3）：命中时直接返回第一次的结果，不扣令牌、不重复投递。
+	if prev, found, err := s.store.FindByClientMsgID(ctx, uid, req.ClientMsgID); err != nil {
+		return nil, false, s.internal("find by clientMsgId", err)
+	} else if found {
+		if prev.ConvID != targetConvID(req, uid) {
+			return nil, false, protocol.Errorf(protocol.CodeClientMsgIDConflict, "clientMsgId already used in another conversation")
+		}
+		return protocol.SendAck{MsgID: prev.MsgID, ConvID: prev.ConvID, Seq: prev.Seq, TS: prev.TS}, false, nil
+	}
+	// 限流（C-29）：被拒绝的请求不扣令牌。
+	if !s.limiter.Allow(uid) {
+		return nil, false, protocol.Errorf(protocol.CodeRateLimited, "too many messages")
+	}
+
 	var convID string
 	var recipients []string
 	switch req.ConvType {
 	case protocol.ConvC2C:
+		// 对方必须存在（D5）；给自己发不用查。
+		if req.To != uid {
+			exists, err := s.store.UserExists(ctx, req.To)
+			if err != nil {
+				return nil, false, s.internal("check user", err)
+			}
+			if !exists {
+				return nil, false, protocol.Errorf(protocol.CodeUserNotFound, "user %s not found", req.To)
+			}
+		}
 		convID = protocol.C2CConvID(uid, req.To)
 		recipients = []string{req.To}
 	case protocol.ConvGroup:
@@ -126,6 +154,17 @@ func (s *Service) send(ctx context.Context, c hub.Client, raw json.RawMessage) (
 		return nil, true, nil
 	}
 	return protocol.SendAck{MsgID: saved.MsgID, ConvID: saved.ConvID, Seq: saved.Seq, TS: saved.TS}, false, nil
+}
+
+// targetConvID 计算请求要发往的会话 ID（聊天室在二期实现）。
+func targetConvID(req protocol.SendReq, uid string) string {
+	switch req.ConvType {
+	case protocol.ConvC2C:
+		return protocol.C2CConvID(uid, req.To)
+	case protocol.ConvGroup:
+		return protocol.GroupConvID(req.To)
+	}
+	return protocol.RoomConvID(req.To)
 }
 
 // groupMembersFor 返回群成员；群不存在返回 4043，uid 不是成员返回 4033。

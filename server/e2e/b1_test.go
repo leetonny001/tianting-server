@@ -152,6 +152,7 @@ func TestForceLogout(t *testing.T) {
 	web := e.dialURL("alice-web", e.wsURL(oldTok, "web"))
 	pc := e.dialURL("alice-pc", e.wsURL(oldTok, "pc"))
 	bob := e.dial("bob", "web")
+	e.users("carol")
 
 	code, body := e.adminPost("/admin/users/alice/force-logout", map[string]any{}, adminKey)
 	if code != http.StatusOK {
@@ -193,6 +194,7 @@ func TestDemoLogin(t *testing.T) {
 	}
 
 	e := newEnvCfg(t, func(c *app.Config) { c.DemoLogin = true })
+	e.users("bob")
 	code, body := e.adminPost("/demo/login", map[string]any{"username": "  alice  "}, "") // 不带管理密钥
 	if code != http.StatusOK {
 		t.Fatalf("demo login: %d %s", code, body)

@@ -25,9 +25,12 @@ type Config struct {
 	Gateway   gateway.Config
 	TestMode  bool // 开启故障注入、时钟注入、短有效期 token（PRD 6.1 节），生产必须关闭
 	DemoLogin bool // 开启演示登录 /demo/login（PRD F-AUTH-04），生产必须关闭
+	SendRate  int  // 每个用户每秒可发消息数，0 表示默认值 20（PRD F-MSG-07）
 	Version   string
 	Logger    *slog.Logger
 }
+
+const defaultSendRate = 20
 
 // App 是组装好的服务。
 type App struct {
@@ -54,7 +57,11 @@ func New(cfg Config) (*App, error) {
 		faults = logic.NewFaults()
 	}
 	h := hub.New()
-	svc := logic.New(st, h, clk, faults, cfg.Logger)
+	sendRate := cfg.SendRate
+	if sendRate <= 0 {
+		sendRate = defaultSendRate
+	}
+	svc := logic.New(st, h, clk, faults, sendRate, cfg.Logger)
 
 	mux := api.NewRouter(api.Info{Version: cfg.Version, StartedAt: time.Now()})
 	mux.Handle("GET /ws", gateway.New(cfg.Gateway, signer, st, clk, h, svc, cfg.Logger))

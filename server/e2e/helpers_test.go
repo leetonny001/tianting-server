@@ -370,3 +370,15 @@ func (c *client) waitCmdTimeout(cmd string, timeout time.Duration) frame {
 		}
 	}
 }
+
+// users 注册用户（D5 之后，单聊的收件人必须存在）。
+func (e *env) users(ids ...string) {
+	e.t.Helper()
+	list := make([]map[string]any, len(ids))
+	for i, id := range ids {
+		list[i] = map[string]any{"userId": id}
+	}
+	if code, body := e.adminPost("/admin/users/import", map[string]any{"users": list}, adminKey); code != http.StatusOK {
+		e.t.Fatalf("import users: %d %s", code, body)
+	}
+}

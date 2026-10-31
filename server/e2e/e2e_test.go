@@ -97,6 +97,7 @@ func TestResendWithSameClientMsgIDIsDeduplicated(t *testing.T) {
 
 func TestOfflineReceiverSyncsAfterConnect(t *testing.T) {
 	e := newEnv(t)
+	e.users("bob") // 已注册但不在线
 	alice := e.dial("alice", "web")
 	for i := 1; i <= 5; i++ {
 		mustAck[protocol.SendAck](t, alice.sendText(protocol.ConvC2C, "bob", fmt.Sprintf("cid-offline-%d", i), fmt.Sprint("m", i)))

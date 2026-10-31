@@ -115,6 +115,15 @@ func (s *SQLite) SaveMessage(ctx context.Context, m Message) (Message, bool, err
 	return m, false, tx.Commit()
 }
 
+func (s *SQLite) FindByClientMsgID(ctx context.Context, from, clientMsgID string) (Message, bool, error) {
+	m, err := scanMessage(s.db.QueryRowContext(ctx,
+		`SELECT `+msgColumns+` FROM messages WHERE from_uid = ? AND client_msg_id = ?`, from, clientMsgID))
+	if errors.Is(err, sql.ErrNoRows) {
+		return Message{}, false, nil
+	}
+	return m, err == nil, err
+}
+
 func (s *SQLite) ListMessages(ctx context.Context, convID string, afterSeq int64, limit int) ([]Message, bool, error) {
 	rows, err := s.db.QueryContext(ctx,
 		`SELECT `+msgColumns+` FROM messages WHERE conv_id = ? AND seq > ? ORDER BY seq LIMIT ?`,

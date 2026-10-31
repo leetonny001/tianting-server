@@ -34,6 +34,7 @@ func TestAckedMessageSurvivesKill9(t *testing.T) {
 	db := filepath.Join(dir, "im.db")
 
 	srv := startServer(t, bin, db)
+	srv.token(t, "bob") // 签发凭证即注册收件人
 	tok := srv.token(t, "alice")
 	ws, _, err := websocket.Dial(context.Background(), srv.ws(tok), nil)
 	if err != nil {

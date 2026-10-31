@@ -10,6 +10,7 @@ import (
 	"testing"
 	"time"
 
+	"im-mvp/server/internal/app"
 	"im-mvp/server/internal/gateway"
 	"im-mvp/server/internal/protocol"
 )
@@ -71,6 +72,7 @@ func TestSkipDeliveryCreatesSeqGap(t *testing.T) {
 // C-43 / IMP-7：冻结服务端时钟后，消息时间戳等于冻结的时间。
 func TestClockInjection(t *testing.T) {
 	e := newEnv(t)
+	e.users("bob")
 	alice := e.dial("alice", "web")
 	const frozen = int64(1_700_000_000_000)
 	e.adminPost("/admin/test/clock", map[string]any{"nowMs": frozen}, adminKey)
@@ -138,6 +140,7 @@ func TestServerTrimsAndValidatesText(t *testing.T) {
 // AC-MSG-04-2：同一 clientMsgId 用到另一个会话返回 4008。
 func TestClientMsgIDReusedInAnotherConversation(t *testing.T) {
 	e := newEnv(t)
+	e.users("bob", "carol")
 	alice := e.dial("alice", "web")
 	mustAck[protocol.SendAck](t, alice.sendText(protocol.ConvC2C, "bob", "cid-reuse-01", "to bob"))
 	mustErr(t, alice.sendText(protocol.ConvC2C, "carol", "cid-reuse-01", "to carol"), protocol.CodeClientMsgIDConflict)
@@ -162,7 +165,8 @@ func TestAckHasConvIDAndMessagesHaveClientMsgID(t *testing.T) {
 
 // AC-MSG-05-3、AC-MSG-05-4：sync 两个方向和 limit 边界。
 func TestSyncDirectionsAndLimits(t *testing.T) {
-	e := newEnv(t)
+	e := newEnvCfg(t, func(c *app.Config) { c.SendRate = 1000 }) // 要连发 100 条，限流另有专门用例
+	e.users("bob")
 	alice := e.dial("alice", "web")
 	for i := 1; i <= 100; i++ {
 		mustAck[protocol.SendAck](t, alice.sendText(protocol.ConvC2C, "bob", fmt.Sprintf("cid-page-%04d", i), fmt.Sprint(i)))

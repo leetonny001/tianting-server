@@ -38,6 +38,8 @@ type Store interface {
 	// SaveMessage 为消息分配会话内递增 seq 并保存。
 	// 同一发送者重复提交同一 ClientMsgID 时不新建，返回第一次保存的消息且 dup=true。
 	SaveMessage(ctx context.Context, m Message) (saved Message, dup bool, err error)
+	// FindByClientMsgID 按（发送者，clientMsgId）查找已保存的消息，用于在限流前先识别重发。
+	FindByClientMsgID(ctx context.Context, from, clientMsgID string) (Message, bool, error)
 	// ListMessages 返回 seq > afterSeq 的消息（升序，最多 limit 条），以及后面是否还有。
 	ListMessages(ctx context.Context, convID string, afterSeq int64, limit int) (msgs []Message, hasMore bool, err error)
 	// ListMessagesBefore 返回 minSeq <= seq < beforeSeq 中最近的 limit 条（按 seq 升序），以及更早的是否还有。
