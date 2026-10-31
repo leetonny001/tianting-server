@@ -3,11 +3,12 @@ package hub
 
 import "sync"
 
-// Client 是一个在线连接。Send 不能阻塞，发不出去时返回 false。
+// Client 是一个在线连接。Send、Kick 都不能阻塞。
 type Client interface {
 	ConnID() uint64
 	UserID() string
-	Send(frame []byte) bool
+	Send(frame []byte) bool // 发不出去时返回 false
+	Kick(reason string)     // 下发 kicked 并关闭连接
 }
 
 // Hub 是并发安全的在线表。
@@ -63,6 +64,20 @@ func (h *Hub) SendToUser(userID string, frame []byte, exceptConn uint64) int {
 		}
 	}
 	return n
+}
+
+// KickUser 踢掉用户的所有连接，返回连接数。
+func (h *Hub) KickUser(userID, reason string) int {
+	h.mu.RLock()
+	targets := make([]Client, 0, len(h.users[userID]))
+	for _, c := range h.users[userID] {
+		targets = append(targets, c)
+	}
+	h.mu.RUnlock()
+	for _, c := range targets {
+		c.Kick(reason)
+	}
+	return len(targets)
 }
 
 // ConnCount 返回用户当前的连接数。

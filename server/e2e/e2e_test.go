@@ -15,15 +15,12 @@ import (
 	"im-mvp/server/internal/protocol"
 )
 
+// AC-AUTH-02-2：token 无效 / 缺失时，先升级，再下发 kicked/tokenInvalid，以 4010 关闭
+// （替代 M1 的 HTTP 401：浏览器拿不到握手阶段的状态码）。
 func TestRejectsInvalidToken(t *testing.T) {
 	e := newEnv(t)
-	_, resp, err := websocket.Dial(context.Background(), e.wsURL("bad-token", "web"), nil)
-	if err == nil {
-		t.Fatal("dial with bad token should fail")
-	}
-	if resp == nil || resp.StatusCode != http.StatusUnauthorized {
-		t.Fatalf("want 401, got %v", resp)
-	}
+	e.dialURL("bad", e.wsURL("bad-token", "web")).expectKicked(protocol.KickTokenInvalid, protocol.CloseTokenInvalid, waitTimeout)
+	e.dialURL("missing", e.wsURL("", "web")).expectKicked(protocol.KickTokenInvalid, protocol.CloseTokenInvalid, waitTimeout)
 }
 
 func TestAdminRequiresKey(t *testing.T) {

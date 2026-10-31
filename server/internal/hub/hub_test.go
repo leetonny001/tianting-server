@@ -6,11 +6,12 @@ import (
 )
 
 type fakeClient struct {
-	id   uint64
-	uid  string
-	mu   sync.Mutex
-	got  [][]byte
-	fail bool
+	id     uint64
+	uid    string
+	mu     sync.Mutex
+	got    [][]byte
+	fail   bool
+	kicked string
 }
 
 func (f *fakeClient) ConnID() uint64 { return f.id }
@@ -23,6 +24,11 @@ func (f *fakeClient) Send(b []byte) bool {
 	}
 	f.got = append(f.got, b)
 	return true
+}
+func (f *fakeClient) Kick(reason string) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.kicked = reason
 }
 func (f *fakeClient) count() int { f.mu.Lock(); defer f.mu.Unlock(); return len(f.got) }
 
@@ -82,5 +88,21 @@ func TestConcurrentAccess(t *testing.T) {
 	wg.Wait()
 	if h.ConnCount("u") != 0 {
 		t.Error("all connections should be gone")
+	}
+}
+
+func TestKickUser(t *testing.T) {
+	h := New()
+	a := &fakeClient{id: 1, uid: "u1"}
+	b := &fakeClient{id: 2, uid: "u1"}
+	other := &fakeClient{id: 3, uid: "u2"}
+	h.Register(a)
+	h.Register(b)
+	h.Register(other)
+	if n := h.KickUser("u1", "banned"); n != 2 {
+		t.Fatalf("kicked %d, want 2", n)
+	}
+	if a.kicked != "banned" || b.kicked != "banned" || other.kicked != "" {
+		t.Errorf("a=%q b=%q other=%q", a.kicked, b.kicked, other.kicked)
 	}
 }

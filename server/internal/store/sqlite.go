@@ -40,6 +40,13 @@ CREATE TABLE IF NOT EXISTS group_members (
 	joined_at INTEGER NOT NULL,
 	PRIMARY KEY (group_id, user_id)
 );
+CREATE TABLE IF NOT EXISTS users (
+	user_id            TEXT PRIMARY KEY,
+	nickname           TEXT NOT NULL DEFAULT '',
+	avatar             TEXT NOT NULL DEFAULT '',
+	created_at         INTEGER NOT NULL,
+	token_version      INTEGER NOT NULL DEFAULT 0
+);
 CREATE TABLE IF NOT EXISTS read_seq (
 	user_id TEXT NOT NULL,
 	conv_id TEXT NOT NULL,
@@ -241,6 +248,70 @@ func (s *SQLite) IsGroupMember(ctx context.Context, groupID, userID string) (boo
 		return false, nil
 	}
 	return err == nil, err
+}
+
+func (s *SQLite) UpsertUsers(ctx context.Context, users []User) error {
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+	now := time.Now().UnixMilli()
+	for _, u := range users {
+		if _, err := tx.ExecContext(ctx,
+			`INSERT INTO users (user_id, nickname, avatar, created_at) VALUES (?, ?, ?, ?)
+			 ON CONFLICT (user_id) DO UPDATE SET nickname = excluded.nickname, avatar = excluded.avatar`,
+			u.UserID, u.Nickname, u.Avatar, now); err != nil {
+			return fmt.Errorf("upsert user %s: %w", u.UserID, err)
+		}
+	}
+	return tx.Commit()
+}
+
+func (s *SQLite) EnsureUser(ctx context.Context, userID string) error {
+	_, err := s.db.ExecContext(ctx,
+		`INSERT INTO users (user_id, created_at) VALUES (?, ?) ON CONFLICT DO NOTHING`,
+		userID, time.Now().UnixMilli())
+	return err
+}
+
+func (s *SQLite) GetUser(ctx context.Context, userID string) (User, error) {
+	var u User
+	err := s.db.QueryRowContext(ctx,
+		`SELECT user_id, nickname, avatar, created_at FROM users WHERE user_id = ?`, userID).
+		Scan(&u.UserID, &u.Nickname, &u.Avatar, &u.CreatedAt)
+	if errors.Is(err, sql.ErrNoRows) {
+		return User{}, ErrNotFound
+	}
+	return u, err
+}
+
+func (s *SQLite) UserExists(ctx context.Context, userID string) (bool, error) {
+	_, err := s.GetUser(ctx, userID)
+	if errors.Is(err, ErrNotFound) {
+		return false, nil
+	}
+	return err == nil, err
+}
+
+func (s *SQLite) RevokeTokens(ctx context.Context, userID string) error {
+	res, err := s.db.ExecContext(ctx, `UPDATE users SET token_version = token_version + 1 WHERE user_id = ?`, userID)
+	if err != nil {
+		return err
+	}
+	if n, _ := res.RowsAffected(); n == 0 {
+		return ErrNotFound
+	}
+	return nil
+}
+
+func (s *SQLite) TokenVersion(ctx context.Context, userID string) (int64, error) {
+	var v int64
+	err := s.db.QueryRowContext(ctx, `SELECT token_version FROM users WHERE user_id = ?`, userID).Scan(&v)
+	if errors.Is(err, sql.ErrNoRows) {
+		return 0, nil
+	}
+	return v, err
 }
 
 func (s *SQLite) SetReadSeq(ctx context.Context, userID, convID string, seq int64) error {

@@ -11,6 +11,7 @@ import (
 
 	"im-mvp/server/internal/auth"
 	"im-mvp/server/internal/clock"
+	"im-mvp/server/internal/hub"
 	"im-mvp/server/internal/logic"
 	"im-mvp/server/internal/protocol"
 	"im-mvp/server/internal/store"
@@ -22,6 +23,10 @@ const (
 	minTokenTTL     = 60 * time.Second // 非测试模式的下限（PRD C-13）
 	minTestTokenTTL = time.Second      // 测试模式的下限（PRD 6.1 节）
 	maxGroupMembers = 2000
+	maxImportBatch  = 500
+	maxNicknameLen  = 32
+	maxAvatarLen    = 512
+	demoTokenTTL    = 24 * time.Hour // PRD C-21
 )
 
 // Admin 注册 /admin/* 路由。
@@ -29,17 +34,22 @@ type Admin struct {
 	key      string
 	signer   *auth.Signer
 	store    store.Store
+	hub      *hub.Hub
+	clock    clock.Clock
 	log      *slog.Logger
 	testMode bool
 }
 
-func New(key string, signer *auth.Signer, st store.Store, testMode bool, log *slog.Logger) *Admin {
-	return &Admin{key: key, signer: signer, store: st, testMode: testMode, log: log}
+func New(key string, signer *auth.Signer, st store.Store, h *hub.Hub, clk clock.Clock, testMode bool, log *slog.Logger) *Admin {
+	return &Admin{key: key, signer: signer, store: st, hub: h, clock: clk, testMode: testMode, log: log}
 }
 
 // Register 把管理路由挂到 mux 上。
 func (a *Admin) Register(mux *http.ServeMux) {
 	mux.Handle("POST /admin/users/token", a.guard(a.issueToken))
+	mux.Handle("POST /admin/users/import", a.guard(a.importUsers))
+	mux.Handle("GET /admin/users/{userId}", a.guard(a.getUser))
+	mux.Handle("POST /admin/users/{userId}/force-logout", a.guard(a.forceLogout))
 	mux.Handle("POST /admin/groups", a.guard(a.createGroup))
 	mux.Handle("POST /admin/groups/{groupId}/members", a.guard(a.addMembers))
 }
@@ -97,6 +107,7 @@ type tokenReq struct {
 }
 
 type tokenResp struct {
+	UserID    string `json:"userId"`
 	Token     string `json:"token"`
 	ExpiresAt int64  `json:"expiresAt"`
 }
@@ -110,12 +121,154 @@ func (a *Admin) issueToken(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, protocol.Errorf(protocol.CodeInvalidID, "invalid userId"))
 		return
 	}
-	tok, exp, err := a.signer.Issue(req.UserID, a.tokenTTL(req.TTLSeconds))
+	a.issueFor(w, r, req.UserID, a.tokenTTL(req.TTLSeconds))
+}
+
+// issueFor 自动注册用户（PRD F-USER-01 规则 3）后签发 token。
+func (a *Admin) issueFor(w http.ResponseWriter, r *http.Request, userID string, ttl time.Duration) {
+	if err := a.store.EnsureUser(r.Context(), userID); err != nil {
+		a.internal(w, "ensure user", err)
+		return
+	}
+	version, err := a.store.TokenVersion(r.Context(), userID)
+	if err != nil {
+		a.internal(w, "token version", err)
+		return
+	}
+	tok, exp, err := a.signer.Issue(userID, version, ttl)
 	if err != nil {
 		a.internal(w, "issue token", err)
 		return
 	}
-	writeJSON(w, http.StatusOK, tokenResp{Token: tok, ExpiresAt: exp.UnixMilli()})
+	writeJSON(w, http.StatusOK, tokenResp{UserID: userID, Token: tok, ExpiresAt: exp.UnixMilli()})
+}
+
+type userJSON struct {
+	UserID    string `json:"userId"`
+	Nickname  string `json:"nickname,omitempty"`
+	Avatar    string `json:"avatar,omitempty"`
+	CreatedAt int64  `json:"createdAt,omitempty"`
+}
+
+// importUsers 批量导入用户（PRD F-USER-01、C-16、C-17）。任何一项不合法则整批不写入。
+func (a *Admin) importUsers(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		Users []userJSON `json:"users"`
+	}
+	if !readJSON(w, r, &req) {
+		return
+	}
+	switch {
+	case len(req.Users) == 0:
+		writeErr(w, protocol.Errorf(protocol.CodeBadRequest, "users is empty"))
+		return
+	case len(req.Users) > maxImportBatch:
+		writeErr(w, protocol.Errorf(protocol.CodeBatchLimitExceeded, "at most %d users per request", maxImportBatch))
+		return
+	}
+	// 同一批里 userId 重复时以最后一条为准。
+	byID := make(map[string]int, len(req.Users))
+	users := make([]store.User, 0, len(req.Users))
+	for _, u := range req.Users {
+		switch {
+		case !protocol.ValidID(u.UserID):
+			writeErr(w, protocol.Errorf(protocol.CodeInvalidID, "invalid userId %q", u.UserID))
+			return
+		case protocol.TextLen(u.Nickname) > maxNicknameLen:
+			writeErr(w, protocol.Errorf(protocol.CodeBadRequest, "nickname of %s longer than %d", u.UserID, maxNicknameLen))
+			return
+		case len(u.Avatar) > maxAvatarLen:
+			writeErr(w, protocol.Errorf(protocol.CodeBadRequest, "avatar of %s longer than %d", u.UserID, maxAvatarLen))
+			return
+		}
+		su := store.User{UserID: u.UserID, Nickname: u.Nickname, Avatar: u.Avatar}
+		if i, ok := byID[u.UserID]; ok {
+			users[i] = su
+			continue
+		}
+		byID[u.UserID] = len(users)
+		users = append(users, su)
+	}
+	if err := a.store.UpsertUsers(r.Context(), users); err != nil {
+		a.internal(w, "import users", err)
+		return
+	}
+	writeJSON(w, http.StatusOK, struct {
+		Imported int `json:"imported"`
+	}{len(users)})
+}
+
+func (a *Admin) getUser(w http.ResponseWriter, r *http.Request) {
+	uid := r.PathValue("userId")
+	if !protocol.ValidID(uid) {
+		writeErr(w, protocol.Errorf(protocol.CodeInvalidID, "invalid userId"))
+		return
+	}
+	u, err := a.store.GetUser(r.Context(), uid)
+	switch {
+	case errors.Is(err, store.ErrNotFound):
+		writeErr(w, protocol.Errorf(protocol.CodeUserNotFound, "user %s not found", uid))
+	case err != nil:
+		a.internal(w, "get user", err)
+	default:
+		writeJSON(w, http.StatusOK, userJSON{UserID: u.UserID, Nickname: u.Nickname, Avatar: u.Avatar, CreatedAt: u.CreatedAt})
+	}
+}
+
+// forceLogout 强制下线：此前签发的 token 全部作废，在线连接收到 kicked/banned（PRD F-AUTH-03 规则 2）。
+func (a *Admin) forceLogout(w http.ResponseWriter, r *http.Request) {
+	uid := r.PathValue("userId")
+	if !protocol.ValidID(uid) {
+		writeErr(w, protocol.Errorf(protocol.CodeInvalidID, "invalid userId"))
+		return
+	}
+	err := a.store.RevokeTokens(r.Context(), uid)
+	switch {
+	case errors.Is(err, store.ErrNotFound):
+		writeErr(w, protocol.Errorf(protocol.CodeUserNotFound, "user %s not found", uid))
+	case err != nil:
+		a.internal(w, "revoke tokens", err)
+	default:
+		n := a.hub.KickUser(uid, protocol.KickBanned)
+		writeJSON(w, http.StatusOK, struct {
+			Kicked int `json:"kicked"`
+		}{n})
+	}
+}
+
+// RegisterDemoLogin 注册演示登录接口（PRD F-AUTH-04）。默认不注册；只用于开发和演示。
+func (a *Admin) RegisterDemoLogin(mux *http.ServeMux) {
+	mux.HandleFunc("OPTIONS /demo/login", func(w http.ResponseWriter, r *http.Request) {
+		allowCORS(w)
+		w.WriteHeader(http.StatusNoContent)
+	})
+	mux.HandleFunc("POST /demo/login", func(w http.ResponseWriter, r *http.Request) {
+		allowCORS(w)
+		var req struct {
+			Username   string `json:"username"`
+			TTLSeconds int64  `json:"ttlSeconds"`
+		}
+		if !readJSON(w, r, &req) {
+			return
+		}
+		uid := protocol.TrimText(req.Username)
+		if !protocol.ValidID(uid) {
+			writeErr(w, protocol.Errorf(protocol.CodeInvalidID, "invalid username"))
+			return
+		}
+		ttl := demoTokenTTL
+		if a.testMode && req.TTLSeconds > 0 {
+			ttl = a.tokenTTL(req.TTLSeconds)
+		}
+		a.issueFor(w, r, uid, ttl)
+	})
+}
+
+// allowCORS 允许 H5 开发服务器跨域调用演示登录（仅演示模式注册）。
+func allowCORS(w http.ResponseWriter) {
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	w.Header().Set("Access-Control-Allow-Methods", "POST, OPTIONS")
+	w.Header().Set("Access-Control-Allow-Headers", "Content-Type")
 }
 
 // tokenTTL：不传、0 或负数按 7 天；上限 30 天；下限非测试模式 60 秒、测试模式 1 秒。

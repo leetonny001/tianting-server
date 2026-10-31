@@ -24,6 +24,7 @@ type Config struct {
 	AdminKey  string
 	Gateway   gateway.Config
 	TestMode  bool // 开启故障注入、时钟注入、短有效期 token（PRD 6.1 节），生产必须关闭
+	DemoLogin bool // 开启演示登录 /demo/login（PRD F-AUTH-04），生产必须关闭
 	Version   string
 	Logger    *slog.Logger
 }
@@ -56,11 +57,14 @@ func New(cfg Config) (*App, error) {
 	svc := logic.New(st, h, clk, faults, cfg.Logger)
 
 	mux := api.NewRouter(api.Info{Version: cfg.Version, StartedAt: time.Now()})
-	mux.Handle("GET /ws", gateway.New(cfg.Gateway, signer, h, svc, cfg.Logger))
-	adm := admin.New(cfg.AdminKey, signer, st, cfg.TestMode, cfg.Logger)
+	mux.Handle("GET /ws", gateway.New(cfg.Gateway, signer, st, clk, h, svc, cfg.Logger))
+	adm := admin.New(cfg.AdminKey, signer, st, h, clk, cfg.TestMode, cfg.Logger)
 	adm.Register(mux)
 	if cfg.TestMode {
 		adm.RegisterTestRoutes(mux, faults, clk)
+	}
+	if cfg.DemoLogin {
+		adm.RegisterDemoLogin(mux)
 	}
 
 	return &App{handler: mux, store: st}, nil

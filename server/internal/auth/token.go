@@ -22,13 +22,15 @@ var (
 // Claims 是 token 里携带的信息。
 type Claims struct {
 	UserID    string
-	IssuedAt  time.Time // 毫秒精度（自定义字段 iatMs，PRD C-11），用于判断强制下线前签发的 token
+	Version   int64     // 签发时用户的令牌版本号；小于当前版本说明已被强制下线
+	IssuedAt  time.Time // 毫秒精度，仅供日志和排查
 	ExpiresAt time.Time
 }
 
 type jwtClaims struct {
 	jwt.RegisteredClaims
-	IatMs int64 `json:"iatMs"`
+	IatMs   int64 `json:"iatMs"`
+	Version int64 `json:"tv"`
 }
 
 // Signer 用同一个密钥签发和校验 token。
@@ -45,8 +47,8 @@ func NewSigner(secret string, clk clock.Clock) (*Signer, error) {
 	return &Signer{secret: []byte(secret), clock: clk}, nil
 }
 
-// Issue 为用户签发 token，返回 token 和过期时间。
-func (s *Signer) Issue(userID string, ttl time.Duration) (string, time.Time, error) {
+// Issue 为用户签发 token，version 为用户当前的令牌版本号；返回 token 和过期时间。
+func (s *Signer) Issue(userID string, version int64, ttl time.Duration) (string, time.Time, error) {
 	now := s.clock.Now()
 	exp := now.Add(ttl)
 	claims := jwtClaims{
@@ -56,7 +58,8 @@ func (s *Signer) Issue(userID string, ttl time.Duration) (string, time.Time, err
 			IssuedAt:  jwt.NewNumericDate(now),
 			ExpiresAt: jwt.NewNumericDate(exp),
 		},
-		IatMs: now.UnixMilli(),
+		IatMs:   now.UnixMilli(),
+		Version: version,
 	}
 	tok, err := jwt.NewWithClaims(jwt.SigningMethodHS256, claims).SignedString(s.secret)
 	if err != nil {
@@ -65,7 +68,8 @@ func (s *Signer) Issue(userID string, ttl time.Duration) (string, time.Time, err
 	return tok, exp, nil
 }
 
-// Verify 校验 token。过期返回 ErrExpiredToken，其余问题返回 ErrInvalidToken。
+// Verify 校验 token。签名有效但已过期时返回 ErrExpiredToken，**同时返回 Claims**
+// （调用方需要先判断是否被强制下线，PRD C-08）；其余问题返回 ErrInvalidToken。
 func (s *Signer) Verify(token string) (Claims, error) {
 	var c jwtClaims
 	_, err := jwt.ParseWithClaims(token, &c,
@@ -75,15 +79,18 @@ func (s *Signer) Verify(token string) (Claims, error) {
 		jwt.WithExpirationRequired(),
 		jwt.WithTimeFunc(s.clock.Now),
 	)
-	switch {
-	case errors.Is(err, jwt.ErrTokenExpired) && c.Subject != "":
-		return Claims{}, ErrExpiredToken
-	case err != nil || c.Subject == "" || c.IatMs == 0:
+	expired := errors.Is(err, jwt.ErrTokenExpired)
+	if (err != nil && !expired) || c.Subject == "" || c.IatMs == 0 || c.ExpiresAt == nil {
 		return Claims{}, ErrInvalidToken
 	}
-	return Claims{
+	claims := Claims{
 		UserID:    c.Subject,
+		Version:   c.Version,
 		IssuedAt:  time.UnixMilli(c.IatMs),
 		ExpiresAt: c.ExpiresAt.Time,
-	}, nil
+	}
+	if expired {
+		return claims, ErrExpiredToken
+	}
+	return claims, nil
 }

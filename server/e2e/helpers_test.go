@@ -38,16 +38,25 @@ func newEnv(t *testing.T) *env { return newEnvWith(t, gateway.DefaultConfig(), t
 func newEnvWithGateway(t *testing.T, gw gateway.Config) *env { return newEnvWith(t, gw, true) }
 
 func newEnvWith(t *testing.T, gw gateway.Config, testMode bool) *env {
+	return newEnvCfg(t, func(c *app.Config) { c.Gateway, c.TestMode = gw, testMode })
+}
+
+// newEnvCfg 在默认配置（测试模式）基础上用 mutate 调整后启动服务。
+func newEnvCfg(t *testing.T, mutate func(*app.Config)) *env {
 	t.Helper()
-	a, err := app.New(app.Config{
+	cfg := app.Config{
 		DBPath:    filepath.Join(t.TempDir(), "im.db"),
 		JWTSecret: "e2e-secret-0123456789",
 		AdminKey:  adminKey,
-		Gateway:   gw,
-		TestMode:  testMode,
+		Gateway:   gateway.DefaultConfig(),
+		TestMode:  true,
 		Version:   "e2e",
 		Logger:    slog.New(slog.NewTextHandler(io.Discard, nil)),
-	})
+	}
+	if mutate != nil {
+		mutate(&cfg)
+	}
+	a, err := app.New(cfg)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -145,11 +154,17 @@ func (c *client) closeCode(timeout time.Duration) websocket.StatusCode {
 
 func (e *env) dial(uid, platform string) *client {
 	e.t.Helper()
-	ws, _, err := websocket.Dial(context.Background(), e.wsURL(e.token(uid), platform), nil)
+	return e.dialURL(uid, e.wsURL(e.token(uid), platform))
+}
+
+// dialURL 用指定 URL 建立连接（token / platform 可以是任意值，用于测试被拒绝的情况）。
+func (e *env) dialURL(label, url string) *client {
+	e.t.Helper()
+	ws, _, err := websocket.Dial(context.Background(), url, nil)
 	if err != nil {
-		e.t.Fatalf("dial %s: %v", uid, err)
+		e.t.Fatalf("dial %s: %v", label, err)
 	}
-	c := &client{t: e.t, uid: uid, ws: ws, in: make(chan frame, 1024)}
+	c := &client{t: e.t, uid: label, ws: ws, in: make(chan frame, 1024)}
 	go func() {
 		defer close(c.in)
 		for {
@@ -300,6 +315,58 @@ func (c *client) expectNoAck(id string, d time.Duration) {
 			c.pending = append(c.pending, f)
 		case <-deadline:
 			return
+		}
+	}
+}
+
+// tokenTTL 签发指定有效期（秒）的 token。
+func (e *env) tokenTTL(uid string, ttlSeconds int) string {
+	e.t.Helper()
+	code, body := e.adminPost("/admin/users/token", map[string]any{"userId": uid, "ttlSeconds": ttlSeconds}, adminKey)
+	if code != http.StatusOK {
+		e.t.Fatalf("issue token: %d %s", code, body)
+	}
+	var r struct{ Token string }
+	json.Unmarshal(body, &r)
+	return r.Token
+}
+
+// expectKicked 断言连接收到 kicked(reason)，随后以 closeCode 关闭。
+func (c *client) expectKicked(reason string, closeCode int, timeout time.Duration) {
+	c.t.Helper()
+	f := c.waitCmdTimeout(protocol.CmdEvent, timeout)
+	var ev protocol.KickedEvent
+	json.Unmarshal(f.Data, &ev)
+	if ev.Type != protocol.EventKicked || ev.Reason != reason {
+		c.t.Fatalf("%s: got event %s, want kicked/%s", c.uid, f.Data, reason)
+	}
+	if code := c.closeCode(waitTimeout); int(code) != closeCode {
+		c.t.Fatalf("%s: close code %d, want %d", c.uid, code, closeCode)
+	}
+}
+
+// waitCmdTimeout 和 waitCmd 相同，但可以指定等待时长。
+func (c *client) waitCmdTimeout(cmd string, timeout time.Duration) frame {
+	c.t.Helper()
+	for i, f := range c.pending {
+		if f.Cmd == cmd {
+			c.pending = append(c.pending[:i], c.pending[i+1:]...)
+			return f
+		}
+	}
+	deadline := time.After(timeout)
+	for {
+		select {
+		case f, ok := <-c.in:
+			if !ok {
+				c.t.Fatalf("%s: connection closed while waiting for %s", c.uid, cmd)
+			}
+			if f.Cmd == cmd {
+				return f
+			}
+			c.pending = append(c.pending, f)
+		case <-deadline:
+			c.t.Fatalf("%s: timed out waiting for %s", c.uid, cmd)
 		}
 	}
 }

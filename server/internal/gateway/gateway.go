@@ -5,15 +5,18 @@ package gateway
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"log/slog"
 	"net/http"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"time"
 
 	"github.com/coder/websocket"
 
 	"im-mvp/server/internal/auth"
+	"im-mvp/server/internal/clock"
 	"im-mvp/server/internal/hub"
 	"im-mvp/server/internal/protocol"
 )
@@ -26,6 +29,11 @@ type Handler interface {
 // TokenVerifier 校验 token。
 type TokenVerifier interface {
 	Verify(token string) (auth.Claims, error)
+}
+
+// RevocationChecker 返回用户当前的令牌版本号；token 里的版本号更小，说明是强制下线前签发的。
+type RevocationChecker interface {
+	TokenVersion(ctx context.Context, userID string) (int64, error)
 }
 
 // Config 是网关参数。
@@ -45,37 +53,25 @@ var platforms = map[string]bool{"android": true, "ios": true, "web": true, "pc":
 
 // Gateway 是 /ws 的 http.Handler。
 type Gateway struct {
-	cfg      Config
-	verifier TokenVerifier
-	hub      *hub.Hub
-	handler  Handler
-	log      *slog.Logger
-	nextID   atomic.Uint64
+	cfg        Config
+	verifier   TokenVerifier
+	revocation RevocationChecker
+	clock      clock.Clock
+	hub        *hub.Hub
+	handler    Handler
+	log        *slog.Logger
+	nextID     atomic.Uint64
 }
 
-func New(cfg Config, verifier TokenVerifier, h *hub.Hub, handler Handler, log *slog.Logger) *Gateway {
-	return &Gateway{cfg: cfg, verifier: verifier, hub: h, handler: handler, log: log}
+func New(cfg Config, verifier TokenVerifier, revocation RevocationChecker, clk clock.Clock, h *hub.Hub, handler Handler, log *slog.Logger) *Gateway {
+	return &Gateway{cfg: cfg, verifier: verifier, revocation: revocation, clock: clk, hub: h, handler: handler, log: log}
 }
 
+// ServeHTTP 先完成 WebSocket 升级，再做鉴权：浏览器拿不到握手阶段的 HTTP 401，
+// 只能靠 kicked 事件和关闭码区分"凭证问题"和"断网"（PRD F-AUTH-02 规则 3）。
+// 检查顺序（PRD C-08）：平台 4009 → 签名 4010 → 强制下线 4012 → 过期 4011。
 func (g *Gateway) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	token := r.URL.Query().Get("token")
-	if token == "" {
-		token = strings.TrimPrefix(r.Header.Get("Authorization"), "Bearer ")
-	}
-	claims, err := g.verifier.Verify(token)
-	uid := claims.UserID
-	if err != nil {
-		w.Header().Set("Content-Type", "application/json; charset=utf-8")
-		w.WriteHeader(http.StatusUnauthorized)
-		_ = json.NewEncoder(w).Encode(protocol.Errorf(protocol.CodeTokenInvalid, "invalid token"))
-		return
-	}
-	platform := r.URL.Query().Get("platform")
-	if !platforms[platform] {
-		platform = "unknown"
-	}
-
-	// MVP 先不校验 Origin，方便 H5 本地调试；上线前要改成 OriginPatterns 白名单。
+	// MVP 先不校验 Origin，方便 H5 本地调试；上线前要改成 OriginPatterns 白名单（BE-051）。
 	ws, err := websocket.Accept(w, r, &websocket.AcceptOptions{InsecureSkipVerify: true})
 	if err != nil {
 		g.log.Warn("websocket accept failed", "err", err)
@@ -83,14 +79,47 @@ func (g *Gateway) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 	ws.SetReadLimit(g.cfg.ReadLimit)
 
+	platform := r.URL.Query().Get("platform")
+	if !platforms[platform] {
+		// 开发期缺陷，不发 kicked（PRD C-05）。
+		ws.Close(protocol.CloseInvalidPlatform, "invalid platform")
+		g.log.Info("conn rejected", "reason", "invalid platform", "platform", platform)
+		return
+	}
+	token := r.URL.Query().Get("token")
+	if token == "" {
+		token = strings.TrimPrefix(r.Header.Get("Authorization"), "Bearer ")
+	}
+	claims, verr := g.verifier.Verify(token)
+	if errors.Is(verr, auth.ErrInvalidToken) {
+		g.kick(ws, protocol.KickTokenInvalid)
+		return
+	}
+	version, err := g.revocation.TokenVersion(r.Context(), claims.UserID)
+	if err != nil {
+		g.log.Error("check revocation", "err", err, "uid", claims.UserID)
+		ws.Close(websocket.StatusInternalError, "internal error")
+		return
+	}
+	if claims.Version < version {
+		g.kick(ws, protocol.KickBanned)
+		return
+	}
+	if errors.Is(verr, auth.ErrExpiredToken) {
+		g.kick(ws, protocol.KickTokenExpired)
+		return
+	}
+	uid := claims.UserID
+
 	c := &conn{
-		id:       g.nextID.Add(1),
-		uid:      uid,
-		platform: platform,
-		ws:       ws,
-		send:     make(chan []byte, g.cfg.SendBuffer),
-		done:     make(chan struct{}),
-		gw:       g,
+		id:        g.nextID.Add(1),
+		uid:       uid,
+		platform:  platform,
+		expiresAt: claims.ExpiresAt,
+		ws:        ws,
+		send:      make(chan []byte, g.cfg.SendBuffer),
+		done:      make(chan struct{}),
+		gw:        g,
 	}
 	g.hub.Register(c)
 	g.log.Info("conn open", "conn", c.id, "uid", uid, "platform", platform)
@@ -101,19 +130,36 @@ func (g *Gateway) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	g.log.Info("conn closed", "conn", c.id, "uid", uid, "reason", reason)
 }
 
+// kick 下发 kicked 事件，**写完后**再用对应关闭码关闭连接（PRD F-AUTH-03 规则 3）。
+// 不走异步发送队列：先入队再关闭的话，kicked 帧可能还没发出去连接就断了。
+func (g *Gateway) kick(ws *websocket.Conn, reason string) {
+	b, _ := json.Marshal(protocol.Event(protocol.KickedEvent{Type: protocol.EventKicked, Reason: reason}))
+	ctx, cancel := context.WithTimeout(context.Background(), g.cfg.WriteTimeout)
+	defer cancel()
+	_ = ws.Write(ctx, websocket.MessageText, b) // coder/websocket 的 Write 可以并发调用
+	ws.Close(websocket.StatusCode(protocol.KickCloseCode[reason]), reason)
+}
+
 // conn 是一个 WebSocket 连接，实现 hub.Client。
 type conn struct {
-	id       uint64
-	uid      string
-	platform string
-	ws       *websocket.Conn
-	send     chan []byte
-	done     chan struct{} // 关闭后 Send 一律返回 false
-	gw       *Gateway
+	id        uint64
+	uid       string
+	platform  string
+	expiresAt time.Time
+	ws        *websocket.Conn
+	send      chan []byte
+	done      chan struct{} // 关闭后 Send 一律返回 false
+	kickOnce  sync.Once
+	gw        *Gateway
 }
 
 func (c *conn) ConnID() uint64 { return c.id }
 func (c *conn) UserID() string { return c.uid }
+
+// Kick 踢下线（异步，不阻塞调用方），只生效一次。
+func (c *conn) Kick(reason string) {
+	c.kickOnce.Do(func() { go c.gw.kick(c.ws, reason) })
+}
 
 // Send 非阻塞入队。队列满说明客户端读得太慢，直接断开它，由客户端重连后 sync 补齐。
 func (c *conn) Send(frame []byte) bool {
@@ -152,6 +198,10 @@ func (c *conn) run(parent context.Context) string {
 		c.ws.Close(protocol.CloseIdleTimeout, "idle timeout")
 	})
 	defer idle.Stop()
+
+	// token 到期时踢下线（PRD F-AUTH-03 规则 1）。按注入的时钟计算剩余时间。
+	expiry := time.AfterFunc(c.expiresAt.Sub(c.gw.clock.Now()), func() { c.Kick(protocol.KickTokenExpired) })
+	defer expiry.Stop()
 
 	for {
 		typ, data, err := c.ws.Read(ctx)

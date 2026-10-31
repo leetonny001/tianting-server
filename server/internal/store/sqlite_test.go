@@ -190,3 +190,39 @@ func TestGroupExists(t *testing.T) {
 		t.Error("nope must not exist")
 	}
 }
+
+func TestUsers(t *testing.T) {
+	s, ctx := openTest(t), context.Background()
+	if err := s.UpsertUsers(ctx, []User{{UserID: "a", Nickname: "阿"}, {UserID: "b"}}); err != nil {
+		t.Fatal(err)
+	}
+	s.UpsertUsers(ctx, []User{{UserID: "a", Nickname: "改名", Avatar: "http://x/a.png"}})
+	u, err := s.GetUser(ctx, "a")
+	if err != nil || u.Nickname != "改名" || u.Avatar != "http://x/a.png" {
+		t.Fatalf("GetUser = %+v, %v", u, err)
+	}
+	if _, err := s.GetUser(ctx, "nope"); !errors.Is(err, ErrNotFound) {
+		t.Errorf("missing user: %v", err)
+	}
+
+	s.EnsureUser(ctx, "c")
+	s.EnsureUser(ctx, "a") // 已存在：不覆盖昵称
+	if u, _ := s.GetUser(ctx, "a"); u.Nickname != "改名" {
+		t.Error("EnsureUser must not overwrite existing user")
+	}
+	if ok, _ := s.UserExists(ctx, "c"); !ok {
+		t.Error("c should exist after EnsureUser")
+	}
+
+	if v, _ := s.TokenVersion(ctx, "a"); v != 0 {
+		t.Errorf("initial token version = %d", v)
+	}
+	s.RevokeTokens(ctx, "a")
+	s.RevokeTokens(ctx, "a")
+	if v, _ := s.TokenVersion(ctx, "a"); v != 2 {
+		t.Errorf("token version = %d, want 2", v)
+	}
+	if err := s.RevokeTokens(ctx, "nope"); !errors.Is(err, ErrNotFound) {
+		t.Errorf("revoke missing user: %v", err)
+	}
+}

@@ -8,6 +8,7 @@
 //	IM_ADMIN_KEY   管理接口密钥（请求头 X-Admin-Key），不设置时使用开发密钥
 //	IM_TEST_MODE   设为 1 开启测试模式：故障注入、时钟注入、短有效期 token（生产禁止）
 //	IM_IDLE_TIMEOUT 空闲超时（如 90s），默认 90s
+//	IM_DEMO_LOGIN  设为 1 开启演示登录 POST /demo/login（生产禁止）
 package main
 
 import (
@@ -65,6 +66,7 @@ func main() {
 		AdminKey:  adminKey,
 		Gateway:   gw,
 		TestMode:  testMode,
+		DemoLogin: os.Getenv("IM_DEMO_LOGIN") == "1",
 		Version:   version,
 		Logger:    logger,
 	})
