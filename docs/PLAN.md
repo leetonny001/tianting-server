@@ -1,0 +1,230 @@
+# IM 系统整体方案：服务端 + 移动端 + PC + H5
+
+> 目标：自研一套 IM 服务与多端客户端。
+> 1. **公共库**：IM 服务端 + 各端 SDK，未来替换 fx-sport / ab77 / android 里的腾讯云 IM（直播聊天室、站内推送）。
+> 2. **独立产品**：基于公共库做一个 IM 聊天软件（移动端、PC、H5）。
+> 3. **分享会**：全过程用 AI 完成，并记录可演示的素材。
+>
+> 不使用 Flutter。
+
+---
+
+## 1. 产品范围（参考主流应用）
+
+| 能力 | 参考 | P0 (MVP) | P1 | P2 |
+|---|---|---|---|---|
+| 账号：注册 / 登录 / 资料 | 微信 | ✅ | 头像、扫码登录（PC） | |
+| 单聊 / 群聊 | 微信 | ✅ 文本 | 图片、文件、语音、表情 | 视频 |
+| 直播聊天室 | 腾讯 AVChatRoom、抖音直播间 | ✅ 进出、在线人数、最近消息 | 弹幕限流、礼物 / 点赞消息 | |
+| 系统推送（业务通知） | 腾讯 REST 系统消息 | ✅ 按用户 / 房间 / 全员 | 定时、灰度 | |
+| 会话列表 / 未读数 | 微信 | ✅ | 置顶、免打扰 | |
+| 历史消息 / 断线补拉 | 全部 | ✅ | 云端搜索 | |
+| 禁言 / 删消息 | 腾讯 IM | ✅ 管理接口 | 群管理员 | 敏感词审核 |
+| 撤回 / 编辑 / 引用回复 | 微信 / Telegram | | ✅ | |
+| @提醒 / 正在输入 / 已读回执 | Slack / WhatsApp | | ✅ | |
+| 好友关系 / 黑名单 | 微信 | | ✅ | |
+| 多端同步（手机 + PC + H5 同时在线） | Telegram | ✅ 基础（各端都收到） | 已读状态跨端同步 | |
+| 离线推送 | 全部 | | ✅ APNs / FCM | 国内厂商通道 |
+| 话题 / 子频道 | Slack / Discord | | | ✅ |
+| 音视频通话 | 微信 | | | ✅ WebRTC |
+| 端到端加密 | Signal | | | ✅ 私聊 |
+
+---
+
+## 2. 总体架构
+
+```
+┌──────────── 客户端 ──────────────────────────────────────────────┐
+│ Android (Kotlin+Compose)   iOS (SwiftUI)   PC (Tauri)   H5 (Web) │
+│        └──── KMP SDK（Kotlin 共享）────┘    └─ TS SDK（共享）─┘   │
+└──────────────────────────┬───────────────────────────────────────┘
+                           │ WebSocket（JSON → Protobuf） + HTTPS
+┌──────────────────────────▼──────────── 服务端（Go）──────────────┐
+│ gateway   长连接、心跳、鉴权、多端会话                              │
+│ logic     单聊 / 群 / 聊天室路由、seq 分配、禁言、撤回              │
+│ api       客户端 HTTP（登录、资料、历史、上传凭证）                 │
+│ admin     业务服务端 REST（发推送、禁言、删消息、签 token）+ Webhook │
+│ push      离线推送（APNs / FCM / 厂商）                            │
+└───────┬───────────────┬───────────────┬───────────────┬──────────┘
+     SQLite→Postgres   内存→Redis      内存→NATS       本地→S3/MinIO
+     消息、关系          在线路由、房间    节点间投递        图片文件
+```
+
+**演进原则**：P0 是单个 Go 进程，所有依赖都可以换成内存或 SQLite 实现，`go run` 一条命令启动。
+每个依赖都隔着一层接口，P1 再换成 Postgres、Redis、NATS，拆成多节点部署。
+
+### 2.1 核心机制
+
+| 机制 | 设计 |
+|---|---|
+| 会话 ID | `c2c:{小uid}:{大uid}`、`group:{gid}`、`room:{rid}` |
+| 消息顺序 | 每个会话单调递增 `seq`（DB 事务分配；P1 改 Redis INCR） |
+| 不丢 | 客户端记录每个会话的 `maxSeq`；重连或发现 seq 断档时 `sync` 补拉 |
+| 不重 | 客户端生成 `clientMsgId`，服务端按 (sender, clientMsgId) 唯一索引去重，重发返回原 ACK |
+| 群消息 | 读扩散：消息只存一份，按 `group:{gid}` + seq 拉取；未读 = 会话 maxSeq − 用户 readSeq |
+| 聊天室 | 不持久成员、不写会话；内存订阅表 + 环形缓冲（最近 50 条）；高峰时合并广播、限流 |
+| 多端 | 一个用户可同时有多个连接（platform 标识）；自己发的消息也同步到自己其他端 |
+| 心跳 | 客户端每 30s ping，服务端 90s 无心跳断开；客户端指数退避重连（1s→30s） |
+| 鉴权 | 业务服务端用 admin key 换取用户 JWT（对应腾讯 `userSig`）；连接时校验 |
+
+### 2.2 协议（WebSocket 帧，P0 用 JSON）
+
+```jsonc
+// 请求
+{ "id": "r1", "cmd": "send", "data": { "convType": "c2c|group|room", "to": "u2", "clientMsgId": "uuid", "type": "text", "body": { "text": "hi" } } }
+{ "id": "r2", "cmd": "sync", "data": { "convId": "group:g1", "afterSeq": 41, "limit": 50 } }
+{ "id": "r3", "cmd": "joinRoom", "data": { "roomId": "match-123" } }
+{ "id": "r4", "cmd": "read", "data": { "convId": "c2c:u1:u2", "seq": 42 } }
+{ "cmd": "ping" }
+
+// 响应 / 下行
+{ "id": "r1", "cmd": "ack",  "data": { "msgId": "m1", "seq": 42, "ts": 1730000000000 } }
+{ "id": "r1", "cmd": "ack",  "error": { "code": 4031, "msg": "muted" } }
+{ "cmd": "msg",   "data": { "msgId": "m1", "convId": "...", "seq": 42, "from": "u1", "type": "text", "body": {...}, "ts": ... } }
+{ "cmd": "push",  "data": { "type": "goal", "data": {...} } }
+{ "cmd": "event", "data": { "type": "msgDeleted|muted|roomOnline|convUpdated", ... } }
+```
+
+协议唯一真相源：`protocol/` 目录下的 JSON Schema（P1 换成 `.proto`）+ **协议测试用例**（输入帧 → 期望输出），
+服务端和两套 SDK 都必须跑通同一批用例。
+
+### 2.3 管理接口（给业务服务端）
+
+| 接口 | 用途 | 替代腾讯 IM |
+|---|---|---|
+| `POST /admin/users/token` | 签发用户 token | `genUserSig` |
+| `POST /admin/push` `{target: user\|room\|all, id, type, data}` | 系统推送 | `send_group_msg_with_attr` |
+| `POST /admin/mute` | 禁言 | contentType 1 |
+| `POST /admin/messages/delete` | 删消息并通知 | contentType 3 |
+| `POST /admin/rooms` / `/admin/groups` | 建房间、建群、管理成员 | 群管理 REST |
+| Webhook：发消息前 / 后 | 敏感词、业务审核 | 腾讯回调 |
+
+---
+
+## 3. 客户端方案
+
+### 3.1 选型
+
+| 端 | 技术 | 理由 |
+|---|---|---|
+| SDK（移动） | **Kotlin Multiplatform**：Ktor WebSocket + kotlinx.serialization + SQLDelight | 一份 Kotlin 逻辑同时给 Android 和 iOS 用；连接、重连、同步、本地缓存只写一次 |
+| Android | Kotlin + Jetpack Compose | 原生体验；顺便学习 Android |
+| iOS | SwiftUI，以 XCFramework 引入 KMP SDK | 原生体验；对接 ab77 最直接 |
+| SDK（Web） | **TypeScript**：原生 WebSocket + IndexedDB（Dexie） | H5 和 PC 共用 |
+| H5 | React + Vite（移动端布局） | 生态最大，AI 生成质量最好 |
+| PC | **Tauri 2** 包装同一套 React 代码（桌面布局） | 包体约 10MB（Electron 约 100MB）；需要装 Rust，但壳代码很少。装不了就退回 Electron |
+
+为什么不做"一个核心给所有端用"（OpenIM 的 Go + gomobile + wasm 方案）：Go 编译成 wasm 体积有 10MB 以上，H5 首屏加载受不了。
+所以选**两套 SDK + 一份协议 + 共享测试用例**，靠协议用例保证两边行为一致。
+
+### 3.2 SDK 统一接口（两套 SDK 语义相同）
+
+```
+IMClient
+  connect(token) / disconnect()
+  state: Flow<Disconnected|Connecting|Connected>
+  send(conv, body) -> Message           // 本地先插入 sending 状态，ACK 后更新
+  loadHistory(convId, beforeSeq, limit)
+  joinRoom(roomId) / leaveRoom()
+  markRead(convId, seq)
+  conversations: Flow<List<Conversation>>
+  messages(convId): Flow<List<Message>>
+  pushes: Flow<Push>                    // 系统推送，业务方按 type 分发
+  events: Flow<Event>
+```
+
+这套接口也是将来接入 fx-sport / ab77 / android 的 `IMClient` 抽象层，业务代码只依赖它，不再直接依赖腾讯 SDK。
+
+### 3.3 页面（各端相同）
+
+登录 → 会话列表 → 聊天页（单聊 / 群聊）→ 聊天室页（模拟比赛直播间：在线人数 + 消息流 + 推送横幅）→ 通讯录 / 建群 → 我的。
+PC 用三栏布局（导航 / 会话列表 / 聊天），H5 和移动端用单栏页面跳转。
+
+---
+
+## 4. 仓库结构（monorepo）
+
+```
+im-mvp/
+├── docs/                    # 方案、ADR、分享会演示记录
+├── protocol/                # JSON Schema / proto + 协议测试用例（共享）
+├── server/                  # Go
+│   ├── cmd/im-server/
+│   ├── internal/{gateway,logic,api,admin,push,hub,store,auth}/
+│   └── e2e/
+├── sdk-kmp/                 # Kotlin Multiplatform SDK（Android + iOS）
+├── sdk-ts/                  # TypeScript SDK（H5 + PC）
+├── android/                 # Compose App
+├── ios/                     # SwiftUI App
+├── web/                     # React：H5 + PC 共用
+├── desktop/                 # Tauri 壳，加载 web/
+└── tools/                   # 压测、模拟业务服务端（发推送脚本）
+```
+
+---
+
+## 5. 测试策略
+
+| 层 | 内容 |
+|---|---|
+| 服务端单测 | seq 分配、去重、禁言、路由（`go test`） |
+| 服务端 e2e | 启动真实服务，多个 WS 客户端跑场景：断线重连不丢不重、聊天室进出、推送到达 |
+| 协议一致性 | `protocol/` 用例，服务端 + KMP SDK + TS SDK 三方都跑 |
+| SDK 单测 | 用假服务端测重连、补拉、本地状态机 |
+| UI | Android：Compose 测试；iOS：XCUITest 冒烟；Web：Playwright（H5 + PC 两个尺寸） |
+| 压测 | Go 写压测工具：1 万连接、单房间 5000 人广播的延迟和 CPU |
+| 联调 | Android 模拟器 + iOS 模拟器 + 浏览器 + PC 四端同时在一个聊天室 |
+
+---
+
+## 6. 里程碑
+
+| 阶段 | 内容 | 验收 | 可演示的 AI 用法 |
+|---|---|---|---|
+| **M0 规划与骨架** | 本方案、装 Go、仓库骨架、`/healthz`、协议 Schema 初稿 | `go run` 能起 | 先规划后编码；让 AI 讲解 Go 项目结构 |
+| **M1 服务端核心** | 鉴权、WS 网关、心跳、单聊 / 群聊、ACK、seq、去重、sync | e2e：断线重连不丢不重 | 用不熟的语言写代码；测试驱动 |
+| **M2 聊天室 + 管理接口** | 聊天室、在线人数、推送、禁言、删消息、Webhook | 脚本推送能实时到达 | 照着腾讯 IM 的现有用法迁移需求 |
+| **M3 Web SDK + H5** | TS SDK + React H5 | 两个浏览器标签页互聊、进聊天室 | 最快出可见效果；用截图驱动改 UI |
+| **M4 PC** | Tauri 壳 + 桌面三栏布局 | macOS 安装包能跑 | 一份代码复用到多端 |
+| **M5 KMP SDK + Android** | KMP SDK、Compose App | 模拟器和 H5 互聊 | 用 AI 学新平台（Android） |
+| **M6 iOS** | KMP 导出 XCFramework + SwiftUI App | 四端同时在一个聊天室 | 多端联调；排查跨端 bug |
+| **M7 加固** | 压测、Protobuf、离线推送、README、部署脚本 | 压测报告 | 让 AI 分析性能瓶颈 |
+| **M8 分享会** | 整理演示记录、幻灯片、现场演示脚本 | 彩排一次 | 让 AI 帮你做幻灯片 |
+| 后续 | P1 功能、Postgres / Redis / NATS 集群化、接入 fx-sport / ab77 / android | | |
+
+先做 H5（M3）再做原生端：Web 出效果最快，服务端协议可以在这一步先磨稳定，后面原生端返工少。
+
+---
+
+## 7. 环境准备
+
+| 工具 | 现状 | 动作 |
+|---|---|---|
+| Go | 未安装 | `brew install go`（M0） |
+| Node | v26 ✅ | 装 pnpm（M3） |
+| Rust | 未安装 | `rustup`（M4，Tauri 需要） |
+| Xcode | 27 ✅ | — |
+| Android SDK / Java | ✅ | Android Studio（M5） |
+| Docker | 未安装 | P0 不需要；集群化阶段再装 |
+
+---
+
+## 8. 风险
+
+| 风险 | 应对 |
+|---|---|
+| 范围太大，四端做不完 | 严格按里程碑推进，每个阶段都能独立演示；分享会最低要求是 M3（服务端 + H5） |
+| 两套 SDK 行为不一致 | 共享协议测试用例，CI 里三方都要跑 |
+| KMP 接入 iOS 有坑（协程、内存模型、包体） | M6 前先做技术验证（spike）；最坏情况 iOS 单独用 Swift 写 SDK，靠协议用例对齐 |
+| 自研 IM 稳定性不如腾讯 | 生产替换前先灰度：业务代码通过 `IMClient` 抽象层，同时保留腾讯实现，可随时切回 |
+| 聊天室广播风暴 | 消息合并下发、限流、超大房间采样 |
+
+---
+
+## 9. 演示记录（分享会素材）
+
+每个里程碑结束时补一条：
+
+| 里程碑 | 关键提示词 | AI 做对了什么 | AI 出错 / 被纠正 | 耗时 |
+|---|---|---|---|---|
+| M0 | 「先规划整个计划方案 服务器端+移动端+PC+H5」→「开始 M0」 | 先看本机已经装了哪些工具，按"零外部依赖"来设计（SQLite、不用 Docker）；用协议测试保证 Schema 和用例一致（28 条用例） | ① 冒烟脚本里 curl 重试没有间隔，服务还没监听就判定失败；② 对后台进程发 SIGINT 会被忽略，导致脚本卡住；③ zsh 把 `===` 当成命令展开报错。三处都是读日志后自己定位并修正的 | 约 15 分钟 |

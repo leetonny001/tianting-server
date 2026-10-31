@@ -1,0 +1,35 @@
+{
+  "description": "单帧校验用例：valid 必须通过 frame.schema.json，invalid 必须被拒绝。服务端和两套 SDK 的编解码测试都使用这份文件。",
+  "valid": [
+    { "name": "send c2c text", "frame": { "id": "r1", "cmd": "send", "data": { "convType": "c2c", "to": "u2", "clientMsgId": "6f1c2a4e-0001", "type": "text", "body": { "text": "hi" } } } },
+    { "name": "send room custom", "frame": { "id": "r2", "cmd": "send", "data": { "convType": "room", "to": "match-123", "clientMsgId": "6f1c2a4e-0002", "type": "custom", "body": { "data": { "gift": "rocket" } } } } },
+    { "name": "sync", "frame": { "id": "r3", "cmd": "sync", "data": { "convId": "group:g1", "afterSeq": 41, "limit": 50 } } },
+    { "name": "joinRoom", "frame": { "id": "r4", "cmd": "joinRoom", "data": { "roomId": "match-123" } } },
+    { "name": "leaveRoom", "frame": { "id": "r5", "cmd": "leaveRoom", "data": { "roomId": "match-123" } } },
+    { "name": "read", "frame": { "id": "r6", "cmd": "read", "data": { "convId": "c2c:u1:u2", "seq": 42 } } },
+    { "name": "ping", "frame": { "cmd": "ping" } },
+    { "name": "ack send ok", "frame": { "id": "r1", "cmd": "ack", "data": { "msgId": "m1", "seq": 42, "ts": 1730000000000 } } },
+    { "name": "ack error", "frame": { "id": "r1", "cmd": "ack", "error": { "code": 4031, "msg": "muted" } } },
+    { "name": "ack joinRoom", "frame": { "id": "r4", "cmd": "ack", "data": { "online": 128, "recent": [ { "msgId": "m9", "convId": "room:match-123", "from": "u3", "type": "text", "body": { "text": "加油" }, "ts": 1730000000000 } ] } } },
+    { "name": "msg c2c", "frame": { "cmd": "msg", "data": { "msgId": "m1", "clientMsgId": "6f1c2a4e-0001", "convId": "c2c:u1:u2", "seq": 42, "from": "u1", "type": "text", "body": { "text": "hi" }, "ts": 1730000000000 } } },
+    { "name": "push goal", "frame": { "cmd": "push", "data": { "pushId": "p1", "type": "goal", "data": { "matchId": "123", "homeScore": "1", "guestScore": "0" }, "ts": 1730000000000 } } },
+    { "name": "event msgDeleted", "frame": { "cmd": "event", "data": { "type": "msgDeleted", "msgId": "m1", "convId": "room:match-123" } } },
+    { "name": "event muted", "frame": { "cmd": "event", "data": { "type": "muted", "until": 1730003600000 } } },
+    { "name": "event roomOnline", "frame": { "cmd": "event", "data": { "type": "roomOnline", "roomId": "match-123", "online": 129 } } },
+    { "name": "event kicked", "frame": { "cmd": "event", "data": { "type": "kicked", "reason": "tokenExpired" } } },
+    { "name": "pong", "frame": { "cmd": "pong" } }
+  ],
+  "invalid": [
+    { "name": "unknown cmd", "frame": { "id": "r1", "cmd": "fly", "data": {} } },
+    { "name": "send without clientMsgId", "frame": { "id": "r1", "cmd": "send", "data": { "convType": "c2c", "to": "u2", "type": "text", "body": { "text": "hi" } } } },
+    { "name": "send bad convType", "frame": { "id": "r1", "cmd": "send", "data": { "convType": "channel", "to": "u2", "clientMsgId": "6f1c2a4e-0001", "type": "text", "body": { "text": "hi" } } } },
+    { "name": "send empty body", "frame": { "id": "r1", "cmd": "send", "data": { "convType": "c2c", "to": "u2", "clientMsgId": "6f1c2a4e-0001", "type": "text", "body": {} } } },
+    { "name": "send missing id", "frame": { "cmd": "send", "data": { "convType": "c2c", "to": "u2", "clientMsgId": "6f1c2a4e-0001", "type": "text", "body": { "text": "hi" } } } },
+    { "name": "sync bad convId", "frame": { "id": "r3", "cmd": "sync", "data": { "convId": "u1-u2", "afterSeq": 0 } } },
+    { "name": "sync limit too large", "frame": { "id": "r3", "cmd": "sync", "data": { "convId": "group:g1", "afterSeq": 0, "limit": 1000 } } },
+    { "name": "read seq zero", "frame": { "id": "r6", "cmd": "read", "data": { "convId": "c2c:u1:u2", "seq": 0 } } },
+    { "name": "ack with both data and error", "frame": { "id": "r1", "cmd": "ack", "data": { "msgId": "m1" }, "error": { "code": 500, "msg": "x" } } },
+    { "name": "ping with extra field", "frame": { "cmd": "ping", "x": 1 } },
+    { "name": "event unknown type", "frame": { "cmd": "event", "data": { "type": "exploded" } } }
+  ]
+}
