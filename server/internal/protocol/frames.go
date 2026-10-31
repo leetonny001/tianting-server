@@ -7,12 +7,15 @@ import (
 	"fmt"
 	"regexp"
 	"strings"
+	"unicode"
+	"unicode/utf8"
 )
 
 // 命令名。
 const (
 	CmdSend      = "send"
 	CmdSync      = "sync"
+	CmdConvs     = "convs"
 	CmdJoinRoom  = "joinRoom"
 	CmdLeaveRoom = "leaveRoom"
 	CmdRead      = "read"
@@ -38,29 +41,32 @@ const (
 	MsgCustom = "custom"
 )
 
-// 错误码，见 protocol/README.md。
+// 事件类型。
 const (
-	CodeBadRequest   = 4000
-	CodeUnknownCmd   = 4001
-	CodeUnauthorized = 4010
-	CodeForbidden    = 4030
-	CodeMuted        = 4031
-	CodeNotFound     = 4040
-	CodeNotInRoom    = 4041
-	CodeRateLimited  = 4290
-	CodeInternal     = 5000
+	EventKicked      = "kicked"
+	EventConvAdded   = "convAdded"
+	EventConvRemoved = "convRemoved"
+	EventReadUpdated = "readUpdated"
 )
 
 const (
-	maxTextLen       = 5000
+	MaxTextLen       = 5000 // 按码点计，去首尾空白之后
 	defaultSyncLimit = 50
 	maxSyncLimit     = 200
+	lastMsgTextLen   = 100
 )
 
 var idPattern = regexp.MustCompile(`^[A-Za-z0-9_-]{1,64}$`)
 
 // ValidID 判断用户 / 群 / 房间 ID 是否合法。
 func ValidID(s string) bool { return idPattern.MatchString(s) }
+
+// TrimText 去掉首尾空白。空白以 Unicode White_Space 属性为准（unicode.IsSpace），
+// U+200B、U+FEFF 不算空白（PRD C-26）。
+func TrimText(s string) string { return strings.TrimFunc(s, unicode.IsSpace) }
+
+// TextLen 按 Unicode 码点计数（PRD 3.1 节）。
+func TextLen(s string) int { return utf8.RuneCountInString(s) }
 
 // Error 是 ack 里的错误，同时实现 error 接口，便于在业务层直接返回。
 type Error struct {
@@ -96,6 +102,9 @@ func AckErr(id string, err *Error) OutFrame {
 	return OutFrame{ID: id, Cmd: CmdAck, Error: err}
 }
 
+// Event 构造事件帧。
+func Event(data any) OutFrame { return OutFrame{Cmd: CmdEvent, Data: data} }
+
 // MsgBody 是消息内容：text 消息用 Text，custom 消息用 Data。
 type MsgBody struct {
 	Text string          `json:"text,omitempty"`
@@ -105,7 +114,7 @@ type MsgBody struct {
 // Message 是下行的一条消息（msg 帧、sync 结果里都用它）。
 type Message struct {
 	MsgID       string  `json:"msgId"`
-	ClientMsgID string  `json:"clientMsgId,omitempty"`
+	ClientMsgID string  `json:"clientMsgId"`
 	ConvID      string  `json:"convId"`
 	Seq         int64   `json:"seq,omitempty"`
 	From        string  `json:"from"`
@@ -123,6 +132,7 @@ type SendReq struct {
 	Body        MsgBody `json:"body"`
 }
 
+// Validate 校验并规范化请求：text 消息的内容会被去掉首尾空白。
 func (r *SendReq) Validate() *Error {
 	switch r.ConvType {
 	case ConvC2C, ConvGroup, ConvRoom:
@@ -130,18 +140,19 @@ func (r *SendReq) Validate() *Error {
 		return Errorf(CodeBadRequest, "invalid convType %q", r.ConvType)
 	}
 	if !ValidID(r.To) {
-		return Errorf(CodeBadRequest, "invalid to")
+		return Errorf(CodeInvalidID, "invalid to")
 	}
 	if n := len(r.ClientMsgID); n < 8 || n > 64 {
 		return Errorf(CodeBadRequest, "clientMsgId length must be 8-64")
 	}
 	switch r.Type {
 	case MsgText:
+		r.Body.Text = TrimText(r.Body.Text)
 		if r.Body.Text == "" {
-			return Errorf(CodeBadRequest, "text body is empty")
+			return Errorf(CodeTextEmpty, "text is empty")
 		}
-		if len([]rune(r.Body.Text)) > maxTextLen {
-			return Errorf(CodeBadRequest, "text longer than %d", maxTextLen)
+		if TextLen(r.Body.Text) > MaxTextLen {
+			return Errorf(CodeTextTooLong, "text longer than %d", MaxTextLen)
 		}
 	case MsgCustom:
 		if len(r.Body.Data) == 0 || string(r.Body.Data) == "null" {
@@ -155,32 +166,42 @@ func (r *SendReq) Validate() *Error {
 
 // SendAck 是 send 成功的应答。聊天室消息没有 seq。
 type SendAck struct {
-	MsgID string `json:"msgId"`
-	Seq   int64  `json:"seq,omitempty"`
-	TS    int64  `json:"ts"`
+	MsgID  string `json:"msgId"`
+	ConvID string `json:"convId"`
+	Seq    int64  `json:"seq,omitempty"`
+	TS     int64  `json:"ts"`
 }
 
-// SyncReq 对应 cmd=sync。
+// SyncReq 对应 cmd=sync。AfterSeq 与 BeforeSeq 二选一。
 type SyncReq struct {
-	ConvID   string `json:"convId"`
-	AfterSeq int64  `json:"afterSeq"`
-	Limit    int    `json:"limit"`
+	ConvID    string `json:"convId"`
+	AfterSeq  *int64 `json:"afterSeq"`
+	BeforeSeq *int64 `json:"beforeSeq"`
+	Limit     *int   `json:"limit"`
 }
 
-func (r *SyncReq) Validate() *Error {
+// Validate 校验请求，并返回生效的 limit。
+func (r *SyncReq) Validate() (int, *Error) {
 	if _, err := ParseConvID(r.ConvID); err != nil {
-		return err
+		return 0, err
 	}
-	if r.AfterSeq < 0 {
-		return Errorf(CodeBadRequest, "afterSeq must be >= 0")
+	if (r.AfterSeq == nil) == (r.BeforeSeq == nil) {
+		return 0, Errorf(CodeBadRequest, "exactly one of afterSeq and beforeSeq is required")
 	}
-	if r.Limit == 0 {
-		r.Limit = defaultSyncLimit
+	if r.AfterSeq != nil && *r.AfterSeq < 0 {
+		return 0, Errorf(CodeBadRequest, "afterSeq must be >= 0")
 	}
-	if r.Limit < 1 || r.Limit > maxSyncLimit {
-		return Errorf(CodeBadRequest, "limit must be 1-%d", maxSyncLimit)
+	if r.BeforeSeq != nil && *r.BeforeSeq < 1 {
+		return 0, Errorf(CodeBadRequest, "beforeSeq must be >= 1")
 	}
-	return nil
+	limit := defaultSyncLimit
+	if r.Limit != nil {
+		limit = *r.Limit
+	}
+	if limit < 1 || limit > maxSyncLimit {
+		return 0, Errorf(CodeBadRequest, "limit must be 1-%d", maxSyncLimit)
+	}
+	return limit, nil
 }
 
 // SyncAck 是 sync 的应答，messages 按 seq 升序。
@@ -205,6 +226,65 @@ func (r *ReadReq) Validate() *Error {
 	return nil
 }
 
+// LastMsg 是会话最后一条消息的摘要。
+type LastMsg struct {
+	MsgID string `json:"msgId"`
+	From  string `json:"from"`
+	Type  string `json:"type"`
+	Text  string `json:"text"`
+	TS    int64  `json:"ts"`
+}
+
+// Summary 截取消息摘要（前 100 个码点）。
+func Summary(text string) string {
+	if TextLen(text) <= lastMsgTextLen {
+		return text
+	}
+	r := []rune(text)
+	return string(r[:lastMsgTextLen])
+}
+
+// Conversation 是会话列表里的一项。
+type Conversation struct {
+	ConvID    string   `json:"convId"`
+	Type      string   `json:"type"`
+	Name      string   `json:"name"`
+	MaxSeq    int64    `json:"maxSeq"`
+	ReadSeq   int64    `json:"readSeq"`
+	MinSeq    int64    `json:"minSeq"`
+	Unread    int64    `json:"unread"`
+	LastMsg   *LastMsg `json:"lastMsg"` // 没有消息时为 null
+	UpdatedAt int64    `json:"updatedAt"`
+}
+
+// ConvsAck 是 convs 的应答。
+type ConvsAck struct {
+	Convs     []Conversation `json:"convs"`
+	Truncated bool           `json:"truncated"`
+}
+
+// 事件。
+type KickedEvent struct {
+	Type   string `json:"type"`
+	Reason string `json:"reason"`
+}
+
+type ConvAddedEvent struct {
+	Type string       `json:"type"`
+	Conv Conversation `json:"conv"`
+}
+
+type ConvRemovedEvent struct {
+	Type   string `json:"type"`
+	ConvID string `json:"convId"`
+}
+
+type ReadUpdatedEvent struct {
+	Type    string `json:"type"`
+	ConvID  string `json:"convId"`
+	ReadSeq int64  `json:"readSeq"`
+}
+
 // Empty 是没有数据的成功应答。
 type Empty struct{}
 
@@ -214,7 +294,7 @@ type Conv struct {
 	A, B string // c2c 两个用户；group / room 只用 A
 }
 
-// C2CConvID 生成单聊会话 ID，与参数顺序无关。
+// C2CConvID 生成单聊会话 ID，与参数顺序无关（按 ASCII 字节序比较）。
 func C2CConvID(u1, u2 string) string {
 	if u1 > u2 {
 		u1, u2 = u2, u1
@@ -228,7 +308,7 @@ func RoomConvID(rid string) string  { return ConvRoom + ":" + rid }
 
 // ParseConvID 解析并校验会话 ID。
 func ParseConvID(s string) (Conv, *Error) {
-	bad := Errorf(CodeBadRequest, "invalid convId %q", s)
+	bad := Errorf(CodeInvalidConvID, "invalid convId %q", s)
 	parts := strings.Split(s, ":")
 	switch {
 	case len(parts) == 3 && parts[0] == ConvC2C:
@@ -247,3 +327,11 @@ func ParseConvID(s string) (Conv, *Error) {
 
 // Has 判断用户是否是单聊会话的一方。
 func (c Conv) Has(uid string) bool { return c.Type == ConvC2C && (c.A == uid || c.B == uid) }
+
+// Peer 返回单聊会话中另一方的 ID（给自己发时是自己）。
+func (c Conv) Peer(uid string) string {
+	if c.A == uid {
+		return c.B
+	}
+	return c.A
+}

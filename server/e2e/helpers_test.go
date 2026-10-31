@@ -32,15 +32,19 @@ type env struct {
 	srv *httptest.Server
 }
 
-func newEnv(t *testing.T) *env { return newEnvWithGateway(t, gateway.DefaultConfig()) }
+// newEnv 启动测试模式的服务（PRD 6.1 节：故障注入、时钟注入、短有效期 token 可用）。
+func newEnv(t *testing.T) *env { return newEnvWith(t, gateway.DefaultConfig(), true) }
 
-func newEnvWithGateway(t *testing.T, gw gateway.Config) *env {
+func newEnvWithGateway(t *testing.T, gw gateway.Config) *env { return newEnvWith(t, gw, true) }
+
+func newEnvWith(t *testing.T, gw gateway.Config, testMode bool) *env {
 	t.Helper()
 	a, err := app.New(app.Config{
 		DBPath:    filepath.Join(t.TempDir(), "im.db"),
 		JWTSecret: "e2e-secret-0123456789",
 		AdminKey:  adminKey,
 		Gateway:   gw,
+		TestMode:  testMode,
 		Version:   "e2e",
 		Logger:    slog.New(slog.NewTextHandler(io.Discard, nil)),
 	})
@@ -114,12 +118,29 @@ func (f frame) msg(t *testing.T) protocol.Message {
 }
 
 type client struct {
-	t       *testing.T
-	uid     string
-	ws      *websocket.Conn
-	in      chan frame
-	pending []frame // 等 ack 时顺带收到的其他帧
-	reqN    int
+	t        *testing.T
+	uid      string
+	ws       *websocket.Conn
+	in       chan frame
+	pending  []frame // 等 ack 时顺带收到的其他帧
+	reqN     int
+	closeErr error // 读循环结束的原因；in 关闭之后才可读
+}
+
+// closeCode 等待连接关闭并返回关闭码。
+func (c *client) closeCode(timeout time.Duration) websocket.StatusCode {
+	c.t.Helper()
+	deadline := time.After(timeout)
+	for {
+		select {
+		case _, ok := <-c.in:
+			if !ok {
+				return websocket.CloseStatus(c.closeErr)
+			}
+		case <-deadline:
+			c.t.Fatalf("%s: connection not closed within %v", c.uid, timeout)
+		}
+	}
 }
 
 func (e *env) dial(uid, platform string) *client {
@@ -134,6 +155,7 @@ func (e *env) dial(uid, platform string) *client {
 		for {
 			_, b, err := ws.Read(context.Background())
 			if err != nil {
+				c.closeErr = err
 				return
 			}
 			var f frame
@@ -246,9 +268,38 @@ func mustAck[T any](t *testing.T, f frame) T {
 	return v
 }
 
+func assertAdminErr(t *testing.T, status int, body []byte, wantStatus, wantCode int) {
+	t.Helper()
+	var e protocol.Error
+	json.Unmarshal(body, &e)
+	if status != wantStatus || e.Code != wantCode {
+		t.Errorf("admin error = %d %s, want HTTP %d code %d", status, body, wantStatus, wantCode)
+	}
+}
+
 func mustErr(t *testing.T, f frame, code int) {
 	t.Helper()
 	if f.Error == nil || f.Error.Code != code {
 		t.Fatalf("want error %d, got error=%+v data=%s", code, f.Error, f.Data)
+	}
+}
+
+// expectNoAck 断言在 d 内收不到指定 id 的 ack（其他帧放进 pending）。
+func (c *client) expectNoAck(id string, d time.Duration) {
+	c.t.Helper()
+	deadline := time.After(d)
+	for {
+		select {
+		case f, ok := <-c.in:
+			if !ok {
+				return
+			}
+			if f.Cmd == protocol.CmdAck && f.ID == id {
+				c.t.Fatalf("%s: unexpected ack %s", c.uid, id)
+			}
+			c.pending = append(c.pending, f)
+		case <-deadline:
+			return
+		}
 	}
 }

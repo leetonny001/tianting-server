@@ -10,6 +10,7 @@ import (
 	"im-mvp/server/internal/admin"
 	"im-mvp/server/internal/api"
 	"im-mvp/server/internal/auth"
+	"im-mvp/server/internal/clock"
 	"im-mvp/server/internal/gateway"
 	"im-mvp/server/internal/hub"
 	"im-mvp/server/internal/logic"
@@ -22,6 +23,7 @@ type Config struct {
 	JWTSecret string
 	AdminKey  string
 	Gateway   gateway.Config
+	TestMode  bool // 开启故障注入、时钟注入、短有效期 token（PRD 6.1 节），生产必须关闭
 	Version   string
 	Logger    *slog.Logger
 }
@@ -33,7 +35,8 @@ type App struct {
 }
 
 func New(cfg Config) (*App, error) {
-	signer, err := auth.NewSigner(cfg.JWTSecret)
+	clk := clock.New()
+	signer, err := auth.NewSigner(cfg.JWTSecret, clk)
 	if err != nil {
 		return nil, err
 	}
@@ -45,12 +48,20 @@ func New(cfg Config) (*App, error) {
 		return nil, err
 	}
 
+	var faults *logic.Faults
+	if cfg.TestMode {
+		faults = logic.NewFaults()
+	}
 	h := hub.New()
-	svc := logic.New(st, h, cfg.Logger)
+	svc := logic.New(st, h, clk, faults, cfg.Logger)
 
 	mux := api.NewRouter(api.Info{Version: cfg.Version, StartedAt: time.Now()})
 	mux.Handle("GET /ws", gateway.New(cfg.Gateway, signer, h, svc, cfg.Logger))
-	admin.New(cfg.AdminKey, signer, st, cfg.Logger).Register(mux)
+	adm := admin.New(cfg.AdminKey, signer, st, cfg.TestMode, cfg.Logger)
+	adm.Register(mux)
+	if cfg.TestMode {
+		adm.RegisterTestRoutes(mux, faults, clk)
+	}
 
 	return &App{handler: mux, store: st}, nil
 }

@@ -7,36 +7,56 @@ import (
 	"time"
 
 	"github.com/golang-jwt/jwt/v5"
+
+	"im-mvp/server/internal/clock"
 )
 
 const issuer = "im-server"
 
-// ErrInvalidToken 表示 token 无效、过期或签名不对。
-var ErrInvalidToken = errors.New("invalid token")
+// 校验错误：无效（签名、格式、缺失）与过期分开，对应关闭码 4010 / 4011。
+var (
+	ErrInvalidToken = errors.New("invalid token")
+	ErrExpiredToken = errors.New("token expired")
+)
+
+// Claims 是 token 里携带的信息。
+type Claims struct {
+	UserID    string
+	IssuedAt  time.Time // 毫秒精度（自定义字段 iatMs，PRD C-11），用于判断强制下线前签发的 token
+	ExpiresAt time.Time
+}
+
+type jwtClaims struct {
+	jwt.RegisteredClaims
+	IatMs int64 `json:"iatMs"`
+}
 
 // Signer 用同一个密钥签发和校验 token。
 type Signer struct {
 	secret []byte
-	now    func() time.Time
+	clock  clock.Clock
 }
 
 // NewSigner 创建 Signer。secret 至少 16 字节。
-func NewSigner(secret string) (*Signer, error) {
+func NewSigner(secret string, clk clock.Clock) (*Signer, error) {
 	if len(secret) < 16 {
 		return nil, errors.New("jwt secret must be at least 16 bytes")
 	}
-	return &Signer{secret: []byte(secret), now: time.Now}, nil
+	return &Signer{secret: []byte(secret), clock: clk}, nil
 }
 
 // Issue 为用户签发 token，返回 token 和过期时间。
 func (s *Signer) Issue(userID string, ttl time.Duration) (string, time.Time, error) {
-	now := s.now()
+	now := s.clock.Now()
 	exp := now.Add(ttl)
-	claims := jwt.RegisteredClaims{
-		Issuer:    issuer,
-		Subject:   userID,
-		IssuedAt:  jwt.NewNumericDate(now),
-		ExpiresAt: jwt.NewNumericDate(exp),
+	claims := jwtClaims{
+		RegisteredClaims: jwt.RegisteredClaims{
+			Issuer:    issuer,
+			Subject:   userID,
+			IssuedAt:  jwt.NewNumericDate(now),
+			ExpiresAt: jwt.NewNumericDate(exp),
+		},
+		IatMs: now.UnixMilli(),
 	}
 	tok, err := jwt.NewWithClaims(jwt.SigningMethodHS256, claims).SignedString(s.secret)
 	if err != nil {
@@ -45,18 +65,25 @@ func (s *Signer) Issue(userID string, ttl time.Duration) (string, time.Time, err
 	return tok, exp, nil
 }
 
-// Verify 校验 token，返回用户 ID。
-func (s *Signer) Verify(token string) (string, error) {
-	var claims jwt.RegisteredClaims
-	_, err := jwt.ParseWithClaims(token, &claims,
+// Verify 校验 token。过期返回 ErrExpiredToken，其余问题返回 ErrInvalidToken。
+func (s *Signer) Verify(token string) (Claims, error) {
+	var c jwtClaims
+	_, err := jwt.ParseWithClaims(token, &c,
 		func(*jwt.Token) (any, error) { return s.secret, nil },
 		jwt.WithValidMethods([]string{jwt.SigningMethodHS256.Alg()}),
 		jwt.WithIssuer(issuer),
 		jwt.WithExpirationRequired(),
-		jwt.WithTimeFunc(s.now),
+		jwt.WithTimeFunc(s.clock.Now),
 	)
-	if err != nil || claims.Subject == "" {
-		return "", ErrInvalidToken
+	switch {
+	case errors.Is(err, jwt.ErrTokenExpired) && c.Subject != "":
+		return Claims{}, ErrExpiredToken
+	case err != nil || c.Subject == "" || c.IatMs == 0:
+		return Claims{}, ErrInvalidToken
 	}
-	return claims.Subject, nil
+	return Claims{
+		UserID:    c.Subject,
+		IssuedAt:  time.UnixMilli(c.IatMs),
+		ExpiresAt: c.ExpiresAt.Time,
+	}, nil
 }

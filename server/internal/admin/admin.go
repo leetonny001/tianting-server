@@ -10,6 +10,8 @@ import (
 	"time"
 
 	"im-mvp/server/internal/auth"
+	"im-mvp/server/internal/clock"
+	"im-mvp/server/internal/logic"
 	"im-mvp/server/internal/protocol"
 	"im-mvp/server/internal/store"
 )
@@ -17,19 +19,22 @@ import (
 const (
 	defaultTokenTTL = 7 * 24 * time.Hour
 	maxTokenTTL     = 30 * 24 * time.Hour
+	minTokenTTL     = 60 * time.Second // 非测试模式的下限（PRD C-13）
+	minTestTokenTTL = time.Second      // 测试模式的下限（PRD 6.1 节）
 	maxGroupMembers = 2000
 )
 
 // Admin 注册 /admin/* 路由。
 type Admin struct {
-	key    string
-	signer *auth.Signer
-	store  store.Store
-	log    *slog.Logger
+	key      string
+	signer   *auth.Signer
+	store    store.Store
+	log      *slog.Logger
+	testMode bool
 }
 
-func New(key string, signer *auth.Signer, st store.Store, log *slog.Logger) *Admin {
-	return &Admin{key: key, signer: signer, store: st, log: log}
+func New(key string, signer *auth.Signer, st store.Store, testMode bool, log *slog.Logger) *Admin {
+	return &Admin{key: key, signer: signer, store: st, testMode: testMode, log: log}
 }
 
 // Register 把管理路由挂到 mux 上。
@@ -39,11 +44,47 @@ func (a *Admin) Register(mux *http.ServeMux) {
 	mux.Handle("POST /admin/groups/{groupId}/members", a.guard(a.addMembers))
 }
 
+// RegisterTestRoutes 注册故障注入和时钟接口，只能在测试模式下调用（PRD 6.1 节）。
+func (a *Admin) RegisterTestRoutes(mux *http.ServeMux, faults *logic.Faults, clk *clock.Settable) {
+	mux.Handle("POST /admin/test/drop-ack", a.guard(func(w http.ResponseWriter, r *http.Request) {
+		var req struct {
+			ClientMsgID string `json:"clientMsgId"`
+		}
+		if readJSON(w, r, &req) {
+			faults.DropAck(req.ClientMsgID)
+			writeJSON(w, http.StatusOK, struct{}{})
+		}
+	}))
+	mux.Handle("POST /admin/test/skip-delivery", a.guard(func(w http.ResponseWriter, r *http.Request) {
+		var req struct {
+			ClientMsgID string `json:"clientMsgId"`
+		}
+		if readJSON(w, r, &req) {
+			faults.SkipDelivery(req.ClientMsgID)
+			writeJSON(w, http.StatusOK, struct{}{})
+		}
+	}))
+	mux.Handle("POST /admin/test/clock", a.guard(func(w http.ResponseWriter, r *http.Request) {
+		var req struct {
+			NowMs *int64 `json:"nowMs"`
+		}
+		if !readJSON(w, r, &req) {
+			return
+		}
+		if req.NowMs == nil {
+			clk.Unfreeze()
+		} else {
+			clk.Freeze(time.UnixMilli(*req.NowMs))
+		}
+		writeJSON(w, http.StatusOK, struct{}{})
+	}))
+}
+
 func (a *Admin) guard(next http.HandlerFunc) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		got := r.Header.Get("X-Admin-Key")
 		if subtle.ConstantTimeCompare([]byte(got), []byte(a.key)) != 1 {
-			writeErr(w, http.StatusUnauthorized, protocol.CodeUnauthorized, "invalid admin key")
+			writeErr(w, protocol.Errorf(protocol.CodeAdminKeyInvalid, "invalid admin key"))
 			return
 		}
 		next(w, r)
@@ -66,19 +107,27 @@ func (a *Admin) issueToken(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if !protocol.ValidID(req.UserID) {
-		writeErr(w, http.StatusBadRequest, protocol.CodeBadRequest, "invalid userId")
+		writeErr(w, protocol.Errorf(protocol.CodeInvalidID, "invalid userId"))
 		return
 	}
-	ttl := defaultTokenTTL
-	if req.TTLSeconds > 0 {
-		ttl = min(time.Duration(req.TTLSeconds)*time.Second, maxTokenTTL)
-	}
-	tok, exp, err := a.signer.Issue(req.UserID, ttl)
+	tok, exp, err := a.signer.Issue(req.UserID, a.tokenTTL(req.TTLSeconds))
 	if err != nil {
 		a.internal(w, "issue token", err)
 		return
 	}
 	writeJSON(w, http.StatusOK, tokenResp{Token: tok, ExpiresAt: exp.UnixMilli()})
+}
+
+// tokenTTL：不传、0 或负数按 7 天；上限 30 天；下限非测试模式 60 秒、测试模式 1 秒。
+func (a *Admin) tokenTTL(seconds int64) time.Duration {
+	if seconds <= 0 {
+		return defaultTokenTTL
+	}
+	lower := minTokenTTL
+	if a.testMode {
+		lower = minTestTokenTTL
+	}
+	return min(max(time.Duration(seconds)*time.Second, lower), maxTokenTTL)
 }
 
 type groupReq struct {
@@ -93,7 +142,7 @@ func (a *Admin) createGroup(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if !protocol.ValidID(req.GroupID) {
-		writeErr(w, http.StatusBadRequest, protocol.CodeBadRequest, "invalid groupId")
+		writeErr(w, protocol.Errorf(protocol.CodeInvalidID, "invalid groupId"))
 		return
 	}
 	if !validMembers(w, req.Members) {
@@ -102,7 +151,7 @@ func (a *Admin) createGroup(w http.ResponseWriter, r *http.Request) {
 	err := a.store.CreateGroup(r.Context(), req.GroupID, req.Name, req.Members)
 	switch {
 	case errors.Is(err, store.ErrExists):
-		writeErr(w, http.StatusConflict, protocol.CodeBadRequest, "group already exists")
+		writeErr(w, protocol.Errorf(protocol.CodeGroupExists, "group already exists"))
 	case err != nil:
 		a.internal(w, "create group", err)
 	default:
@@ -125,7 +174,7 @@ func (a *Admin) addMembers(w http.ResponseWriter, r *http.Request) {
 	err := a.store.AddGroupMembers(r.Context(), r.PathValue("groupId"), req.Members)
 	switch {
 	case errors.Is(err, store.ErrNotFound):
-		writeErr(w, http.StatusNotFound, protocol.CodeNotFound, "group not found")
+		writeErr(w, protocol.Errorf(protocol.CodeGroupNotFound, "group not found"))
 	case err != nil:
 		a.internal(w, "add members", err)
 	default:
@@ -135,12 +184,12 @@ func (a *Admin) addMembers(w http.ResponseWriter, r *http.Request) {
 
 func validMembers(w http.ResponseWriter, members []string) bool {
 	if len(members) > maxGroupMembers {
-		writeErr(w, http.StatusBadRequest, protocol.CodeBadRequest, "too many members")
+		writeErr(w, protocol.Errorf(protocol.CodeGroupMemberLimitExceeded, "too many members"))
 		return false
 	}
 	for _, m := range members {
 		if !protocol.ValidID(m) {
-			writeErr(w, http.StatusBadRequest, protocol.CodeBadRequest, "invalid member id "+m)
+			writeErr(w, protocol.Errorf(protocol.CodeInvalidID, "invalid member id %s", m))
 			return false
 		}
 	}
@@ -149,21 +198,22 @@ func validMembers(w http.ResponseWriter, members []string) bool {
 
 func (a *Admin) internal(w http.ResponseWriter, op string, err error) {
 	a.log.Error(op, "err", err)
-	writeErr(w, http.StatusInternalServerError, protocol.CodeInternal, "internal error")
+	writeErr(w, protocol.Errorf(protocol.CodeInternal, "internal error"))
 }
 
 func readJSON(w http.ResponseWriter, r *http.Request, v any) bool {
 	dec := json.NewDecoder(http.MaxBytesReader(w, r.Body, 1<<20))
 	dec.DisallowUnknownFields()
 	if err := dec.Decode(v); err != nil {
-		writeErr(w, http.StatusBadRequest, protocol.CodeBadRequest, "invalid json: "+err.Error())
+		writeErr(w, protocol.Errorf(protocol.CodeBadRequest, "invalid json: %v", err))
 		return false
 	}
 	return true
 }
 
-func writeErr(w http.ResponseWriter, status, code int, msg string) {
-	writeJSON(w, status, protocol.Error{Code: code, Msg: msg})
+// writeErr 按 errors.json 的映射写 HTTP 状态码和错误体。
+func writeErr(w http.ResponseWriter, e *protocol.Error) {
+	writeJSON(w, protocol.HTTPStatus(e.Code), e)
 }
 
 func writeJSON(w http.ResponseWriter, status int, v any) {

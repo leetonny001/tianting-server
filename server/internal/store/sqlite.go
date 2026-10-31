@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"slices"
 	"strings"
 	"time"
 
@@ -57,7 +58,8 @@ type SQLite struct {
 
 // OpenSQLite 打开（必要时创建）数据库文件并建表。
 func OpenSQLite(path string) (*SQLite, error) {
-	dsn := "file:" + path + "?_pragma=journal_mode(WAL)&_pragma=busy_timeout(5000)&_pragma=foreign_keys(1)"
+	// synchronous=FULL：每次提交都 fsync，返回 ack 的消息一定已经落盘（PRD 第 6 节）。
+	dsn := "file:" + path + "?_pragma=journal_mode(WAL)&_pragma=synchronous(FULL)&_pragma=busy_timeout(5000)&_pragma=foreign_keys(1)"
 	db, err := sql.Open("sqlite", dsn)
 	if err != nil {
 		return nil, fmt.Errorf("open sqlite: %w", err)
@@ -131,6 +133,44 @@ func (s *SQLite) ListMessages(ctx context.Context, convID string, afterSeq int64
 		msgs = msgs[:limit]
 	}
 	return msgs, hasMore, nil
+}
+
+func (s *SQLite) ListMessagesBefore(ctx context.Context, convID string, beforeSeq, minSeq int64, limit int) ([]Message, bool, error) {
+	// 先倒序取 limit+1 条，再翻转成升序。
+	rows, err := s.db.QueryContext(ctx,
+		`SELECT `+msgColumns+` FROM messages WHERE conv_id = ? AND seq < ? AND seq >= ? ORDER BY seq DESC LIMIT ?`,
+		convID, beforeSeq, minSeq, limit+1)
+	if err != nil {
+		return nil, false, err
+	}
+	defer rows.Close()
+
+	msgs := make([]Message, 0, limit+1)
+	for rows.Next() {
+		m, err := scanMessage(rows)
+		if err != nil {
+			return nil, false, err
+		}
+		msgs = append(msgs, m)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, false, err
+	}
+	hasMore := len(msgs) > limit
+	if hasMore {
+		msgs = msgs[:limit]
+	}
+	slices.Reverse(msgs)
+	return msgs, hasMore, nil
+}
+
+func (s *SQLite) GroupExists(ctx context.Context, groupID string) (bool, error) {
+	var one int
+	err := s.db.QueryRowContext(ctx, `SELECT 1 FROM chat_groups WHERE group_id = ?`, groupID).Scan(&one)
+	if errors.Is(err, sql.ErrNoRows) {
+		return false, nil
+	}
+	return err == nil, err
 }
 
 func (s *SQLite) CreateGroup(ctx context.Context, groupID, name string, members []string) error {

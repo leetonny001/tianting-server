@@ -156,3 +156,37 @@ func TestReadSeqOnlyMovesForward(t *testing.T) {
 		t.Errorf("unknown read seq = %d", got)
 	}
 }
+
+func TestListMessagesBefore(t *testing.T) {
+	s, ctx := openTest(t), context.Background()
+	for i := range 100 {
+		s.SaveMessage(ctx, newMsg(fmt.Sprint("m", i), "c2c:a:b", "a", fmt.Sprintf("client-%03d", i)))
+	}
+
+	// 打开会话：beforeSeq = maxSeq + 1，取最新 20 条，升序返回。
+	page, more, err := s.ListMessagesBefore(ctx, "c2c:a:b", 101, 1, 20)
+	if err != nil || len(page) != 20 || !more || page[0].Seq != 81 || page[19].Seq != 100 {
+		t.Fatalf("latest page: len=%d more=%v first=%d err=%v", len(page), more, page[0].Seq, err)
+	}
+	// 向上翻到最早一页。
+	page, more, _ = s.ListMessagesBefore(ctx, "c2c:a:b", 21, 1, 20)
+	if len(page) != 20 || more || page[0].Seq != 1 {
+		t.Fatalf("first page: len=%d more=%v first=%d", len(page), more, page[0].Seq)
+	}
+	// minSeq 限制可见范围：只能看到 seq >= 91。
+	page, more, _ = s.ListMessagesBefore(ctx, "c2c:a:b", 101, 91, 20)
+	if len(page) != 10 || more || page[0].Seq != 91 {
+		t.Fatalf("minSeq page: len=%d more=%v first=%d", len(page), more, page[0].Seq)
+	}
+}
+
+func TestGroupExists(t *testing.T) {
+	s, ctx := openTest(t), context.Background()
+	s.CreateGroup(ctx, "empty", "空群", nil)
+	if ok, _ := s.GroupExists(ctx, "empty"); !ok {
+		t.Error("group with no members must exist")
+	}
+	if ok, _ := s.GroupExists(ctx, "nope"); ok {
+		t.Error("nope must not exist")
+	}
+}

@@ -1,8 +1,8 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://im-mvp.local/protocol/frame.schema.json",
-  "title": "IM WebSocket Frame (v0 draft)",
-  "description": "WebSocket 上传输的每一帧。客户端 → 服务端为 ClientFrame，服务端 → 客户端为 ServerFrame。",
+  "title": "IM WebSocket Frame (v1)",
+  "description": "WebSocket 上传输的每一帧。客户端 → 服务端为 ClientFrame，服务端 → 客户端为 ServerFrame。对应 PRD-core-v1.1。",
   "oneOf": [
     { "$ref": "#/$defs/ClientFrame" },
     { "$ref": "#/$defs/ServerFrame" }
@@ -19,7 +19,7 @@
     "ConvId": {
       "type": "string",
       "pattern": "^(c2c:[A-Za-z0-9_-]+:[A-Za-z0-9_-]+|group:[A-Za-z0-9_-]+|room:[A-Za-z0-9_-]+)$",
-      "description": "c2c:{较小uid}:{较大uid} | group:{gid} | room:{rid}"
+      "description": "c2c:{较小uid}:{较大uid}（ASCII 字节序）| group:{gid} | room:{rid}"
     },
     "Seq": { "type": "integer", "minimum": 1, "description": "会话内单调递增序号；聊天室消息没有 seq" },
     "TimestampMs": { "type": "integer", "minimum": 0 },
@@ -28,7 +28,7 @@
       "type": "object",
       "description": "text: {text}；custom: {data}，data 为业务自定义 JSON",
       "properties": {
-        "text": { "type": "string", "minLength": 1, "maxLength": 5000 },
+        "text": { "type": "string", "minLength": 1, "maxLength": 20000 },
         "data": {}
       },
       "minProperties": 1
@@ -37,7 +37,7 @@
       "type": "object",
       "required": ["code", "msg"],
       "properties": {
-        "code": { "type": "integer", "description": "见 protocol/README.md 错误码表" },
+        "code": { "type": "integer", "description": "见 protocol/errors.json" },
         "msg": { "type": "string" }
       },
       "additionalProperties": false
@@ -47,6 +47,7 @@
       "oneOf": [
         { "$ref": "#/$defs/SendReq" },
         { "$ref": "#/$defs/SyncReq" },
+        { "$ref": "#/$defs/ConvsReq" },
         { "$ref": "#/$defs/JoinRoomReq" },
         { "$ref": "#/$defs/LeaveRoomReq" },
         { "$ref": "#/$defs/ReadReq" },
@@ -82,14 +83,30 @@
         "cmd": { "const": "sync" },
         "data": {
           "type": "object",
-          "required": ["convId", "afterSeq"],
+          "description": "afterSeq（拉取之后的，补拉用）与 beforeSeq（拉取之前最近的，翻页用）二选一；结果都按 seq 升序",
+          "required": ["convId"],
           "properties": {
             "convId": { "$ref": "#/$defs/ConvId" },
             "afterSeq": { "type": "integer", "minimum": 0 },
+            "beforeSeq": { "type": "integer", "minimum": 1 },
             "limit": { "type": "integer", "minimum": 1, "maximum": 200, "default": 50 }
           },
+          "oneOf": [
+            { "required": ["afterSeq"], "not": { "required": ["beforeSeq"] } },
+            { "required": ["beforeSeq"], "not": { "required": ["afterSeq"] } }
+          ],
           "additionalProperties": false
         }
+      },
+      "additionalProperties": false
+    },
+    "ConvsReq": {
+      "type": "object",
+      "required": ["id", "cmd"],
+      "properties": {
+        "id": { "$ref": "#/$defs/ReqId" },
+        "cmd": { "const": "convs" },
+        "data": { "type": "object", "maxProperties": 0 }
       },
       "additionalProperties": false
     },
@@ -159,16 +176,50 @@
     },
     "Message": {
       "type": "object",
-      "required": ["msgId", "convId", "from", "type", "body", "ts"],
+      "required": ["msgId", "clientMsgId", "convId", "from", "type", "body", "ts"],
       "properties": {
         "msgId": { "type": "string", "minLength": 1 },
-        "clientMsgId": { "type": "string" },
+        "clientMsgId": { "type": "string", "minLength": 1 },
         "convId": { "$ref": "#/$defs/ConvId" },
         "seq": { "$ref": "#/$defs/Seq" },
         "from": { "$ref": "#/$defs/UserId" },
         "type": { "$ref": "#/$defs/MsgType" },
         "body": { "$ref": "#/$defs/MsgBody" },
         "ts": { "$ref": "#/$defs/TimestampMs" }
+      },
+      "additionalProperties": false
+    },
+    "LastMsg": {
+      "description": "会话最后一条消息的摘要；没有消息时为 null",
+      "oneOf": [
+        { "type": "null" },
+        {
+          "type": "object",
+          "required": ["msgId", "from", "type", "text", "ts"],
+          "properties": {
+            "msgId": { "type": "string" },
+            "from": { "$ref": "#/$defs/UserId" },
+            "type": { "$ref": "#/$defs/MsgType" },
+            "text": { "type": "string", "description": "摘要，最多 100 个码点；custom 消息为空字符串" },
+            "ts": { "$ref": "#/$defs/TimestampMs" }
+          },
+          "additionalProperties": false
+        }
+      ]
+    },
+    "Conversation": {
+      "type": "object",
+      "required": ["convId", "type", "name", "maxSeq", "readSeq", "minSeq", "unread", "lastMsg", "updatedAt"],
+      "properties": {
+        "convId": { "$ref": "#/$defs/ConvId" },
+        "type": { "enum": ["c2c", "group"] },
+        "name": { "type": "string", "description": "单聊为对方 userId（或昵称，P1），群聊为群名" },
+        "maxSeq": { "type": "integer", "minimum": 0 },
+        "readSeq": { "type": "integer", "minimum": 0 },
+        "minSeq": { "type": "integer", "minimum": 1, "description": "当前用户能拉到的最小 seq（群历史可见性）" },
+        "unread": { "type": "integer", "minimum": 0 },
+        "lastMsg": { "$ref": "#/$defs/LastMsg" },
+        "updatedAt": { "$ref": "#/$defs/TimestampMs" }
       },
       "additionalProperties": false
     },
@@ -181,13 +232,16 @@
         "cmd": { "const": "ack" },
         "data": {
           "type": "object",
-          "description": "按请求类型不同：send → {msgId, seq?, ts}；sync → {messages, hasMore}；joinRoom → {online, recent}；其余为空对象",
+          "description": "按请求类型不同：send → {msgId, convId, seq?, ts}；sync → {messages, hasMore}；convs → {convs, truncated}；joinRoom → {online, recent}；其余为空对象",
           "properties": {
             "msgId": { "type": "string" },
+            "convId": { "$ref": "#/$defs/ConvId" },
             "seq": { "$ref": "#/$defs/Seq" },
             "ts": { "$ref": "#/$defs/TimestampMs" },
             "messages": { "type": "array", "items": { "$ref": "#/$defs/Message" } },
             "hasMore": { "type": "boolean" },
+            "convs": { "type": "array", "items": { "$ref": "#/$defs/Conversation" }, "maxItems": 500 },
+            "truncated": { "type": "boolean" },
             "online": { "type": "integer", "minimum": 0 },
             "recent": { "type": "array", "items": { "$ref": "#/$defs/Message" } }
           },
@@ -217,7 +271,7 @@
           "required": ["type", "data"],
           "properties": {
             "pushId": { "type": "string" },
-            "type": { "type": "string", "minLength": 1, "description": "业务类型，如 goal / withdraw / liveStatus" },
+            "type": { "type": "string", "minLength": 1, "description": "业务类型，如 goal / withdraw / liveStatus（二期）" },
             "data": {},
             "ts": { "$ref": "#/$defs/TimestampMs" }
           },
@@ -235,6 +289,43 @@
           "oneOf": [
             {
               "type": "object",
+              "required": ["type", "reason"],
+              "properties": {
+                "type": { "const": "kicked" },
+                "reason": { "enum": ["tokenInvalid", "tokenExpired", "banned", "replaced"] }
+              },
+              "additionalProperties": false
+            },
+            {
+              "type": "object",
+              "required": ["type", "conv"],
+              "properties": {
+                "type": { "const": "convAdded" },
+                "conv": { "$ref": "#/$defs/Conversation" }
+              },
+              "additionalProperties": false
+            },
+            {
+              "type": "object",
+              "required": ["type", "convId"],
+              "properties": {
+                "type": { "const": "convRemoved" },
+                "convId": { "$ref": "#/$defs/ConvId" }
+              },
+              "additionalProperties": false
+            },
+            {
+              "type": "object",
+              "required": ["type", "convId", "readSeq"],
+              "properties": {
+                "type": { "const": "readUpdated" },
+                "convId": { "$ref": "#/$defs/ConvId" },
+                "readSeq": { "type": "integer", "minimum": 0 }
+              },
+              "additionalProperties": false
+            },
+            {
+              "type": "object",
               "required": ["type", "msgId", "convId"],
               "properties": {
                 "type": { "const": "msgDeleted" },
@@ -248,7 +339,7 @@
               "required": ["type", "until"],
               "properties": {
                 "type": { "const": "muted" },
-                "until": { "$ref": "#/$defs/TimestampMs", "description": "0 表示解除禁言" }
+                "until": { "$ref": "#/$defs/TimestampMs", "description": "0 表示解除禁言（二期）" }
               },
               "additionalProperties": false
             },
@@ -259,15 +350,6 @@
                 "type": { "const": "roomOnline" },
                 "roomId": { "type": "string" },
                 "online": { "type": "integer", "minimum": 0 }
-              },
-              "additionalProperties": false
-            },
-            {
-              "type": "object",
-              "required": ["type", "reason"],
-              "properties": {
-                "type": { "const": "kicked" },
-                "reason": { "enum": ["tokenExpired", "replaced", "banned"] }
               },
               "additionalProperties": false
             }

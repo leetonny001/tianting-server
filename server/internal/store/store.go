@@ -32,9 +32,12 @@ type Store interface {
 	SaveMessage(ctx context.Context, m Message) (saved Message, dup bool, err error)
 	// ListMessages 返回 seq > afterSeq 的消息（升序，最多 limit 条），以及后面是否还有。
 	ListMessages(ctx context.Context, convID string, afterSeq int64, limit int) (msgs []Message, hasMore bool, err error)
+	// ListMessagesBefore 返回 minSeq <= seq < beforeSeq 中最近的 limit 条（按 seq 升序），以及更早的是否还有。
+	ListMessagesBefore(ctx context.Context, convID string, beforeSeq, minSeq int64, limit int) (msgs []Message, hasMore bool, err error)
 
 	CreateGroup(ctx context.Context, groupID, name string, members []string) error
 	AddGroupMembers(ctx context.Context, groupID string, members []string) error
+	GroupExists(ctx context.Context, groupID string) (bool, error)
 	GroupMembers(ctx context.Context, groupID string) ([]string, error)
 	IsGroupMember(ctx context.Context, groupID, userID string) (bool, error)
 

@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"net/http"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -27,14 +28,19 @@ func TestRejectsInvalidToken(t *testing.T) {
 
 func TestAdminRequiresKey(t *testing.T) {
 	e := newEnv(t)
-	if code, _ := e.adminPost("/admin/users/token", map[string]any{"userId": "u1"}, ""); code != http.StatusUnauthorized {
-		t.Errorf("no key: %d", code)
+	// TC-AUTH-01-*：密钥错误 401 / 4013，userId 不合法 400 / 4004（AC-AUTH-01-2、AC-AUTH-01-3）。
+	for _, key := range []string{"", "wrong"} {
+		code, body := e.adminPost("/admin/users/token", map[string]any{"userId": "u1"}, key)
+		assertAdminErr(t, code, body, http.StatusUnauthorized, protocol.CodeAdminKeyInvalid)
 	}
-	if code, _ := e.adminPost("/admin/users/token", map[string]any{"userId": "u1"}, "wrong"); code != http.StatusUnauthorized {
-		t.Errorf("wrong key: %d", code)
+	for _, uid := range []string{"", "bad id", "中文", "a.b", "a@b", strings.Repeat("x", 65)} {
+		code, body := e.adminPost("/admin/users/token", map[string]any{"userId": uid}, adminKey)
+		assertAdminErr(t, code, body, http.StatusBadRequest, protocol.CodeInvalidID)
 	}
-	if code, _ := e.adminPost("/admin/users/token", map[string]any{"userId": "bad id"}, adminKey); code != http.StatusBadRequest {
-		t.Errorf("bad user id: %d", code)
+	for _, uid := range []string{"a", strings.Repeat("x", 64)} {
+		if code, body := e.adminPost("/admin/users/token", map[string]any{"userId": uid}, adminKey); code != http.StatusOK {
+			t.Errorf("userId len %d: %d %s", len(uid), code, body)
+		}
 	}
 }
 
@@ -76,6 +82,12 @@ func TestResendWithSameClientMsgIDIsDeduplicated(t *testing.T) {
 	if again != first {
 		t.Fatalf("resend ack %+v != first %+v", again, first)
 	}
+	// TC-MSG-04-*：重复提交 5 次只保存 1 条（AC-MSG-04-1）。
+	for range 3 {
+		if a := mustAck[protocol.SendAck](t, alice.sendText(protocol.ConvC2C, "bob", "cid-retry-01", "once")); a != first {
+			t.Fatalf("resend ack %+v != first %+v", a, first)
+		}
+	}
 
 	bob.waitCmd(protocol.CmdMsg)
 	bob.expectNoMsg(200 * time.Millisecond)
@@ -107,8 +119,8 @@ func TestOfflineReceiverSyncsAfterConnect(t *testing.T) {
 func TestSyncAndReadRequireParticipation(t *testing.T) {
 	e := newEnv(t)
 	carol := e.dial("carol", "web")
-	mustErr(t, carol.call(protocol.CmdSync, map[string]any{"convId": "c2c:alice:bob", "afterSeq": 0}), protocol.CodeForbidden)
-	mustErr(t, carol.call(protocol.CmdRead, map[string]any{"convId": "c2c:alice:bob", "seq": 1}), protocol.CodeForbidden)
+	mustErr(t, carol.call(protocol.CmdSync, map[string]any{"convId": "c2c:alice:bob", "afterSeq": 0}), protocol.CodeNotConvParticipant)
+	mustErr(t, carol.call(protocol.CmdRead, map[string]any{"convId": "c2c:alice:bob", "seq": 1}), protocol.CodeNotConvParticipant)
 	mustAck[protocol.Empty](t, carol.call(protocol.CmdRead, map[string]any{"convId": "c2c:alice:carol", "seq": 1}))
 }
 
@@ -120,8 +132,9 @@ func TestGroupMessaging(t *testing.T) {
 	carol := e.dial("carol", "android")
 	dave := e.dial("dave", "pc")
 
-	mustErr(t, dave.sendText(protocol.ConvGroup, "g1", "cid-dave-001", "let me in"), protocol.CodeForbidden)
-	mustErr(t, alice.sendText(protocol.ConvGroup, "nope", "cid-nope-001", "?"), protocol.CodeNotFound)
+	mustErr(t, dave.sendText(protocol.ConvGroup, "g1", "cid-dave-001", "let me in"), protocol.CodeNotGroupMember)
+	mustErr(t, alice.sendText(protocol.ConvGroup, "nope", "cid-nope-001", "?"), protocol.CodeGroupNotFound)
+	mustErr(t, alice.call(protocol.CmdSync, map[string]any{"convId": "group:nope", "afterSeq": 0}), protocol.CodeGroupNotFound)
 
 	ack := mustAck[protocol.SendAck](t, alice.sendText(protocol.ConvGroup, "g1", "cid-group-01", "hello group"))
 	for _, c := range []*client{bob, carol} {
@@ -136,7 +149,7 @@ func TestGroupMessaging(t *testing.T) {
 	if len(sync.Messages) != 1 {
 		t.Errorf("carol synced %d messages", len(sync.Messages))
 	}
-	mustErr(t, dave.call(protocol.CmdSync, map[string]any{"convId": "group:g1", "afterSeq": 0}), protocol.CodeForbidden)
+	mustErr(t, dave.call(protocol.CmdSync, map[string]any{"convId": "group:g1", "afterSeq": 0}), protocol.CodeNotGroupMember)
 
 	// 后加入的成员可以收发。
 	if code, body := e.adminPost("/admin/groups/g1/members", map[string]any{"members": []string{"dave"}}, adminKey); code != http.StatusOK {
@@ -198,11 +211,11 @@ func TestProtocolErrors(t *testing.T) {
 	c := e.dial("alice", "web")
 
 	c.writeRaw([]byte(`not json`))
-	if f := c.next(); f.Cmd != protocol.CmdAck || f.ID != "" || f.Error == nil || f.Error.Code != protocol.CodeBadRequest {
+	if f := c.next(); f.Cmd != protocol.CmdAck || f.ID != "" || f.Error == nil || f.Error.Code != protocol.CodeInvalidFrame {
 		t.Errorf("invalid json -> %+v", f)
 	}
 	c.writeRaw([]byte(`{"cmd":"send","data":{}}`))
-	if f := c.next(); f.Error == nil || f.Error.Code != protocol.CodeBadRequest {
+	if f := c.next(); f.Error == nil || f.Error.Code != protocol.CodeMissingRequestID {
 		t.Errorf("missing id -> %+v", f)
 	}
 
@@ -211,7 +224,7 @@ func TestProtocolErrors(t *testing.T) {
 	mustErr(t, c.call(protocol.CmdSend, map[string]any{
 		"convType": "c2c", "to": "bob", "clientMsgId": "cid-00000009", "type": "text", "body": map[string]any{"text": "x"}, "extra": 1,
 	}), protocol.CodeBadRequest)
-	mustErr(t, c.call(protocol.CmdSync, map[string]any{"convId": "c2c:bob:alice", "afterSeq": 0}), protocol.CodeBadRequest)
+	mustErr(t, c.call(protocol.CmdSync, map[string]any{"convId": "c2c:bob:alice", "afterSeq": 0}), protocol.CodeInvalidConvID)
 	mustErr(t, c.call(protocol.CmdJoinRoom, map[string]any{"roomId": "match-1"}), protocol.CodeBadRequest)
 }
 
@@ -230,14 +243,9 @@ func TestHeartbeat(t *testing.T) {
 		time.Sleep(100 * time.Millisecond)
 	}
 
-	// 不发任何帧的连接在 IdleTimeout 后被服务端关闭。
+	// TC-CONN-01-*：不发任何帧的连接在空闲超时后被关闭，关闭码 4408（AC-CONN-01-2）。
 	idle := e.dial("bob", "web")
-	select {
-	case _, ok := <-idle.in:
-		if ok {
-			t.Fatal("idle connection received a frame instead of being closed")
-		}
-	case <-time.After(2 * time.Second):
-		t.Fatal("idle connection was not closed")
+	if code := idle.closeCode(2 * time.Second); code != protocol.CloseIdleTimeout {
+		t.Fatalf("idle close code = %d, want %d", code, protocol.CloseIdleTimeout)
 	}
 }

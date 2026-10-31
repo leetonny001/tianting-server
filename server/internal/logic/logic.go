@@ -7,10 +7,10 @@ import (
 	"encoding/json"
 	"log/slog"
 	"slices"
-	"time"
 
 	"github.com/google/uuid"
 
+	"im-mvp/server/internal/clock"
 	"im-mvp/server/internal/hub"
 	"im-mvp/server/internal/protocol"
 	"im-mvp/server/internal/store"
@@ -18,28 +18,30 @@ import (
 
 // Service 实现 gateway.Handler。
 type Service struct {
-	store store.Store
-	hub   *hub.Hub
-	log   *slog.Logger
-	now   func() time.Time
-	newID func() string
+	store  store.Store
+	hub    *hub.Hub
+	log    *slog.Logger
+	clock  clock.Clock
+	faults *Faults // 仅测试模式非 nil
+	newID  func() string
 }
 
-func New(st store.Store, h *hub.Hub, log *slog.Logger) *Service {
+func New(st store.Store, h *hub.Hub, clk clock.Clock, faults *Faults, log *slog.Logger) *Service {
 	return &Service{
-		store: st,
-		hub:   h,
-		log:   log,
-		now:   time.Now,
+		store:  st,
+		hub:    h,
+		log:    log,
+		clock:  clk,
+		faults: faults,
 		// UUIDv7 按时间递增，作为主键插入时对 B 树更友好。
 		newID: func() string { return uuid.Must(uuid.NewV7()).String() },
 	}
 }
 
-// Handle 分发一条上行帧并返回 ack。
-func (s *Service) Handle(ctx context.Context, c hub.Client, in protocol.InFrame) protocol.OutFrame {
+// Handle 分发一条上行帧，返回要回给客户端的 ack；返回 nil 表示不回复（仅故障注入时）。
+func (s *Service) Handle(ctx context.Context, c hub.Client, in protocol.InFrame) *protocol.OutFrame {
 	if in.ID == "" {
-		return protocol.AckErr("", protocol.Errorf(protocol.CodeBadRequest, "missing id"))
+		return ack(protocol.AckErr("", protocol.Errorf(protocol.CodeMissingRequestID, "missing id")))
 	}
 	var (
 		data any
@@ -47,29 +49,36 @@ func (s *Service) Handle(ctx context.Context, c hub.Client, in protocol.InFrame)
 	)
 	switch in.Cmd {
 	case protocol.CmdSend:
-		data, err = s.send(ctx, c, in.Data)
+		var drop bool
+		data, drop, err = s.send(ctx, c, in.Data)
+		if drop {
+			return nil
+		}
 	case protocol.CmdSync:
 		data, err = s.sync(ctx, c, in.Data)
 	case protocol.CmdRead:
 		data, err = s.read(ctx, c, in.Data)
-	case protocol.CmdJoinRoom, protocol.CmdLeaveRoom:
-		err = protocol.Errorf(protocol.CodeBadRequest, "rooms are not available yet")
+	case protocol.CmdConvs, protocol.CmdJoinRoom, protocol.CmdLeaveRoom:
+		err = protocol.Errorf(protocol.CodeBadRequest, "%s is not available yet", in.Cmd)
 	default:
 		err = protocol.Errorf(protocol.CodeUnknownCmd, "unknown cmd %q", in.Cmd)
 	}
 	if err != nil {
-		return protocol.AckErr(in.ID, err)
+		return ack(protocol.AckErr(in.ID, err))
 	}
-	return protocol.AckOK(in.ID, data)
+	return ack(protocol.AckOK(in.ID, data))
 }
 
-func (s *Service) send(ctx context.Context, c hub.Client, raw json.RawMessage) (any, *protocol.Error) {
+func ack(f protocol.OutFrame) *protocol.OutFrame { return &f }
+
+// send 返回 ack 数据；drop=true 表示按故障注入丢弃 ack。
+func (s *Service) send(ctx context.Context, c hub.Client, raw json.RawMessage) (any, bool, *protocol.Error) {
 	req, perr := decode[protocol.SendReq](raw)
 	if perr != nil {
-		return nil, perr
+		return nil, false, perr
 	}
 	if perr := req.Validate(); perr != nil {
-		return nil, perr
+		return nil, false, perr
 	}
 	uid := c.UserID()
 
@@ -80,25 +89,19 @@ func (s *Service) send(ctx context.Context, c hub.Client, raw json.RawMessage) (
 		convID = protocol.C2CConvID(uid, req.To)
 		recipients = []string{req.To}
 	case protocol.ConvGroup:
-		members, err := s.store.GroupMembers(ctx, req.To)
-		if err != nil {
-			return nil, s.internal("load group members", err)
-		}
-		if !slices.Contains(members, uid) {
-			if len(members) == 0 {
-				return nil, protocol.Errorf(protocol.CodeNotFound, "group %s not found", req.To)
-			}
-			return nil, protocol.Errorf(protocol.CodeForbidden, "not a member of group %s", req.To)
+		members, perr := s.groupMembersFor(ctx, req.To, uid)
+		if perr != nil {
+			return nil, false, perr
 		}
 		convID = protocol.GroupConvID(req.To)
 		recipients = members
 	default:
-		return nil, protocol.Errorf(protocol.CodeBadRequest, "rooms are not available yet")
+		return nil, false, protocol.Errorf(protocol.CodeBadRequest, "rooms are not available yet")
 	}
 
 	body, err := json.Marshal(req.Body)
 	if err != nil {
-		return nil, s.internal("marshal body", err)
+		return nil, false, s.internal("marshal body", err)
 	}
 	saved, dup, err := s.store.SaveMessage(ctx, store.Message{
 		MsgID:       s.newID(),
@@ -107,16 +110,41 @@ func (s *Service) send(ctx context.Context, c hub.Client, raw json.RawMessage) (
 		From:        uid,
 		Type:        req.Type,
 		Body:        body,
-		TS:          s.now().UnixMilli(),
+		TS:          s.clock.Now().UnixMilli(),
 	})
 	if err != nil {
-		return nil, s.internal("save message", err)
+		return nil, false, s.internal("save message", err)
+	}
+	if dup && saved.ConvID != convID {
+		return nil, false, protocol.Errorf(protocol.CodeClientMsgIDConflict, "clientMsgId already used in another conversation")
 	}
 	// 重发的消息第一次已经投递过，不再投递；没收到的端会靠 sync 补齐。
-	if !dup {
+	if !dup && !s.faults.takeSkipDelivery(req.ClientMsgID) {
 		s.fanout(saved, recipients, c.ConnID())
 	}
-	return protocol.SendAck{MsgID: saved.MsgID, Seq: saved.Seq, TS: saved.TS}, nil
+	if s.faults.takeDropAck(req.ClientMsgID) {
+		return nil, true, nil
+	}
+	return protocol.SendAck{MsgID: saved.MsgID, ConvID: saved.ConvID, Seq: saved.Seq, TS: saved.TS}, false, nil
+}
+
+// groupMembersFor 返回群成员；群不存在返回 4043，uid 不是成员返回 4033。
+func (s *Service) groupMembersFor(ctx context.Context, gid, uid string) ([]string, *protocol.Error) {
+	exists, err := s.store.GroupExists(ctx, gid)
+	if err != nil {
+		return nil, s.internal("check group", err)
+	}
+	if !exists {
+		return nil, protocol.Errorf(protocol.CodeGroupNotFound, "group %s not found", gid)
+	}
+	members, err := s.store.GroupMembers(ctx, gid)
+	if err != nil {
+		return nil, s.internal("load group members", err)
+	}
+	if !slices.Contains(members, uid) {
+		return nil, protocol.Errorf(protocol.CodeNotGroupMember, "not a member of group %s", gid)
+	}
+	return members, nil
 }
 
 // fanout 投递给在线的接收者，以及发送者自己的其他设备。离线用户不处理，上线后 sync。
@@ -139,13 +167,22 @@ func (s *Service) sync(ctx context.Context, c hub.Client, raw json.RawMessage) (
 	if perr != nil {
 		return nil, perr
 	}
-	if perr := req.Validate(); perr != nil {
+	limit, perr := req.Validate()
+	if perr != nil {
 		return nil, perr
 	}
 	if perr := s.authorize(ctx, c.UserID(), req.ConvID); perr != nil {
 		return nil, perr
 	}
-	msgs, hasMore, err := s.store.ListMessages(ctx, req.ConvID, req.AfterSeq, req.Limit)
+
+	var msgs []store.Message
+	var hasMore bool
+	var err error
+	if req.AfterSeq != nil {
+		msgs, hasMore, err = s.store.ListMessages(ctx, req.ConvID, *req.AfterSeq, limit)
+	} else {
+		msgs, hasMore, err = s.store.ListMessagesBefore(ctx, req.ConvID, *req.BeforeSeq, 1, limit)
+	}
 	if err != nil {
 		return nil, s.internal("list messages", err)
 	}
@@ -173,7 +210,7 @@ func (s *Service) read(ctx context.Context, c hub.Client, raw json.RawMessage) (
 	return protocol.Empty{}, nil
 }
 
-// authorize 检查用户能否访问会话：单聊必须是其中一方，群聊必须是成员。
+// authorize 检查用户能否访问会话：单聊必须是其中一方（4032），群必须存在（4043）且是成员（4033）。
 func (s *Service) authorize(ctx context.Context, uid, convID string) *protocol.Error {
 	conv, perr := protocol.ParseConvID(convID)
 	if perr != nil {
@@ -182,15 +219,22 @@ func (s *Service) authorize(ctx context.Context, uid, convID string) *protocol.E
 	switch conv.Type {
 	case protocol.ConvC2C:
 		if !conv.Has(uid) {
-			return protocol.Errorf(protocol.CodeForbidden, "not a participant of %s", convID)
+			return protocol.Errorf(protocol.CodeNotConvParticipant, "not a participant of %s", convID)
 		}
 	case protocol.ConvGroup:
+		exists, err := s.store.GroupExists(ctx, conv.A)
+		if err != nil {
+			return s.internal("check group", err)
+		}
+		if !exists {
+			return protocol.Errorf(protocol.CodeGroupNotFound, "group %s not found", conv.A)
+		}
 		ok, err := s.store.IsGroupMember(ctx, conv.A, uid)
 		if err != nil {
 			return s.internal("check group member", err)
 		}
 		if !ok {
-			return protocol.Errorf(protocol.CodeForbidden, "not a member of %s", convID)
+			return protocol.Errorf(protocol.CodeNotGroupMember, "not a member of %s", convID)
 		}
 	default:
 		return protocol.Errorf(protocol.CodeBadRequest, "room messages cannot be synced")

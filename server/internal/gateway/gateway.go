@@ -13,18 +13,19 @@ import (
 
 	"github.com/coder/websocket"
 
+	"im-mvp/server/internal/auth"
 	"im-mvp/server/internal/hub"
 	"im-mvp/server/internal/protocol"
 )
 
-// Handler 处理一条已解析的上行帧（ping 除外），返回要回给客户端的 ack。
+// Handler 处理一条已解析的上行帧（ping 除外），返回要回给客户端的 ack；nil 表示不回复。
 type Handler interface {
-	Handle(ctx context.Context, c hub.Client, in protocol.InFrame) protocol.OutFrame
+	Handle(ctx context.Context, c hub.Client, in protocol.InFrame) *protocol.OutFrame
 }
 
-// TokenVerifier 校验 token 并返回用户 ID。
+// TokenVerifier 校验 token。
 type TokenVerifier interface {
-	Verify(token string) (string, error)
+	Verify(token string) (auth.Claims, error)
 }
 
 // Config 是网关参数。
@@ -61,11 +62,12 @@ func (g *Gateway) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	if token == "" {
 		token = strings.TrimPrefix(r.Header.Get("Authorization"), "Bearer ")
 	}
-	uid, err := g.verifier.Verify(token)
+	claims, err := g.verifier.Verify(token)
+	uid := claims.UserID
 	if err != nil {
 		w.Header().Set("Content-Type", "application/json; charset=utf-8")
 		w.WriteHeader(http.StatusUnauthorized)
-		_ = json.NewEncoder(w).Encode(protocol.Errorf(protocol.CodeUnauthorized, "invalid token"))
+		_ = json.NewEncoder(w).Encode(protocol.Errorf(protocol.CodeTokenInvalid, "invalid token"))
 		return
 	}
 	platform := r.URL.Query().Get("platform")
@@ -126,7 +128,7 @@ func (c *conn) Send(frame []byte) bool {
 	case <-c.done:
 		return false
 	default:
-		go c.ws.Close(websocket.StatusPolicyViolation, "slow consumer")
+		go c.ws.Close(protocol.CloseSlowConsumer, "slow consumer")
 		return false
 	}
 }
@@ -141,21 +143,27 @@ func (c *conn) run(parent context.Context) string {
 	}()
 	go c.writeLoop(ctx)
 
+	// 空闲计时：IdleTimeout 内收不到任何帧（包括 ping）就以 4408 关闭。
+	// 不用 Read 的 ctx 超时：coder/websocket 在 ctx 到期时会直接断开底层连接，
+	// 客户端只能看到异常断开（1006），拿不到 4408。
+	var idleFired atomic.Bool
+	idle := time.AfterFunc(c.gw.cfg.IdleTimeout, func() {
+		idleFired.Store(true)
+		c.ws.Close(protocol.CloseIdleTimeout, "idle timeout")
+	})
+	defer idle.Stop()
+
 	for {
-		// 每次读都重新计时：IdleTimeout 内收不到任何帧（包括 ping）就断开。
-		// coder/websocket 在读超时时会关闭底层连接。
-		readCtx, readCancel := context.WithTimeout(ctx, c.gw.cfg.IdleTimeout)
-		typ, data, err := c.ws.Read(readCtx)
-		idle := readCtx.Err() == context.DeadlineExceeded
-		readCancel()
+		typ, data, err := c.ws.Read(ctx)
 		if err != nil {
-			if idle {
+			if idleFired.Load() {
 				return "idle timeout"
 			}
 			return websocket.CloseStatus(err).String()
 		}
+		idle.Reset(c.gw.cfg.IdleTimeout)
 		if typ != websocket.MessageText {
-			c.write(protocol.AckErr("", protocol.Errorf(protocol.CodeBadRequest, "only text frames are supported")))
+			c.write(protocol.AckErr("", protocol.Errorf(protocol.CodeInvalidFrame, "only text frames are supported")))
 			continue
 		}
 		c.handle(ctx, data)
@@ -165,14 +173,16 @@ func (c *conn) run(parent context.Context) string {
 func (c *conn) handle(ctx context.Context, data []byte) {
 	var in protocol.InFrame
 	if err := json.Unmarshal(data, &in); err != nil || in.Cmd == "" {
-		c.write(protocol.AckErr(in.ID, protocol.Errorf(protocol.CodeBadRequest, "invalid frame")))
+		c.write(protocol.AckErr(in.ID, protocol.Errorf(protocol.CodeInvalidFrame, "invalid frame")))
 		return
 	}
 	if in.Cmd == protocol.CmdPing {
 		c.write(protocol.OutFrame{Cmd: protocol.CmdPong})
 		return
 	}
-	c.write(c.gw.handler.Handle(ctx, c, in))
+	if out := c.gw.handler.Handle(ctx, c, in); out != nil {
+		c.write(*out)
+	}
 }
 
 func (c *conn) write(f protocol.OutFrame) {

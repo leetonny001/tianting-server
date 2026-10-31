@@ -6,6 +6,8 @@
 //	IM_DB          SQLite 文件路径，默认 im.db
 //	IM_JWT_SECRET  用户 token 签名密钥（>= 16 字节），不设置时使用开发密钥
 //	IM_ADMIN_KEY   管理接口密钥（请求头 X-Admin-Key），不设置时使用开发密钥
+//	IM_TEST_MODE   设为 1 开启测试模式：故障注入、时钟注入、短有效期 token（生产禁止）
+//	IM_IDLE_TIMEOUT 空闲超时（如 90s），默认 90s
 package main
 
 import (
@@ -43,11 +45,26 @@ func main() {
 		adminKey = cmp.Or(adminKey, devAdminKey)
 	}
 
+	gw := gateway.DefaultConfig()
+	if v := os.Getenv("IM_IDLE_TIMEOUT"); v != "" {
+		d, err := time.ParseDuration(v)
+		if err != nil {
+			logger.Error("invalid IM_IDLE_TIMEOUT", "value", v, "err", err)
+			os.Exit(1)
+		}
+		gw.IdleTimeout = d
+	}
+	testMode := os.Getenv("IM_TEST_MODE") == "1"
+	if testMode {
+		logger.Warn("!!! TEST MODE ENABLED: fault injection, clock injection and 1s tokens are available — NEVER use in production !!!")
+	}
+
 	a, err := app.New(app.Config{
 		DBPath:    env("IM_DB", "im.db"),
 		JWTSecret: jwtSecret,
 		AdminKey:  adminKey,
-		Gateway:   gateway.DefaultConfig(),
+		Gateway:   gw,
+		TestMode:  testMode,
 		Version:   version,
 		Logger:    logger,
 	})
