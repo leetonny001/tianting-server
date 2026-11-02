@@ -91,6 +91,8 @@ const (
 	CloseTokenInvalid    = 4010
 	CloseTokenExpired    = 4011
 	CloseTokenRevoked    = 4012
+	CloseTooManyConns    = 4429
+	CloseAuthRequired    = 4401
 	CloseSlowConsumer    = 4400
 	CloseIdleTimeout     = 4408
 )
@@ -103,6 +105,8 @@ var closeCodes = map[int]string{
 	CloseTokenInvalid:    "TOKEN_INVALID",
 	CloseTokenExpired:    "TOKEN_EXPIRED",
 	CloseTokenRevoked:    "TOKEN_REVOKED",
+	CloseTooManyConns:    "TOO_MANY_CONNECTIONS",
+	CloseAuthRequired:    "AUTH_REQUIRED",
 	CloseSlowConsumer:    "SLOW_CONSUMER",
 	CloseIdleTimeout:     "IDLE_TIMEOUT",
 }
@@ -113,6 +117,8 @@ const (
 	KickTokenExpired = "tokenExpired"
 	KickBanned       = "banned"
 	KickReplaced     = "replaced"
+	KickTooManyConns = "tooManyConnections"
+	KickShutdown     = "serverShutdown"
 )
 
 // KickCloseCode 返回被踢原因对应的关闭码。
@@ -120,4 +126,6 @@ var KickCloseCode = map[string]int{
 	KickTokenInvalid: CloseTokenInvalid,
 	KickTokenExpired: CloseTokenExpired,
 	KickBanned:       CloseTokenRevoked,
+	KickTooManyConns: CloseTooManyConns,
+	KickShutdown:     CloseGoingAway,
 }

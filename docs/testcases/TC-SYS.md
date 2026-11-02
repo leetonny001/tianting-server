@@ -1,6 +1,6 @@
 # 测试用例：统一错误码（SYS）
 
-> 依据：[PRD v1.1](../prd/PRD-core-v1.1.md) F-SYS-01、§9 C-05/C-09/C-10、[ERRORS.md](../../protocol/ERRORS.md)、`protocol/errors.json`。
+> 依据：[PRD v1.2](../prd/PRD-core-v1.2.md) F-SYS-01、§9 C-05/C-09/C-10、[ERRORS.md](../../protocol/ERRORS.md)、`protocol/errors.json`。
 
 | 用例 | 标题 | 关联 AC | 层级 | 优先级 |
 |---|---|---|---|---|

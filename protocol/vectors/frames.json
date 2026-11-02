@@ -1,6 +1,8 @@
 {
   "description": "单帧校验用例（协议 v1）：valid 必须通过 frame.schema.json，invalid 必须被拒绝。服务端和两套 SDK 的编解码测试都使用这份文件。",
   "valid": [
+    { "name": "auth", "frame": { "id": "a1", "cmd": "auth", "data": { "token": "eyJhbGciOi.payload.sig" } } },
+    { "name": "auth ack", "frame": { "id": "a1", "cmd": "ack", "data": { "userId": "alice", "serverTime": 1700000000000 } } },
     { "name": "send c2c text", "frame": { "id": "r1", "cmd": "send", "data": { "convType": "c2c", "to": "u2", "clientMsgId": "6f1c2a4e-0001", "type": "text", "body": { "text": "hi" } } } },
     { "name": "send room custom", "frame": { "id": "r2", "cmd": "send", "data": { "convType": "room", "to": "match-123", "clientMsgId": "6f1c2a4e-0002", "type": "custom", "body": { "data": { "gift": "rocket" } } } } },
     { "name": "sync afterSeq", "frame": { "id": "r3", "cmd": "sync", "data": { "convId": "group:g1", "afterSeq": 41, "limit": 50 } } },
@@ -35,6 +37,8 @@
     { "name": "pong", "frame": { "cmd": "pong" } }
   ],
   "invalid": [
+    { "name": "auth without token", "frame": { "id": "a1", "cmd": "auth", "data": {} } },
+    { "name": "auth empty token", "frame": { "id": "a1", "cmd": "auth", "data": { "token": "" } } },
     { "name": "unknown cmd", "frame": { "id": "r1", "cmd": "fly", "data": {} } },
     { "name": "send without clientMsgId", "frame": { "id": "r1", "cmd": "send", "data": { "convType": "c2c", "to": "u2", "type": "text", "body": { "text": "hi" } } } },
     { "name": "send bad convType", "frame": { "id": "r1", "cmd": "send", "data": { "convType": "channel", "to": "u2", "clientMsgId": "6f1c2a4e-0001", "type": "text", "body": { "text": "hi" } } } },

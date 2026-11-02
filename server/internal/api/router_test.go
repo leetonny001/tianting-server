@@ -1,7 +1,9 @@
 package api
 
 import (
+	"context"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -30,6 +32,23 @@ func TestHealthz(t *testing.T) {
 	}
 	if got.UptimeSeconds < 3 {
 		t.Errorf("uptimeSeconds = %d, want >= 3", got.UptimeSeconds)
+	}
+}
+
+func TestReadyz(t *testing.T) {
+	var err error
+	h := NewRouter(Info{StartedAt: time.Now(), Ready: func(context.Context) error { return err }})
+	get := func() int {
+		rec := httptest.NewRecorder()
+		h.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/readyz", nil))
+		return rec.Code
+	}
+	if code := get(); code != http.StatusOK {
+		t.Errorf("ready: %d", code)
+	}
+	err = errors.New("db down")
+	if code := get(); code != http.StatusServiceUnavailable {
+		t.Errorf("not ready: %d", code)
 	}
 }
 

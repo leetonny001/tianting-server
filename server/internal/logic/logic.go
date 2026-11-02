@@ -11,7 +11,7 @@ import (
 	"github.com/google/uuid"
 
 	"im-mvp/server/internal/clock"
-	"im-mvp/server/internal/hub"
+	"im-mvp/server/internal/delivery"
 	"im-mvp/server/internal/protocol"
 	"im-mvp/server/internal/ratelimit"
 	"im-mvp/server/internal/store"
@@ -20,30 +20,30 @@ import (
 // Service 实现 gateway.Handler。
 type Service struct {
 	store   store.Store
-	hub     *hub.Hub
+	router  delivery.Router
 	log     *slog.Logger
 	clock   clock.Clock
 	faults  *Faults // 仅测试模式非 nil
-	limiter *ratelimit.Limiter
+	limiter ratelimit.Limiter
 	newID   func() string
 }
 
-// New 创建 Service。sendRate 为每个用户每秒可发的消息数（所有连接合计，PRD F-MSG-07）。
-func New(st store.Store, h *hub.Hub, clk clock.Clock, faults *Faults, sendRate int, log *slog.Logger) *Service {
+// New 创建 Service。limiter 按用户限制发送速率（所有连接合计，PRD F-MSG-07）。
+func New(st store.Store, router delivery.Router, clk clock.Clock, faults *Faults, limiter ratelimit.Limiter, log *slog.Logger) *Service {
 	return &Service{
 		store:   st,
-		hub:     h,
+		router:  router,
 		log:     log,
 		clock:   clk,
 		faults:  faults,
-		limiter: ratelimit.New(sendRate, sendRate, clk),
+		limiter: limiter,
 		// UUIDv7 按时间递增，作为主键插入时对 B 树更友好。
 		newID: func() string { return uuid.Must(uuid.NewV7()).String() },
 	}
 }
 
 // Handle 分发一条上行帧，返回要回给客户端的 ack；返回 nil 表示不回复（仅故障注入时）。
-func (s *Service) Handle(ctx context.Context, c hub.Client, in protocol.InFrame) *protocol.OutFrame {
+func (s *Service) Handle(ctx context.Context, c delivery.Session, in protocol.InFrame) *protocol.OutFrame {
 	if in.ID == "" {
 		return ack(protocol.AckErr("", protocol.Errorf(protocol.CodeMissingRequestID, "missing id")))
 	}
@@ -76,7 +76,7 @@ func (s *Service) Handle(ctx context.Context, c hub.Client, in protocol.InFrame)
 func ack(f protocol.OutFrame) *protocol.OutFrame { return &f }
 
 // send 返回 ack 数据；drop=true 表示按故障注入丢弃 ack。
-func (s *Service) send(ctx context.Context, c hub.Client, raw json.RawMessage) (any, bool, *protocol.Error) {
+func (s *Service) send(ctx context.Context, c delivery.Session, raw json.RawMessage) (any, bool, *protocol.Error) {
 	req, perr := decode[protocol.SendReq](raw)
 	if perr != nil {
 		return nil, false, perr
@@ -187,7 +187,7 @@ func (s *Service) groupMembersFor(ctx context.Context, gid, uid string) ([]strin
 }
 
 // fanout 投递给在线的接收者，以及发送者自己的其他设备。离线用户不处理，上线后 sync。
-func (s *Service) fanout(m store.Message, recipients []string, senderConn uint64) {
+func (s *Service) fanout(m store.Message, recipients []string, senderConn string) {
 	frame, err := json.Marshal(protocol.OutFrame{Cmd: protocol.CmdMsg, Data: toProto(m)})
 	if err != nil {
 		s.log.Error("marshal msg frame", "err", err)
@@ -195,13 +195,13 @@ func (s *Service) fanout(m store.Message, recipients []string, senderConn uint64
 	}
 	for _, uid := range recipients {
 		if uid != m.From {
-			s.hub.SendToUser(uid, frame, 0)
+			s.router.DeliverToUser(uid, frame, "")
 		}
 	}
-	s.hub.SendToUser(m.From, frame, senderConn)
+	s.router.DeliverToUser(m.From, frame, senderConn)
 }
 
-func (s *Service) sync(ctx context.Context, c hub.Client, raw json.RawMessage) (any, *protocol.Error) {
+func (s *Service) sync(ctx context.Context, c delivery.Session, raw json.RawMessage) (any, *protocol.Error) {
 	req, perr := decode[protocol.SyncReq](raw)
 	if perr != nil {
 		return nil, perr
@@ -232,7 +232,7 @@ func (s *Service) sync(ctx context.Context, c hub.Client, raw json.RawMessage) (
 	return out, nil
 }
 
-func (s *Service) read(ctx context.Context, c hub.Client, raw json.RawMessage) (any, *protocol.Error) {
+func (s *Service) read(ctx context.Context, c delivery.Session, raw json.RawMessage) (any, *protocol.Error) {
 	req, perr := decode[protocol.ReadReq](raw)
 	if perr != nil {
 		return nil, perr

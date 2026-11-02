@@ -1,6 +1,6 @@
 # 架构与安全设计 v1（可扩展、可迁移、安全优先）
 
-- 状态：**待确认**（决策见第 5 节）
+- 状态：**已确认**（2026-11-02，A1～A4 按建议通过）；B2.5 已实现，实现中的调整见第 7 节
 - 来源：用户要求（2026-11-02）——"后端架构要方便后期扩展分布式部署，数据库要方便后期迁移、备份、扩展；聊天软件应该把安全放第一位"
 - 范围：服务端。客户端受影响的只有第 3.2 节 S1（WS 鉴权方式），需要同步修改协议和 PRD。
 
@@ -118,7 +118,7 @@ SQL 编写约束（现在就遵守，换库时几乎不用改）：
 
 | 模式 | 方案 | RPO（最多丢多少） | RTO（多久恢复） |
 |---|---|---|---|
-| 单机 SQLite（一期） | 在线备份：`VACUUM INTO` 生成一致性快照，由 `POST /admin/backup` 或 `im-server backup` 触发；定时任务每小时一次，保留 48 份；备份文件**加密**后上传对象存储。可选 Litestream 持续复制 WAL 到 S3 / MinIO，RPO 降到秒级 | 1 小时（Litestream：约 1 秒） | 分钟级 |
+| 单机 SQLite（一期） | 在线备份：`VACUUM INTO` 生成一致性快照，由 `im-server backup` 触发（服务运行中也可执行；不提供 HTTP 接口，见第 7 节）；定时任务每小时一次，保留 48 份；备份文件**加密**后上传对象存储。可选 Litestream 持续复制 WAL 到 S3 / MinIO，RPO 降到秒级 | 1 小时（Litestream：约 1 秒） | 分钟级 |
 | Postgres（集群） | 托管服务或 `pgBackRest`：每天全量 + WAL 持续归档，支持恢复到任意时间点；跨可用区副本 | 秒级 | 30 分钟以内 |
 
 **恢复演练写成自动化测试**：备份 → 删库 → 恢复 → 校验每个会话的消息条数和最大 seq 与备份前一致。没有演练过的备份不算备份。
@@ -155,7 +155,7 @@ SQL 编写约束（现在就遵守，换库时几乎不用改）：
 
 | # | 需求 | 说明 |
 |---|---|---|
-| S1 | **token 不进 URL**（G7） | WS 握手只带 `platform`；连接建立后**第一帧必须是 `auth`**（携带 token），5 秒内没有收到就以 4010 关闭。收到 `auth` 之前不处理任何其他命令。见决策 A2。协议、PRD、前端任务需要同步修改 |
+| S1 | **token 不进 URL**（G7） | WS 握手只带 `platform`；连接建立后**第一帧必须是 `auth`**（携带 token），5 秒内没有收到就以 4401 关闭（可以重连）。收到 `auth` 之前不处理任何其他命令。见决策 A2。协议、PRD、前端任务需要同步修改 |
 | S2 | 全链路 TLS | 生产环境只允许 `wss://` / `https://`；TLS 可以在负载均衡终止，但服务端要求 `X-Forwarded-Proto=https`，并且只信任配置好的代理 IP（`IM_TRUSTED_PROXIES`）；HSTS |
 | S3 | Origin 白名单（G8） | `IM_ALLOWED_ORIGINS`；没有配置时只允许本机来源。原生 App 没有 Origin 头，按平台标识放行 |
 | S4 | 生产启动保护（G8） | `IM_ENV=production` 时：没有配置密钥、密钥长度小于 32 字节、密钥等于开发默认值、开启了测试模式或演示登录，**都拒绝启动**。非 production 才允许使用开发默认密钥 |
@@ -180,7 +180,7 @@ SQL 编写约束（现在就遵守，换库时几乎不用改）：
 
 ---
 
-## 5. 待确认的决策
+## 5. 决策（已确认）
 
 | # | 问题 | 建议 | 备选 |
 |---|---|---|---|
@@ -200,3 +200,23 @@ SQL 编写约束（现在就遵守，换库时几乎不用改）：
 - 测试用例：TC-AUTH 中握手相关用例改写，新增 `TC-SEC.md`。
 
 原 BE-051 中的 Origin 白名单和生产启动保护，提前并入 BE-064。
+
+---
+
+## 7. 实现记录（B2.5）
+
+| 项 | 实现 | 与设计的差异 / 说明 |
+|---|---|---|
+| 版本化迁移（BE-060） | `store/migrations/sqlite/0001_init.sql`、`schema_migrations`、`im-server migrate up/status` | 额外拒绝"数据库里有二进制不认识的迁移"（回滚到旧版本二进制时） |
+| 契约测试（BE-061） | `store/storetest`，11 个用例 | — |
+| 接口（BE-062） | `delivery.Router` / `Session`、`ratelimit.Limiter`、`cache.Invalidator`；连接 ID 改为带节点前缀的字符串 | 架构测试 `internal/archtest` 守住"logic、admin 不依赖 hub"；强制下线接口不再返回踢掉的连接数（集群下无法准确统计） |
+| 备份恢复（BE-063） | `im-server backup` / `restore`，恢复演练测试 | **不提供 `POST /admin/backup`**：让请求方指定服务器文件路径等于开放任意写文件；备份文件权限 0600 |
+| 启动保护（BE-064） | `internal/config`：production 下一次列出全部不安全配置并拒绝启动 | 新增：JWT 密钥与管理密钥不能相同；配置错误信息不打印密钥（测试发现了一处泄露并已修复） |
+| 连接上限（BE-064） | 每用户 10 个，踢最早的连接，`tooManyConnections` / 4429 | 关闭码原计划 4013，与错误码 4013（管理密钥无效）冲突，改用 4429；**目前按单节点统计**，集群化时改为按 Presence 统计 |
+| HTTP 超时（BE-064） | `ReadHeaderTimeout`、`IdleTimeout`、`MaxHeaderBytes` | **不设置 `ReadTimeout` / `WriteTimeout`**：它们是整条连接的截止时间，会断开 WebSocket 长连接 |
+| 首帧鉴权（BE-065） | `auth` 命令，5 秒超时以 4401 关闭 | 超时用新的关闭码 4401（可重连），而不是 4010（不重连），避免网络慢被当成凭证无效 |
+| 握手防护（BE-066） | 按 IP 握手限流（默认 20/s，突发 50）；无效 token 连续 20 次封禁 5 分钟；`IM_TRUSTED_PROXIES` | 默认值偏宽松，避免运营商 NAT 下误伤；只统计"凭证无效"，不统计过期和被强制下线 |
+| 密钥轮换（BE-067） | `IM_JWT_KEYS` + `IM_JWT_ACTIVE_KID`，token 头部带 `kid` | 没有 `kid` 的 token 视为无效（此前签发的开发 token 需要重新签发） |
+| CI（BE-068） | `.github/workflows/server.yml` | gosec 中危及以上阻断；低危的 G104（忽略关闭连接等的返回值）不阻断 |
+| 优雅下线（BE-069） | `/readyz`；SIGTERM → readyz 503 → 等待 `IM_DRAIN_DELAY` → `kicked/serverShutdown`（1001）→ 退出 | — |
+

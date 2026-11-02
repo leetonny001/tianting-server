@@ -1,0 +1,55 @@
+# 服务端 CI（BE-068，ARCH S11）：测试 + 静态检查 + 依赖漏洞扫描 + 需求追溯检查。任何一项失败都阻断合并。
+name: server
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read # 最小权限：CI 只需要读代码
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: server
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: server/go.mod
+          cache-dependency-path: server/go.sum
+      - name: go mod verify（依赖内容与 go.sum 一致，防篡改）
+        run: go mod verify
+      - name: go vet
+        run: go vet ./...
+      - name: test（含 race 检测、进程级 e2e）
+        run: go test -race -count=1 ./...
+
+  security:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: server
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: server/go.mod
+          cache-dependency-path: server/go.sum
+      - name: govulncheck（只报告代码实际调用到的已知漏洞）
+        run: go run golang.org/x/vuln/cmd/govulncheck@v1.9.0 ./...
+      - name: gosec（中危及以上阻断；豁免必须写 #nosec 规则号和理由）
+        run: go run github.com/securego/gosec/v2/cmd/gosec@v2.30.0 -quiet -severity medium -confidence medium -exclude-dir=e2e ./...
+
+  traceability:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: 每条 AC 都有任务和测试用例
+        run: python3 tools/trace.py --check

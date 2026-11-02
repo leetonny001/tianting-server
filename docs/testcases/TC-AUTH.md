@@ -1,7 +1,7 @@
 # 测试用例：账号与鉴权（AUTH）
 
-> 依据：[PRD v1.1](../prd/PRD-core-v1.1.md) F-AUTH-01～F-AUTH-05、§5 文案表、§6.1 测试环境要求、§9 C-08/C-11～C-15/C-21/C-44；[ERRORS.md](../../protocol/ERRORS.md) 第 4 节关闭码。
-> 约定：管理密钥通过 `X-Admin-Key` 头传递，测试值 `test-admin-key`；连接地址 `ws://{host}/ws?token={token}&platform={platform}`；"测试模式"指 §6.1 的测试环境（token 最短 1 秒，独立数据库）。
+> 依据：[PRD v1.2](../prd/PRD-core-v1.2.md) F-AUTH-01～F-AUTH-05、§5 文案表、§6.1 测试环境要求、§9 C-08/C-11～C-15/C-21/C-44；[ERRORS.md](../../protocol/ERRORS.md) 第 4 节关闭码。
+> 约定：管理密钥通过 `X-Admin-Key` 头传递，测试值 `test-admin-key`；连接地址 `ws://{host}/ws?platform={platform}`，连接后第一帧发送 `auth` 携带 token（PRD v1.2 C-52；下文“以 token=X 连接”均指这一过程）；"测试模式"指 §6.1 的测试环境（token 最短 1 秒，独立数据库）。
 > 接口路径（C-15）：强制下线接口 `POST /admin/users/{userId}/force-logout`；演示登录接口 `POST /demo/login`，body `{"username":...}`（测试模式下可带 `ttlSeconds`，C-21）。被踢后的界面行为按 C-01：停留在当前页面弹窗，点"确定"后回到登录页并清空数据。
 
 | 用例 | 标题 | 关联 AC | 层级 | 优先级 |
@@ -31,6 +31,13 @@
 | TC-AUTH-02-12 | platform 为空、缺失或为 tv 时以 4009 关闭 | AC-AUTH-02-6 | 后端 e2e | P0 |
 | TC-AUTH-02-13 | platform 只接受小写 | AC-AUTH-02-6 | 后端 e2e | P0 |
 | TC-AUTH-02-14 | 连接错误优先级：4009 先于 4010/4011 | AC-AUTH-02-6 | 后端 e2e | P0 |
+| TC-AUTH-02-15 | 连接后 5 秒内不发 auth，以 4401 关闭 | AC-AUTH-02-7 | 后端 e2e | P0 |
+| TC-AUTH-02-16 | auth 之前发送其他命令，以 4401 关闭 | AC-AUTH-02-7 | 后端 e2e | P0 |
+| TC-AUTH-02-17 | 只在 URL 携带 token 不会上线 | AC-AUTH-02-8 | 后端 e2e | P0 |
+| TC-AUTH-02-18 | auth 成功返回 userId 和 serverTime；重复 auth 返回 4000 | AC-AUTH-02-9 | 后端 e2e | P0 |
+| TC-AUTH-02-19 | 第 11 个连接上线时最早的连接被踢（4429） | AC-AUTH-02-10 | 后端 e2e | P0 |
+| TC-AUTH-02-20 | SDK 收到 4429 不重连并提示；收到 serverShutdown 退避重连 | AC-AUTH-02-10 | SDK 单测 | P0 |
+| TC-AUTH-02-21 | Origin 白名单：非白名单 403，白名单和无 Origin 可连 | AC-AUTH-02-11 | 后端 e2e | P0 |
 | TC-AUTH-03-01 | 在线期间 token 到期收到 kicked/tokenExpired、以 4011 关闭 | AC-AUTH-03-1 | 后端 e2e | P0 |
 | TC-AUTH-03-02 | 到期前连接正常可用 | AC-AUTH-03-1 | 后端 e2e | P0 |
 | TC-AUTH-03-03 | 强制下线后该用户所有连接收到 kicked/banned、以 4012 关闭 | AC-AUTH-03-2 | 后端 e2e | P0 |
@@ -363,6 +370,92 @@
 - 预期结果：
   1. 步骤 1、2：不发 kicked，以 4009 关闭（C-08：平台最先检查）。
   2. 步骤 3：`kicked`/`tokenInvalid` + 4010。
+
+### TC-AUTH-02-15 连接后 5 秒内不发 auth，以 4401 关闭
+- 关联 AC：AC-AUTH-02-7
+- 优先级：P0
+- 层级：后端 e2e
+- 前置条件：服务端已启动。
+- 步骤：
+  1. 以 `platform=web` 建立连接，不发送任何帧。
+  2. 等待 6 秒。
+- 预期结果：
+  1. 约 5 秒时连接以 4401 关闭；关闭前没有收到任何帧（不发 `kicked`）。
+
+### TC-AUTH-02-16 auth 之前发送其他命令，以 4401 关闭
+- 关联 AC：AC-AUTH-02-7
+- 优先级：P0
+- 层级：后端 e2e
+- 前置条件：bob 已注册。
+- 步骤：
+  1. 以 `platform=web` 建立连接，第一帧发送 `send`（发给 bob）。
+  2. 另建一个连接，第一帧发送 `ping`。
+- 预期结果：
+  1. 两个连接都以 4401 关闭，没有收到 ack 或 `pong`。
+  2. bob 没有收到消息，消息没有落库。
+
+### TC-AUTH-02-17 只在 URL 携带 token 不会上线
+- 关联 AC：AC-AUTH-02-8
+- 优先级：P0
+- 层级：后端 e2e
+- 前置条件：alice 的有效 token。
+- 步骤：
+  1. 以 `ws://{host}/ws?token=<有效 token>&platform=web` 建立连接，不发送 `auth`。
+- 预期结果：
+  1. 5 秒后以 4401 关闭；期间 alice 不在线（给 alice 发的消息不会推送到这个连接）。
+
+### TC-AUTH-02-18 auth 成功返回 userId 和 serverTime；重复 auth 返回 4000
+- 关联 AC：AC-AUTH-02-9
+- 优先级：P0
+- 层级：后端 e2e
+- 前置条件：测试模式，服务端时钟冻结在 T。
+- 步骤：
+  1. 建立连接，发送 `{"id":"a1","cmd":"auth","data":{"token":<alice 的 token>}}`。
+  2. 再发送一次 `auth`（id 为 a2）。
+  3. 发送 `ping`。
+- 预期结果：
+  1. 步骤 1 的 ack：`code`=0，`data.userId`=alice，`data.serverTime`=T。
+  2. 步骤 2 返回 4000，连接不断开。
+  3. 收到 `pong`。
+
+### TC-AUTH-02-19 第 11 个连接上线时最早的连接被踢（4429）
+- 关联 AC：AC-AUTH-02-10
+- 优先级：P0
+- 层级：后端 e2e
+- 前置条件：alice 的有效 token；bob 已注册。
+- 步骤：
+  1. alice 依次建立 C1～C10 共 10 个连接。
+  2. 建立第 11 个连接 C11。
+  3. bob 给 alice 发一条消息。
+- 预期结果：
+  1. 步骤 1 后 10 个连接都在线，没有收到 `kicked`。
+  2. 步骤 2 后只有 C1 收到 `kicked/tooManyConnections` 并以 4429 关闭。
+  3. C2～C11 都收到 bob 的消息，C1 没有收到。
+
+### TC-AUTH-02-20 SDK 收到 4429 不重连并提示；收到 serverShutdown 退避重连
+- 关联 AC：AC-AUTH-02-10
+- 优先级：P0
+- 层级：SDK 单测
+- 前置条件：假传输层。
+- 步骤：
+  1. 假传输层下发 `kicked/tooManyConnections` 后以 4429 关闭。
+  2. 重新初始化，下发 `kicked/serverShutdown` 后以 1001 关闭。
+- 预期结果：
+  1. 步骤 1：不发起重连，向上层抛出 `tooManyConnections`。
+  2. 步骤 2：按退避策略重连（1 秒左右发起第一次重连），不向上层抛出被踢事件。
+
+### TC-AUTH-02-21 Origin 白名单：非白名单 403，白名单和无 Origin 可连
+- 关联 AC：AC-AUTH-02-11
+- 优先级：P0
+- 层级：后端 e2e
+- 前置条件：服务端配置 `IM_ALLOWED_ORIGINS=https://im.example.com`。
+- 步骤：
+  1. 以 `Origin: https://evil.example.com` 发起握手。
+  2. 以 `Origin: https://im.example.com` 发起握手并完成 auth。
+  3. 不带 Origin 头发起握手并完成 auth（模拟原生端）。
+- 预期结果：
+  1. 步骤 1：HTTP 403，握手失败。
+  2. 步骤 2、3：连接成功，auth 返回 ack。
 
 ### TC-AUTH-03-01 在线期间 token 到期收到 kicked/tokenExpired、以 4011 关闭
 - 关联 AC：AC-AUTH-03-1

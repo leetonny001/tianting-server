@@ -2,7 +2,7 @@
 
 | 项 | 内容 |
 |---|---|
-| 依据 | [PRD v1.1](../prd/PRD-core-v1.1.md)、[错误码](../../protocol/ERRORS.md) |
+| 依据 | [PRD v1.2](../prd/PRD-core-v1.2.md)、[错误码](../../protocol/ERRORS.md) |
 | 负责 | 后端（AI） |
 | 起点 | M1 代码（`server/`）：鉴权、WS 网关、单聊 / 群聊、seq、去重、sync、已读位置 |
 | 完成定义 | 任务内列出的 AC 都有通过的自动化测试（后端 e2e 或单测）；`go test -race ./...` 全过；协议文档 / Schema / 用例同步更新 |
@@ -30,6 +30,16 @@
 | BE-012 先升级再踢 | ✅ 完成 | 检查顺序 4009 → 4010 → 4012 → 4011（C-08）；平台不合法不发 kicked；kicked 同步写完再关闭；M1 的 HTTP 401 测试已改写 |
 | BE-013 到期踢下线与强制下线 | ✅ 完成 | 连接上挂到期定时器；`POST /admin/users/{userId}/force-logout`；**改用令牌版本号作废旧 token**（见 IMP-8） |
 | BE-014 演示登录 | ✅ 完成 | `IM_DEMO_LOGIN=1` 才注册；去首尾空白；有效期 1 天；CORS |
+| BE-060 版本化迁移 | ✅ 完成 | embed 迁移文件 + checksum；生产默认不自动迁移；`im-server migrate up/status` |
+| BE-061 存储契约测试 | ✅ 完成 | `store/storetest`，SQLite 通过；Postgres 实现（BE-070）必须通过同一套 |
+| BE-062 投递 / 限流 / 缓存接口 | ✅ 完成 | logic、admin 只依赖接口；架构测试守住依赖方向（变异测试验证） |
+| BE-063 备份与恢复 | ✅ 完成 | 在线备份 + 校验；恢复演练（并发写入中备份、删库、恢复、逐会话核对）；不提供 HTTP 备份接口 |
+| BE-064 启动保护 / Origin / 连接上限 | ✅ 完成 | `internal/config`；Origin 白名单（默认仅本机）；每用户 10 连接（4429）；变异测试验证 |
+| BE-065 首帧 auth | ✅ 完成 | PRD v1.2 C-52；4401；Schema、用例、全部 e2e 已改 |
+| BE-066 握手限流与日志脱敏 | ✅ 完成 | 按 IP 限流 / 封禁；可信代理；日志扫描测试（变异测试验证） |
+| BE-067 JWT 密钥轮换 | ✅ 完成 | `kid`；轮换三步测试 |
+| BE-068 CI 安全扫描 | ✅ 完成 | govulncheck 无漏洞；gosec 中危 0（2 处 #nosec 有理由，1 处日志注入已修） |
+| BE-069 就绪检查与优雅下线 | ✅ 完成 | 进程级测试：SIGTERM 后 readyz 503，再收到 serverShutdown / 1001 |
 | 其余 | ⬜ 未开始 | |
 
 ## 总览
@@ -222,14 +232,14 @@
 ### BE-064 生产启动保护、Origin 白名单、资源上限
 - 优先级：P0
 - 依赖：—
-- AC：AC-AUTH-05-1（原 BE-051 的安全部分提前）
-- 内容：S3、S4、S6——`IM_ENV=production` 时缺少密钥、密钥短于 32 字节、等于开发默认值、开启测试模式或演示登录都拒绝启动；`IM_ALLOWED_ORIGINS`（未配置时只允许本机；没有 Origin 头的原生端放行）；HTTP `ReadTimeout` / `WriteTimeout` / `IdleTimeout`；单用户最多 10 个连接，超出时踢掉最早的连接（新增踢线原因 `tooManyConnections`，需要更新 errors.json）。
+- AC：AC-AUTH-02-10、AC-AUTH-02-11（原 BE-051 的安全部分提前）
+- 内容：S3、S4、S6——`IM_ENV=production` 时缺少密钥、密钥短于 32 字节、等于开发默认值、开启测试模式或演示登录都拒绝启动；`IM_ALLOWED_ORIGINS`（未配置时只允许本机；没有 Origin 头的原生端放行）；HTTP `ReadTimeout` / `WriteTimeout` / `IdleTimeout`；单用户最多 10 个连接，超出时踢掉最早的连接（踢线原因 `tooManyConnections`、关闭码 4429，C-53）。
 
 ### BE-065 WS 鉴权改为首帧 auth
 - 优先级：P0
-- 依赖：决策 A2、PRD v1.2 C-52
-- AC：（新增，PRD v1.2）
-- 内容：S1——握手 URL 只带 `platform`；第一帧必须是 `{"cmd":"auth","data":{"token":…}}`，5 秒内没有收到以 4010 关闭；auth 之前的其他命令返回 4010 并关闭；鉴权失败沿用"先升级再踢"的错误码与顺序（4009 → 4010 → 4012 → 4011）；auth 成功返回 ack（含 userId、服务端时间）。为平滑过渡，`IM_LEGACY_QUERY_TOKEN=1` 时仍接受 URL token（生产启动保护禁止开启）。同步修改 Schema、测试用例、现有 e2e。
+- 依赖：决策 A2（已确认）、PRD v1.2 C-52
+- AC：AC-AUTH-02-7、AC-AUTH-02-8、AC-AUTH-02-9
+- 内容：S1——握手 URL 只带 `platform`；第一帧必须是 `{"cmd":"auth","data":{"token":…}}`，5 秒内没有收到或第一帧不是 auth 都以 4401 关闭（C-52）；鉴权失败沿用"先升级再踢"的错误码与顺序（4009 → 4010 → 4012 → 4011）；auth 成功返回 ack（含 userId、服务端时间）。前端尚未开发，不保留 URL token 的兼容模式。同步修改 Schema、测试用例、现有 e2e。
 
 ### BE-066 握手限流与日志脱敏
 - 优先级：P0
@@ -341,7 +351,7 @@
 ### BE-051 可观测与安全配置
 - 优先级：P0
 - 依赖：BE-015
-- AC：—（原 AC 已移到 BE-064）
+- AC：AC-AUTH-05-1
 - 内容：连接断开日志记录关闭码和原因；Prometheus 指标（在线连接数、收发消息速率、ack 延迟、错误码分布）。Origin 白名单和生产启动保护已提前到 BE-064。
 
 ---
@@ -374,3 +384,7 @@
 | IMP-6 | groupId 和群名都不合法；4090 和 4042 的先后 | 先校验 ID 格式（4004），再校验其他参数（4000）；建群时先判断群是否已存在（4090），再校验成员是否存在（4042） | TC-GRP 中 C-08 相关用例 |
 | IMP-7 | `POST /admin/test/clock` 是冻结时间还是设置偏移 | **冻结**：设置后服务端的"当前时间"固定为该值，直到再次设置；传 `{"nowMs": null}` 恢复真实时钟。对服务端所有用到时间的地方生效：消息时间戳、token 过期、限流、会话排序 | TC-CONV-01-07/10/11 |
 | IMP-8 | C-11 要求用毫秒级签发时间判断"强制下线前签发的 token"，但 e2e 测试发现：签发和强制下线落在**同一毫秒**时无法区分。用 `<` 比较会漏掉同毫秒内签发的旧 token，用 `≤` 又会误伤强制下线后同毫秒内重新签发的新 token | **改用令牌版本号**：`users.token_version` 在强制下线时加 1，签发 token 时把当前版本写进 `tv` 字段，校验时 `tv < 当前版本` 即作废。效果满足 C-11 的意图（新 token 必须可用、旧 token 必须作废），且与时间精度无关；`iatMs` 保留，仅用于日志 | TC-AUTH-03-*（C-11 相关用例的断言不变） |
+| IMP-9 | 首帧 `auth` 超时、第一帧不是 `auth`，用哪个关闭码 | **4401 AUTH_REQUIRED（可重连）**，不发 `kicked`。不用 4010：4010 表示凭证无效、SDK 不再重连，而超时可能只是网络慢 | TC-AUTH-02-15/16/17 |
+| IMP-10 | `auth` 帧里 token 缺失、为空或类型不对 | 按凭证无效处理：`kicked/tokenInvalid` + 4010，并计入该 IP 的鉴权失败次数 | TC-AUTH-02-03/04 |
+| IMP-11 | 强制下线接口的返回值 | 返回 `{}`，不再返回踢掉的连接数：集群下连接分布在多个节点，无法准确统计 | TC-AUTH-03-* |
+

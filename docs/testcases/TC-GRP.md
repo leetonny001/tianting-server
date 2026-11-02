@@ -1,6 +1,6 @@
 # 测试用例：群聊（GRP）
 
-> 依据：[PRD v1.1](../prd/PRD-core-v1.1.md) F-GRP-01～F-GRP-03 及 §9 补充规则（C-04、C-08、C-35～C-38）、[需求澄清](../review/CLARIFY-core-v1.0.md)、[ERRORS.md](../../protocol/ERRORS.md)。
+> 依据：[PRD v1.2](../prd/PRD-core-v1.2.md) F-GRP-01～F-GRP-03 及 §9 补充规则（C-04、C-08、C-35～C-38）、[需求澄清](../review/CLARIFY-core-v1.0.md)、[ERRORS.md](../../protocol/ERRORS.md)。
 >
 > 未读数 = maxSeq − max(readSeq, joinSeq)，与 historyVisible 无关（C-02）。群管理多错误优先级：格式（4004 / 4000）→ 4043 → 4131 → 4042 → 4130（C-08）。
 >

@@ -12,49 +12,6 @@ import (
 	_ "modernc.org/sqlite" // 纯 Go 的 SQLite 驱动，不需要 cgo
 )
 
-const schema = `
-CREATE TABLE IF NOT EXISTS conv_seq (
-	conv_id TEXT PRIMARY KEY,
-	max_seq INTEGER NOT NULL
-);
-CREATE TABLE IF NOT EXISTS messages (
-	msg_id        TEXT PRIMARY KEY,
-	conv_id       TEXT NOT NULL,
-	seq           INTEGER NOT NULL,
-	from_uid      TEXT NOT NULL,
-	client_msg_id TEXT NOT NULL,
-	type          TEXT NOT NULL,
-	body          TEXT NOT NULL,
-	ts            INTEGER NOT NULL,
-	UNIQUE (conv_id, seq),
-	UNIQUE (from_uid, client_msg_id)
-);
-CREATE TABLE IF NOT EXISTS chat_groups (
-	group_id   TEXT PRIMARY KEY,
-	name       TEXT NOT NULL,
-	created_at INTEGER NOT NULL
-);
-CREATE TABLE IF NOT EXISTS group_members (
-	group_id  TEXT NOT NULL REFERENCES chat_groups(group_id),
-	user_id   TEXT NOT NULL,
-	joined_at INTEGER NOT NULL,
-	PRIMARY KEY (group_id, user_id)
-);
-CREATE TABLE IF NOT EXISTS users (
-	user_id            TEXT PRIMARY KEY,
-	nickname           TEXT NOT NULL DEFAULT '',
-	avatar             TEXT NOT NULL DEFAULT '',
-	created_at         INTEGER NOT NULL,
-	token_version      INTEGER NOT NULL DEFAULT 0
-);
-CREATE TABLE IF NOT EXISTS read_seq (
-	user_id TEXT NOT NULL,
-	conv_id TEXT NOT NULL,
-	seq     INTEGER NOT NULL,
-	PRIMARY KEY (user_id, conv_id)
-);
-`
-
 // SQLite 是 Store 的 SQLite 实现。
 //
 // 只开一个连接：SQLite 同一时刻只允许一个写者，单连接让所有操作排队，
@@ -63,8 +20,27 @@ type SQLite struct {
 	db *sql.DB
 }
 
-// OpenSQLite 打开（必要时创建）数据库文件并建表。
-func OpenSQLite(path string) (*SQLite, error) {
+// SQLiteOptions 是打开 SQLite 时的选项。
+type SQLiteOptions struct {
+	// AutoMigrate 为 true 时打开即执行待执行的迁移（开发、测试）；为 false 时有待执行的迁移就报错，
+	// 由发布流程显式执行 `im-server migrate up`（ARCH 3.1）。
+	AutoMigrate bool
+}
+
+// OpenSQLite 打开（必要时创建）数据库文件，并检查或执行迁移。
+func OpenSQLite(path string, opt SQLiteOptions) (*SQLite, error) {
+	db, err := openSQLiteDB(path)
+	if err != nil {
+		return nil, err
+	}
+	if err := ensureMigrated(context.Background(), db, opt.AutoMigrate); err != nil {
+		db.Close()
+		return nil, err
+	}
+	return &SQLite{db: db}, nil
+}
+
+func openSQLiteDB(path string) (*sql.DB, error) {
 	// synchronous=FULL：每次提交都 fsync，返回 ack 的消息一定已经落盘（PRD 第 6 节）。
 	dsn := "file:" + path + "?_pragma=journal_mode(WAL)&_pragma=synchronous(FULL)&_pragma=busy_timeout(5000)&_pragma=foreign_keys(1)"
 	db, err := sql.Open("sqlite", dsn)
@@ -72,14 +48,69 @@ func OpenSQLite(path string) (*SQLite, error) {
 		return nil, fmt.Errorf("open sqlite: %w", err)
 	}
 	db.SetMaxOpenConns(1)
-	if _, err := db.Exec(schema); err != nil {
-		db.Close()
-		return nil, fmt.Errorf("create schema: %w", err)
+	return db, nil
+}
+
+// SQLiteMigrations 返回打包在二进制里的 SQLite 迁移。
+func SQLiteMigrations() ([]Migration, error) {
+	return LoadMigrations(migrationFS, "migrations/sqlite")
+}
+
+func ensureMigrated(ctx context.Context, db *sql.DB, auto bool) error {
+	ms, err := SQLiteMigrations()
+	if err != nil {
+		return err
 	}
-	return &SQLite{db: db}, nil
+	if auto {
+		_, err := Migrate(ctx, db, ms)
+		return err
+	}
+	st, err := Status(ctx, db, ms)
+	if err != nil {
+		return err
+	}
+	if len(st.Pending) > 0 {
+		return fmt.Errorf("%d pending migration(s) starting at %04d_%s; run `im-server migrate up` first",
+			len(st.Pending), st.Pending[0].Version, st.Pending[0].Name)
+	}
+	return nil
+}
+
+// MigrateSQLite 对数据库文件执行待执行的迁移（`im-server migrate up`）。
+func MigrateSQLite(ctx context.Context, path string) ([]int, error) {
+	db, err := openSQLiteDB(path)
+	if err != nil {
+		return nil, err
+	}
+	defer db.Close()
+	ms, err := SQLiteMigrations()
+	if err != nil {
+		return nil, err
+	}
+	return Migrate(ctx, db, ms)
+}
+
+// SQLiteStatus 返回数据库文件的迁移状态（`im-server migrate status`）。
+func SQLiteStatus(ctx context.Context, path string) (MigrationStatus, error) {
+	db, err := openSQLiteDB(path)
+	if err != nil {
+		return MigrationStatus{}, err
+	}
+	defer db.Close()
+	ms, err := SQLiteMigrations()
+	if err != nil {
+		return MigrationStatus{}, err
+	}
+	return Status(ctx, db, ms)
 }
 
 func (s *SQLite) Close() error { return s.db.Close() }
+
+// Ping 检查数据库可用（/readyz）。
+func (s *SQLite) Ping(ctx context.Context) error {
+	var one int
+	return s.db.QueryRowContext(ctx, `SELECT 1`).Scan(&one)
+}
 
 func (s *SQLite) SaveMessage(ctx context.Context, m Message) (Message, bool, error) {
 	tx, err := s.db.BeginTx(ctx, nil)

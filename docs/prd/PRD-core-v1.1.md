@@ -2,11 +2,11 @@
 
 | 项 | 内容 |
 |---|---|
-| 版本 | **v1.1（已冻结）** |
+| 版本 | v1.1 |
 | 作者 | 产品（AI） |
 | 拍板人 | Frank |
 | 日期 | 2026-10-31 |
-| 状态 | 评审通过，冻结。修改需走变更流程（见 [docs/process](../process/README.md)） |
+| 状态 | 已被 [v1.2](PRD-core-v1.2.md) 取代 |
 | 依据 | [PRD v0.1](PRD-core-v0.1.md) + [评审记录](../review/REVIEW-core-v0.1.md)（R-01～R-31、D1～D6）+ [需求澄清](../review/CLARIFY-core-v1.0.md)（C-01～C-51） |
 | 关联 | 错误码 [protocol/ERRORS.md](../../protocol/ERRORS.md)、协议 [protocol/README.md](../../protocol/README.md) |
 

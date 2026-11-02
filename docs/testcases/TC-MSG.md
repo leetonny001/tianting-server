@@ -1,6 +1,6 @@
 # 测试用例：消息（MSG）
 
-> 依据：[PRD v1.1](../prd/PRD-core-v1.1.md) F-MSG-01～F-MSG-07 及 §9 补充规则（C-26～C-33）、[需求澄清](../review/CLARIFY-core-v1.0.md)、[ERRORS.md](../../protocol/ERRORS.md)、[protocol/README.md](../../protocol/README.md)（PRD §8 的协议变更以 PRD 为准）。
+> 依据：[PRD v1.2](../prd/PRD-core-v1.2.md) F-MSG-01～F-MSG-07 及 §9 补充规则（C-26～C-33）、[需求澄清](../review/CLARIFY-core-v1.0.md)、[ERRORS.md](../../protocol/ERRORS.md)、[protocol/README.md](../../protocol/README.md)（PRD §8 的协议变更以 PRD 为准）。
 >
 > 通用约定（适用于本文件全部用例）：
 > - 每个用例使用独立数据库；服务端以测试模式启动（PRD §6.1）。

@@ -64,3 +64,21 @@ func TestPruneIdleBuckets(t *testing.T) {
 		t.Error("full idle bucket should be pruned")
 	}
 }
+
+func TestNewPerSlowRefill(t *testing.T) {
+	clk := clock.New()
+	t0 := time.UnixMilli(1_700_000_000_000)
+	clk.Freeze(t0)
+	l := NewPer(3*time.Second, 2, clk)
+	if !l.Allow("ip") || !l.Allow("ip") || l.Allow("ip") {
+		t.Fatal("burst of 2 expected")
+	}
+	clk.Freeze(t0.Add(2 * time.Second))
+	if l.Allow("ip") {
+		t.Fatal("refilled too early")
+	}
+	clk.Freeze(t0.Add(3 * time.Second))
+	if !l.Allow("ip") {
+		t.Fatal("one token expected after 3s")
+	}
+}

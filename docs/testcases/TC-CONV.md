@@ -1,6 +1,6 @@
 # 测试用例：会话（CONV）
 
-> 依据：[PRD v1.1](../prd/PRD-core-v1.1.md) F-CONV-01～F-CONV-03 及 §9 补充规则（C-39～C-43）、[需求澄清](../review/CLARIFY-core-v1.0.md)、[ERRORS.md](../../protocol/ERRORS.md)。`convs` 命令及应答结构以 PRD §8 / F-CONV-01 为准（含 `truncated`）。
+> 依据：[PRD v1.2](../prd/PRD-core-v1.2.md) F-CONV-01～F-CONV-03 及 §9 补充规则（C-39～C-43）、[需求澄清](../review/CLARIFY-core-v1.0.md)、[ERRORS.md](../../protocol/ERRORS.md)。`convs` 命令及应答结构以 PRD §8 / F-CONV-01 为准（含 `truncated`）。
 >
 > 通用约定：
 > - 每个用例使用独立数据库，服务端测试模式。

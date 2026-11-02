@@ -1,6 +1,6 @@
 # 测试用例：用户（USER）
 
-> 依据：[PRD v1.1](../prd/PRD-core-v1.1.md) F-USER-01、F-USER-02，§3.1 通用约定，§9 C-15～C-20。
+> 依据：[PRD v1.2](../prd/PRD-core-v1.2.md) F-USER-01、F-USER-02，§3.1 通用约定，§9 C-15～C-20。
 > 接口路径（C-15）：导入用户 `POST /admin/users/import`，body `{"users":[{"userId":...,"nickname":...,"avatar":...}]}`；查询用户 `GET /admin/users/{userId}`，用于核对导入结果（返回 `userId`、`nickname`、`avatar`）。管理密钥通过 `X-Admin-Key` 头传递，测试值 `test-admin-key`。
 
 | 用例 | 标题 | 关联 AC | 层级 | 优先级 |

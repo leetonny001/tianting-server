@@ -2,7 +2,7 @@
 
 | 项 | 内容 |
 |---|---|
-| 依据 | [PRD v1.1](../prd/PRD-core-v1.1.md)、[错误码](../../protocol/ERRORS.md)、[协议](../../protocol/README.md) |
+| 依据 | [PRD v1.2](../prd/PRD-core-v1.2.md)、[错误码](../../protocol/ERRORS.md)、[协议](../../protocol/README.md) |
 | 负责 | 前端（AI） |
 | 技术栈 | TypeScript；SDK 不依赖任何框架（`sdk-ts/`）；H5 用 React + Vite（`web/`）；测试：Vitest（SDK）、Playwright（UI） |
 | 开工条件 | 后端 BE-001（协议定稿）完成 |
@@ -49,12 +49,13 @@ SDK 先行（F1 可以用假传输层独立开发和测试），页面依赖 SDK
 ### FE-003 连接管理：心跳、重连、被踢
 - 优先级：P0
 - 依赖：FE-002
-- AC：AC-CONN-01-3、AC-CONN-01-5、AC-CONN-01-6、AC-AUTH-02-4、AC-AUTH-03-5、AC-AUTH-05-1
+- AC：AC-CONN-01-3、AC-CONN-01-5、AC-CONN-01-6、AC-AUTH-02-4、AC-AUTH-03-5、AC-AUTH-05-1、AC-AUTH-02-10
 - 内容：
   1. 状态机：断开 / 连接中 / 已连接。
   2. 每 30 秒发 ping，10 秒收不到 pong 判定断线。
   3. 重连按 1s 起指数退避，最长 30s，加 ±20% 抖动；浏览器 `online` 事件触发立即重连。
-  4. 收到 `kicked`，或关闭码为 1000、4009～4012 时不重连，向上层抛出原因。
+  4. 收到 `kicked`，或关闭码为 1000、4009～4012、4429 时不重连，向上层抛出原因；**例外**：`kicked/serverShutdown`（1001）按退避重连（C-55）。
+  7. **鉴权（PRD v1.2 C-52）**：连接地址只带 `platform`；`open` 后立即发送 `auth` 帧携带 token，收到 auth 的 ack 才进入"已连接"；token 不得出现在 URL 和 SDK 日志里。4401 按普通断线退避重连。
   5. `disconnect()` 以 1000 关闭，并清空状态。
   6. 所有时间参数都可以配置（便于测试）。
 

@@ -1,6 +1,6 @@
 # IM 协议（v1）
 
-协议的唯一真相源，对应 [PRD v1.1](../docs/prd/PRD-core-v1.1.md)。服务端、`sdk-ts`、`sdk-kmp` 都以这里为准，并跑同一批用例。
+协议的唯一真相源，对应 [PRD v1.2](../docs/prd/PRD-core-v1.2.md)。服务端、`sdk-ts`、`sdk-kmp` 都以这里为准，并跑同一批用例。
 
 | 文件 | 内容 |
 |---|---|
@@ -11,18 +11,26 @@
 ## 1. 连接
 
 ```
-ws(s)://{host}/ws?token={jwt}&platform={android|ios|web|pc}
+ws(s)://{host}/ws?platform={android|ios|web|pc}
+→ 第一帧：{"id":"a1","cmd":"auth","data":{"token":"<jwt>"}}
+← {"id":"a1","cmd":"ack","data":{"userId":"alice","serverTime":1700000000000}}
 ```
 
+- **token 不放在 URL 里**（会被代理、CDN、浏览器历史记录），连接后第一帧用 `auth` 发送（PRD C-52）。收到 auth 的 ack 才算上线。
+- 5 秒内没有发 `auth`，或第一帧不是 `auth`：以 4401 关闭（可以重连），不发 `kicked`。
 - token 由业务服务端调用 `POST /admin/users/token` 获取（对应腾讯 IM 的 userSig）。
-- 凭证问题：服务端**先完成升级**，下发 `{"cmd":"event","data":{"type":"kicked","reason":"tokenInvalid|tokenExpired|banned"}}`，再以 4010 / 4011 / 4012 关闭（浏览器拿不到握手阶段的 HTTP 401）。*（BE-012 实现前，服务端仍返回 HTTP 401。）*
-- platform 缺失或不合法：以 4009 关闭，不发 `kicked`。
+- 凭证问题：下发 `{"cmd":"event","data":{"type":"kicked","reason":"tokenInvalid|tokenExpired|banned"}}`，再以 4010 / 4011 / 4012 关闭（检查顺序 4010 → 4012 → 4011）。
+- platform 缺失或不合法：握手后立即以 4009 关闭，不发 `kicked`（最先检查）。
+- 浏览器的 Origin 必须在白名单内（`IM_ALLOWED_ORIGINS`），否则握手返回 HTTP 403。
+- 同一用户最多 10 个连接，超出时最早的连接收到 `kicked/tooManyConnections` 并以 4429 关闭（不重连）。
+- 服务端下线前会下发 `kicked/serverShutdown` 并以 1001 关闭：客户端**按退避重连**。
 - 每个 WebSocket 消息是一帧 JSON（text frame），一帧一个对象。上行单帧最大 64KB；下行不限。
 
 ## 2. 命令
 
 | 命令 | 方向 | 用途 | ack 数据 |
 |---|---|---|---|
+| `auth` | 上行 | 鉴权，必须是第一帧；成功后再发返回 4000 | `{userId, serverTime}` |
 | `send` | 上行 | 发消息 | `{msgId, convId, seq, ts}` |
 | `sync` | 上行 | 拉消息：`afterSeq`（补拉之后的）或 `beforeSeq`（翻页拉之前的），二选一 | `{messages, hasMore}`，按 seq 升序 |
 | `convs` | 上行 | 拉会话列表 *（BE-040）* | `{convs, truncated}` |

@@ -13,6 +13,7 @@ import (
 
 // 命令名。
 const (
+	CmdAuth      = "auth"
 	CmdSend      = "send"
 	CmdSync      = "sync"
 	CmdConvs     = "convs"
@@ -162,6 +163,17 @@ func (r *SendReq) Validate() *Error {
 		return Errorf(CodeBadRequest, "invalid type %q", r.Type)
 	}
 	return nil
+}
+
+// AuthReq 对应 cmd=auth：连接后的第一帧（PRD C-52）。
+type AuthReq struct {
+	Token string `json:"token"`
+}
+
+// AuthAck 是 auth 成功的应答。
+type AuthAck struct {
+	UserID     string `json:"userId"`
+	ServerTime int64  `json:"serverTime"`
 }
 
 // SendAck 是 send 成功的应答。聊天室消息没有 seq。

@@ -1,12 +1,16 @@
-// Package hub 维护在线连接表：用户 → 该用户的所有连接（多端同时在线）。
+// Package hub 维护本节点的在线连接表：用户 → 该用户的所有连接（多端同时在线）。
+// Hub 同时是 delivery.Router 的单节点实现。
 package hub
 
-import "sync"
+import (
+	"sync"
+
+	"im-mvp/server/internal/delivery"
+)
 
 // Client 是一个在线连接。Send、Kick 都不能阻塞。
 type Client interface {
-	ConnID() uint64
-	UserID() string
+	delivery.Session
 	Send(frame []byte) bool // 发不出去时返回 false
 	Kick(reason string)     // 下发 kicked 并关闭连接
 }
@@ -14,23 +18,44 @@ type Client interface {
 // Hub 是并发安全的在线表。
 type Hub struct {
 	mu    sync.RWMutex
-	users map[string]map[uint64]Client
+	users map[string]map[string]entry
+	seq   uint64 // 登记顺序，用于找出最早的连接
+}
+
+type entry struct {
+	c   Client
+	seq uint64
 }
 
 func New() *Hub {
-	return &Hub{users: make(map[string]map[uint64]Client)}
+	return &Hub{users: make(map[string]map[string]entry)}
 }
 
-// Register 登记连接。
-func (h *Hub) Register(c Client) {
+// Register 登记连接。用户的连接数超过 max（<= 0 表示不限）时，把最早的连接移出在线表并返回，
+// 由调用方踢下线（ARCH S6）。被移出的连接不会再收到投递。
+//
+// 注意：这个上限按本节点计算；集群部署时要改为按在线路由（Presence）统计全部节点。
+func (h *Hub) Register(c Client, max int) (evicted []Client) {
 	h.mu.Lock()
 	defer h.mu.Unlock()
 	conns := h.users[c.UserID()]
 	if conns == nil {
-		conns = make(map[uint64]Client)
+		conns = make(map[string]entry)
 		h.users[c.UserID()] = conns
 	}
-	conns[c.ConnID()] = c
+	h.seq++
+	conns[c.ConnID()] = entry{c: c, seq: h.seq}
+	for max > 0 && len(conns) > max {
+		var oldest entry
+		for _, e := range conns {
+			if oldest.c == nil || e.seq < oldest.seq {
+				oldest = e
+			}
+		}
+		delete(conns, oldest.c.ConnID())
+		evicted = append(evicted, oldest.c)
+	}
+	return evicted
 }
 
 // Unregister 移除连接；用户没有连接时从表里删掉。
@@ -44,14 +69,24 @@ func (h *Hub) Unregister(c Client) {
 	}
 }
 
-// SendToUser 把帧发给用户的所有连接，跳过 exceptConn（0 表示不跳过）。
+var _ delivery.Router = (*Hub)(nil)
+
+// DeliverToUser 实现 delivery.Router。
+func (h *Hub) DeliverToUser(userID string, frame []byte, exceptConn string) {
+	h.SendToUser(userID, frame, exceptConn)
+}
+
+// KickUser 实现 delivery.Router。
+func (h *Hub) KickUser(userID, reason string) { h.KickLocal(userID, reason) }
+
+// SendToUser 把帧发给本节点上用户的所有连接，跳过 exceptConn（空字符串表示不跳过）。
 // 返回成功投递的连接数。
-func (h *Hub) SendToUser(userID string, frame []byte, exceptConn uint64) int {
+func (h *Hub) SendToUser(userID string, frame []byte, exceptConn string) int {
 	h.mu.RLock()
 	targets := make([]Client, 0, len(h.users[userID]))
-	for id, c := range h.users[userID] {
+	for id, e := range h.users[userID] {
 		if id != exceptConn {
-			targets = append(targets, c)
+			targets = append(targets, e.c)
 		}
 	}
 	h.mu.RUnlock()
@@ -66,12 +101,12 @@ func (h *Hub) SendToUser(userID string, frame []byte, exceptConn uint64) int {
 	return n
 }
 
-// KickUser 踢掉用户的所有连接，返回连接数。
-func (h *Hub) KickUser(userID, reason string) int {
+// KickLocal 踢掉本节点上用户的所有连接，返回连接数。
+func (h *Hub) KickLocal(userID, reason string) int {
 	h.mu.RLock()
 	targets := make([]Client, 0, len(h.users[userID]))
-	for _, c := range h.users[userID] {
-		targets = append(targets, c)
+	for _, e := range h.users[userID] {
+		targets = append(targets, e.c)
 	}
 	h.mu.RUnlock()
 	for _, c := range targets {
@@ -85,4 +120,20 @@ func (h *Hub) ConnCount(userID string) int {
 	h.mu.RLock()
 	defer h.mu.RUnlock()
 	return len(h.users[userID])
+}
+
+// KickAll 踢掉本节点上的全部连接（优雅下线），返回连接数。
+func (h *Hub) KickAll(reason string) int {
+	h.mu.RLock()
+	var targets []Client
+	for _, conns := range h.users {
+		for _, e := range conns {
+			targets = append(targets, e.c)
+		}
+	}
+	h.mu.RUnlock()
+	for _, c := range targets {
+		c.Kick(reason)
+	}
+	return len(targets)
 }

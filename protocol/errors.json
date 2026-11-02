@@ -40,12 +40,16 @@
     { "code": 4011, "name": "TOKEN_EXPIRED",       "reconnect": false, "meaning": "同错误码 4011" },
     { "code": 4012, "name": "TOKEN_REVOKED",       "reconnect": false, "meaning": "同错误码 4012" },
     { "code": 4400, "name": "SLOW_CONSUMER",       "reconnect": true,  "meaning": "客户端读取太慢，下行队列积压" },
-    { "code": 4408, "name": "IDLE_TIMEOUT",        "reconnect": true,  "meaning": "超过空闲时间未收到任何帧" }
+    { "code": 4401, "name": "AUTH_REQUIRED",       "reconnect": true,  "meaning": "连接后 5 秒内没有发送 auth，或在 auth 之前发送了其他命令（C-52）" },
+    { "code": 4408, "name": "IDLE_TIMEOUT",        "reconnect": true,  "meaning": "超过空闲时间未收到任何帧" },
+    { "code": 4429, "name": "TOO_MANY_CONNECTIONS", "reconnect": false, "meaning": "同一用户的连接数超过上限，最早的连接被踢下线（C-53）" }
   ],
   "kickReasons": [
     { "reason": "tokenInvalid", "closeCode": 4010 },
     { "reason": "tokenExpired", "closeCode": 4011 },
     { "reason": "banned",       "closeCode": 4012 },
+    { "reason": "tooManyConnections", "closeCode": 4429 },
+    { "reason": "serverShutdown", "closeCode": 1001, "note": "服务端下线前通知，客户端退避后重连（可能连到其他节点）" },
     { "reason": "replaced",     "closeCode": null, "note": "保留：单设备登录互踢，一期不实现" }
   ]
 }

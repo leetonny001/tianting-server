@@ -11,7 +11,7 @@ import (
 
 	"im-mvp/server/internal/auth"
 	"im-mvp/server/internal/clock"
-	"im-mvp/server/internal/hub"
+	"im-mvp/server/internal/delivery"
 	"im-mvp/server/internal/logic"
 	"im-mvp/server/internal/protocol"
 	"im-mvp/server/internal/store"
@@ -34,14 +34,14 @@ type Admin struct {
 	key      string
 	signer   *auth.Signer
 	store    store.Store
-	hub      *hub.Hub
+	router   delivery.Router
 	clock    clock.Clock
 	log      *slog.Logger
 	testMode bool
 }
 
-func New(key string, signer *auth.Signer, st store.Store, h *hub.Hub, clk clock.Clock, testMode bool, log *slog.Logger) *Admin {
-	return &Admin{key: key, signer: signer, store: st, hub: h, clock: clk, testMode: testMode, log: log}
+func New(key string, signer *auth.Signer, st store.Store, router delivery.Router, clk clock.Clock, testMode bool, log *slog.Logger) *Admin {
+	return &Admin{key: key, signer: signer, store: st, router: router, clock: clk, testMode: testMode, log: log}
 }
 
 // Register 把管理路由挂到 mux 上。
@@ -229,10 +229,9 @@ func (a *Admin) forceLogout(w http.ResponseWriter, r *http.Request) {
 	case err != nil:
 		a.internal(w, "revoke tokens", err)
 	default:
-		n := a.hub.KickUser(uid, protocol.KickBanned)
-		writeJSON(w, http.StatusOK, struct {
-			Kicked int `json:"kicked"`
-		}{n})
+		// 不返回踢掉了几个连接：集群下连接分布在多个节点上，这个数字无法准确得到。
+		a.router.KickUser(uid, protocol.KickBanned)
+		writeJSON(w, http.StatusOK, struct{}{})
 	}
 }
 

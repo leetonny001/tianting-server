@@ -70,11 +70,13 @@
 | 1001 | GOING_AWAY | 是 | 服务端重启或下线 |
 | 1009 | MESSAGE_TOO_BIG | 是 | 单帧超过 64KB（客户端缺陷） |
 | 4009～4012 | 同错误码 | 否 | 平台不合法 / 凭证无效 / 过期 / 被强制下线 |
+| 4429 | TOO_MANY_CONNECTIONS | 否 | 同一用户连接数超过上限（默认 10），最早的连接被踢 |
 | 4400 | SLOW_CONSUMER | 是 | 客户端读取太慢，下行队列积压 |
+| 4401 | AUTH_REQUIRED | 是 | 连接后 5 秒内未发送 `auth`，或在 `auth` 前发送了其他命令（C-52） |
 | 4408 | IDLE_TIMEOUT | 是 | 超过空闲时间未收到任何帧 |
 | 其他（含 1006 异常断开） | — | 是 | 按退避策略重连 |
 
-`kicked` 事件的原因与关闭码对应：`tokenInvalid` → 4010，`tokenExpired` → 4011，`banned` → 4012，`replaced` 为保留值（一期不实现）。
+`kicked` 事件的原因与关闭码对应：`tokenInvalid` → 4010，`tokenExpired` → 4011，`banned` → 4012，`tooManyConnections` → 4429，`serverShutdown` → 1001（可以重连），`replaced` 为保留值（一期不实现）。
 
 ## 5. 与 M1 实现的差异（由后端任务修正）
 

@@ -2,8 +2,8 @@
 
 > 由 `python3 tools/trace.py` 生成，不要手工编辑。
 
-- AC 总数：123，完全覆盖：123，有缺口：0
-- 关联到 AC 的测试用例数：303
+- AC 总数：128，完全覆盖：128，有缺口：0
+- 关联到 AC 的测试用例数：310
 - 引用了不存在的 AC：无
 
 | AC | 验证层 | 后端任务 | 前端任务 | 测试用例 | 状态 |
@@ -29,6 +29,11 @@
 | AC-AUTH-02-4 | 前端 | — | FE-003 | TC-AUTH-02-07、TC-AUTH-02-08、TC-AUTH-02-09 | ✅ |
 | AC-AUTH-02-5 | 后端 | BE-006 | — | TC-AUTH-02-10、TC-AUTH-02-11 | ✅ |
 | AC-AUTH-02-6 | 后端 | BE-012 | — | TC-AUTH-02-12、TC-AUTH-02-13、TC-AUTH-02-14 | ✅ |
+| AC-AUTH-02-7 | 后端 | BE-065 | — | TC-AUTH-02-15、TC-AUTH-02-16 | ✅ |
+| AC-AUTH-02-8 | 后端 | BE-065 | — | TC-AUTH-02-17 | ✅ |
+| AC-AUTH-02-9 | 后端 | BE-065 | — | TC-AUTH-02-18 | ✅ |
+| AC-AUTH-02-10 | 端到端 | BE-064 | FE-003 | TC-AUTH-02-19、TC-AUTH-02-20 | ✅ |
+| AC-AUTH-02-11 | 后端 | BE-064 | — | TC-AUTH-02-21 | ✅ |
 | AC-AUTH-03-1 | 后端 | BE-003、BE-013 | — | TC-AUTH-03-01、TC-AUTH-03-02 | ✅ |
 | AC-AUTH-03-2 | 后端 | BE-013 | — | TC-AUTH-03-03、TC-AUTH-03-04、TC-AUTH-03-05、TC-AUTH-03-15、TC-AUTH-03-17 | ✅ |
 | AC-AUTH-03-3 | 后端 | BE-013 | — | TC-AUTH-03-06、TC-AUTH-03-07、TC-AUTH-03-16 | ✅ |
@@ -39,7 +44,7 @@
 | AC-AUTH-04-2 | 前端 | — | FE-010 | TC-AUTH-04-04、TC-AUTH-04-05 | ✅ |
 | AC-AUTH-04-3 | 后端 | BE-014 | — | TC-AUTH-04-06 | ✅ |
 | AC-AUTH-04-4 | 端到端 | BE-014 | FE-010 | TC-AUTH-04-07、TC-AUTH-04-08、TC-AUTH-04-09、TC-AUTH-04-10 | ✅ |
-| AC-AUTH-05-1 | 前端 | BE-064 | FE-003、FE-010 | TC-AUTH-05-01、TC-AUTH-05-02、TC-AUTH-05-03、TC-AUTH-05-04 | ✅ |
+| AC-AUTH-05-1 | 前端 | BE-051 | FE-003、FE-010 | TC-AUTH-05-01、TC-AUTH-05-02、TC-AUTH-05-03、TC-AUTH-05-04 | ✅ |
 | AC-CONN-01-1 | 后端 | BE-003、BE-015 | — | TC-CONN-01-01、TC-CONN-01-02、TC-CONN-01-19 | ✅ |
 | AC-CONN-01-2 | 后端 | BE-015 | — | TC-CONN-01-03、TC-CONN-01-04 | ✅ |
 | AC-CONN-01-3 | 前端 | — | FE-003 | TC-CONN-01-05、TC-CONN-01-06 | ✅ |

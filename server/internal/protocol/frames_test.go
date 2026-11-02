@@ -21,6 +21,7 @@ func TestOutFramesMatchSchema(t *testing.T) {
 	}
 	emptyGroup := Conversation{ConvID: "group:g1", Type: ConvGroup, Name: "g", MinSeq: 1, UpdatedAt: 1}
 	frames := map[string]OutFrame{
+		"auth ack":       AckOK("a1", AuthAck{UserID: "alice", ServerTime: 1}),
 		"send ack":       AckOK("r1", SendAck{MsgID: "m1", ConvID: "c2c:u1:u2", Seq: 1, TS: 1}),
 		"sync ack":       AckOK("r2", SyncAck{Messages: []Message{msg}, HasMore: true}),
 		"sync ack empty": AckOK("r2", SyncAck{Messages: []Message{}}),

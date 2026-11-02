@@ -2,6 +2,7 @@
 package api
 
 import (
+	"context"
 	"encoding/json"
 	"net/http"
 	"time"
@@ -11,12 +12,16 @@ import (
 type Info struct {
 	Version   string
 	StartedAt time.Time
+	// Ready 返回 nil 表示可以接收流量（/readyz），由负载均衡、K8s 探测（ARCH 2.4）。
+	// 为 nil 时 /readyz 总是就绪。
+	Ready func(ctx context.Context) error
 }
 
 // NewRouter 注册客户端和运维用的 HTTP 路由；/ws、/admin 由 app 包另外挂载。
 func NewRouter(info Info) *http.ServeMux {
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /healthz", healthz(info))
+	mux.HandleFunc("GET /readyz", readyz(info))
 	return mux
 }
 
@@ -33,6 +38,21 @@ func healthz(info Info) http.HandlerFunc {
 			Version:       info.Version,
 			UptimeSeconds: int64(time.Since(info.StartedAt).Seconds()),
 		})
+	}
+}
+
+// readyz 与 healthz 分开：healthz 只说明进程活着；readyz 说明依赖可用、且没有在下线，
+// 负载均衡据此决定是否把新连接分过来。
+func readyz(info Info) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		if info.Ready != nil {
+			if err := info.Ready(r.Context()); err != nil {
+				// 不把内部错误细节返回给调用方。
+				writeJSON(w, http.StatusServiceUnavailable, map[string]string{"status": "unavailable"})
+				return
+			}
+		}
+		writeJSON(w, http.StatusOK, map[string]string{"status": "ready"})
 	}
 }
 

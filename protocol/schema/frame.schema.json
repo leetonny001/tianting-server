@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://im-mvp.local/protocol/frame.schema.json",
   "title": "IM WebSocket Frame (v1)",
-  "description": "WebSocket 上传输的每一帧。客户端 → 服务端为 ClientFrame，服务端 → 客户端为 ServerFrame。对应 PRD-core-v1.1。",
+  "description": "WebSocket 上传输的每一帧。客户端 → 服务端为 ClientFrame，服务端 → 客户端为 ServerFrame。对应 PRD-core-v1.2。",
   "oneOf": [
     { "$ref": "#/$defs/ClientFrame" },
     { "$ref": "#/$defs/ServerFrame" }
@@ -45,6 +45,7 @@
 
     "ClientFrame": {
       "oneOf": [
+        { "$ref": "#/$defs/AuthReq" },
         { "$ref": "#/$defs/SendReq" },
         { "$ref": "#/$defs/SyncReq" },
         { "$ref": "#/$defs/ConvsReq" },
@@ -53,6 +54,22 @@
         { "$ref": "#/$defs/ReadReq" },
         { "$ref": "#/$defs/Ping" }
       ]
+    },
+    "AuthReq": {
+      "type": "object",
+      "description": "连接后的第一帧，必须在 5 秒内发送（PRD C-52）；token 不放在 URL 里",
+      "required": ["id", "cmd", "data"],
+      "properties": {
+        "id": { "$ref": "#/$defs/ReqId" },
+        "cmd": { "const": "auth" },
+        "data": {
+          "type": "object",
+          "required": ["token"],
+          "properties": { "token": { "type": "string", "minLength": 1, "maxLength": 4096 } },
+          "additionalProperties": false
+        }
+      },
+      "additionalProperties": false
     },
     "SendReq": {
       "type": "object",
@@ -232,8 +249,10 @@
         "cmd": { "const": "ack" },
         "data": {
           "type": "object",
-          "description": "按请求类型不同：send → {msgId, convId, seq?, ts}；sync → {messages, hasMore}；convs → {convs, truncated}；joinRoom → {online, recent}；其余为空对象",
+          "description": "按请求类型不同：auth → {userId, serverTime}；send → {msgId, convId, seq?, ts}；sync → {messages, hasMore}；convs → {convs, truncated}；joinRoom → {online, recent}；其余为空对象",
           "properties": {
+            "userId": { "$ref": "#/$defs/UserId" },
+            "serverTime": { "$ref": "#/$defs/TimestampMs" },
             "msgId": { "type": "string" },
             "convId": { "$ref": "#/$defs/ConvId" },
             "seq": { "$ref": "#/$defs/Seq" },
@@ -292,7 +311,7 @@
               "required": ["type", "reason"],
               "properties": {
                 "type": { "const": "kicked" },
-                "reason": { "enum": ["tokenInvalid", "tokenExpired", "banned", "replaced"] }
+                "reason": { "enum": ["tokenInvalid", "tokenExpired", "banned", "tooManyConnections", "serverShutdown", "replaced"] }
               },
               "additionalProperties": false
             },

@@ -1,6 +1,6 @@
 # 测试用例：连接（CONN）
 
-> 依据：[PRD v1.1](../prd/PRD-core-v1.1.md) F-CONN-01、F-CONN-02、F-MSG-05 规则 3（打开会话加载最新 20 条）、§6.1 测试环境要求、§9 C-22～C-25；[ERRORS.md](../../protocol/ERRORS.md) 第 4 节关闭码。
+> 依据：[PRD v1.2](../prd/PRD-core-v1.2.md) F-CONN-01、F-CONN-02、F-MSG-05 规则 3（打开会话加载最新 20 条）、§6.1 测试环境要求、§9 C-22～C-25；[ERRORS.md](../../protocol/ERRORS.md) 第 4 节关闭码。
 > 测试模式时间参数（后端 e2e 默认）：心跳间隔 1 秒、空闲超时 3 秒、pong 超时 1 秒。SDK 单测使用假传输层 + 假时钟，按生产默认值（心跳 30 秒、pong 超时 10 秒、退避上限 30 秒）验证。
 > 群会话 ID 形如 `group:{groupId}`，单聊为 `c2c:{小}:{大}`。
 

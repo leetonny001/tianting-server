@@ -10,6 +10,7 @@ import (
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -45,13 +46,14 @@ func newEnvWith(t *testing.T, gw gateway.Config, testMode bool) *env {
 func newEnvCfg(t *testing.T, mutate func(*app.Config)) *env {
 	t.Helper()
 	cfg := app.Config{
-		DBPath:    filepath.Join(t.TempDir(), "im.db"),
-		JWTSecret: "e2e-secret-0123456789",
-		AdminKey:  adminKey,
-		Gateway:   gateway.DefaultConfig(),
-		TestMode:  true,
-		Version:   "e2e",
-		Logger:    slog.New(slog.NewTextHandler(io.Discard, nil)),
+		DBPath:      filepath.Join(t.TempDir(), "im.db"),
+		AutoMigrate: true,
+		JWTSecret:   "e2e-secret-0123456789",
+		AdminKey:    adminKey,
+		Gateway:     gateway.DefaultConfig(),
+		TestMode:    true,
+		Version:     "e2e",
+		Logger:      slog.New(slog.NewTextHandler(io.Discard, nil)),
 	}
 	if mutate != nil {
 		mutate(&cfg)
@@ -105,8 +107,9 @@ func (e *env) createGroup(gid string, members ...string) {
 	}
 }
 
+// wsURL 返回连接地址。token 只是给 dialURL 看的：dialURL 会把它从 URL 里去掉，改用首帧 auth 发送（C-52）。
 func (e *env) wsURL(token, platform string) string {
-	return strings.Replace(e.srv.URL, "http", "ws", 1) + "/ws?token=" + token + "&platform=" + platform
+	return strings.Replace(e.srv.URL, "http", "ws", 1) + "/ws?token=" + url.QueryEscape(token) + "&platform=" + url.QueryEscape(platform)
 }
 
 // frame 是测试里解析下行帧用的宽松结构。
@@ -157,10 +160,41 @@ func (e *env) dial(uid, platform string) *client {
 	return e.dialURL(uid, e.wsURL(e.token(uid), platform))
 }
 
-// dialURL 用指定 URL 建立连接（token / platform 可以是任意值，用于测试被拒绝的情况）。
-func (e *env) dialURL(label, url string) *client {
+// dialURL 按协议建立连接：从 URL 中取出 token（并去掉），连接后发送 auth，
+// 等到服务端的第一个响应（auth 成功的 ack、kicked 或关闭）再返回，
+// 这样返回时连接要么已经在线，要么已经被拒绝，避免后续步骤和上线过程赛跑。
+// token / platform 可以是任意值，用于测试被拒绝的情况。
+func (e *env) dialURL(label, rawURL string) *client {
 	e.t.Helper()
-	ws, _, err := websocket.Dial(context.Background(), url, nil)
+	u, err := url.Parse(rawURL)
+	if err != nil {
+		e.t.Fatal(err)
+	}
+	q := u.Query()
+	token := q.Get("token")
+	q.Del("token")
+	u.RawQuery = q.Encode()
+
+	c := e.dialRaw(label, u.String(), nil)
+	b, _ := json.Marshal(map[string]any{"id": authReqID, "cmd": protocol.CmdAuth, "data": map[string]any{"token": token}})
+	_ = c.ws.Write(context.Background(), websocket.MessageText, b) // 平台不合法时服务端可能已经关闭，忽略写错误
+	select {
+	case f, ok := <-c.in:
+		if ok && !(f.Cmd == protocol.CmdAck && f.ID == authReqID && f.Error == nil) {
+			c.pending = append(c.pending, f) // kicked 等，留给后续断言
+		}
+	case <-time.After(waitTimeout):
+		e.t.Fatalf("%s: no response to auth", label)
+	}
+	return c
+}
+
+const authReqID = "auth"
+
+// dialRaw 只建立 WebSocket 连接，不发送 auth（用于测试鉴权流程本身）。
+func (e *env) dialRaw(label, url string, header http.Header) *client {
+	e.t.Helper()
+	ws, _, err := websocket.Dial(context.Background(), url, &websocket.DialOptions{HTTPHeader: header})
 	if err != nil {
 		e.t.Fatalf("dial %s: %v", label, err)
 	}

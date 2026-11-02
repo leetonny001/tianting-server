@@ -8,7 +8,8 @@ import (
 	"errors"
 	"log/slog"
 	"net/http"
-	"strings"
+	"slices"
+	"strconv"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -17,13 +18,14 @@ import (
 
 	"im-mvp/server/internal/auth"
 	"im-mvp/server/internal/clock"
+	"im-mvp/server/internal/delivery"
 	"im-mvp/server/internal/hub"
 	"im-mvp/server/internal/protocol"
 )
 
 // Handler 处理一条已解析的上行帧（ping 除外），返回要回给客户端的 ack；nil 表示不回复。
 type Handler interface {
-	Handle(ctx context.Context, c hub.Client, in protocol.InFrame) *protocol.OutFrame
+	Handle(ctx context.Context, s delivery.Session, in protocol.InFrame) *protocol.OutFrame
 }
 
 // TokenVerifier 校验 token。
@@ -38,15 +40,34 @@ type RevocationChecker interface {
 
 // Config 是网关参数。
 type Config struct {
-	IdleTimeout  time.Duration // 多久收不到任何帧就断开（协议约定 90s）
-	WriteTimeout time.Duration // 单帧写超时
-	SendBuffer   int           // 每个连接的待发送队列长度，满了视为慢连接并断开
-	ReadLimit    int64         // 单帧最大字节数
+	IdleTimeout     time.Duration // 多久收不到任何帧就断开（协议约定 90s）
+	WriteTimeout    time.Duration // 单帧写超时
+	SendBuffer      int           // 每个连接的待发送队列长度，满了视为慢连接并断开
+	ReadLimit       int64         // 单帧最大字节数
+	NodeID          string        // 本节点标识，作为连接 ID 的前缀，保证集群内连接 ID 不重复
+	AuthTimeout     time.Duration // 连接后多久内必须发送 auth（PRD C-52）
+	MaxConnsPerUser int           // 每个用户的连接上限，超出时踢掉最早的连接（C-53）；<= 0 不限
+	// AllowedOrigins 是浏览器 Origin 白名单（C-54），如 "https://im.example.com"、"*.example.com"、"localhost:*"。
+	// 包含 "*" 时不校验（仅限开发）。没有 Origin 头的原生端、与服务端同 host 的页面总是允许。
+	AllowedOrigins []string
+	Guard          GuardConfig // 按 IP 的握手限流与鉴权失败封禁（ARCH S7）
 }
+
+// LocalOrigins 是未配置白名单时的默认值：只允许本机页面（本地开发 H5）。
+var LocalOrigins = []string{"localhost", "localhost:*", "127.0.0.1", "127.0.0.1:*", "[::1]", "[::1]:*"}
 
 // DefaultConfig 是生产默认值。
 func DefaultConfig() Config {
-	return Config{IdleTimeout: 90 * time.Second, WriteTimeout: 10 * time.Second, SendBuffer: 256, ReadLimit: 64 << 10}
+	return Config{
+		IdleTimeout:     90 * time.Second,
+		WriteTimeout:    10 * time.Second,
+		SendBuffer:      256,
+		ReadLimit:       64 << 10,
+		AuthTimeout:     5 * time.Second,
+		MaxConnsPerUser: 10,
+		AllowedOrigins:  LocalOrigins,
+		Guard:           DefaultGuardConfig(),
+	}
 }
 
 var platforms = map[string]bool{"android": true, "ios": true, "web": true, "pc": true}
@@ -60,19 +81,30 @@ type Gateway struct {
 	hub        *hub.Hub
 	handler    Handler
 	log        *slog.Logger
+	guard      *guard
 	nextID     atomic.Uint64
 }
 
 func New(cfg Config, verifier TokenVerifier, revocation RevocationChecker, clk clock.Clock, h *hub.Hub, handler Handler, log *slog.Logger) *Gateway {
-	return &Gateway{cfg: cfg, verifier: verifier, revocation: revocation, clock: clk, hub: h, handler: handler, log: log}
+	return &Gateway{cfg: cfg, verifier: verifier, revocation: revocation, clock: clk, hub: h, handler: handler, log: log, guard: newGuard(cfg.Guard, clk)}
 }
 
-// ServeHTTP 先完成 WebSocket 升级，再做鉴权：浏览器拿不到握手阶段的 HTTP 401，
-// 只能靠 kicked 事件和关闭码区分"凭证问题"和"断网"（PRD F-AUTH-02 规则 3）。
-// 检查顺序（PRD C-08）：平台 4009 → 签名 4010 → 强制下线 4012 → 过期 4011。
+// ServeHTTP 处理一条新连接：
+//  1. 校验 Origin（不在白名单时库直接返回 HTTP 403，C-54）；
+//  2. 升级后检查平台标识（4009，不发 kicked，C-05）；
+//  3. 等待第一帧 auth（C-52），token 不从 URL 读取；
+//  4. 凭证有问题时下发 kicked 再关闭：浏览器拿不到握手阶段的 HTTP 401，
+//     只能靠 kicked 事件和关闭码区分"凭证问题"和"断网"（PRD F-AUTH-02 规则 3）。
+//     检查顺序（C-08）：签名 4010 → 强制下线 4012 → 过期 4011。
 func (g *Gateway) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	// MVP 先不校验 Origin，方便 H5 本地调试；上线前要改成 OriginPatterns 白名单（BE-051）。
-	ws, err := websocket.Accept(w, r, &websocket.AcceptOptions{InsecureSkipVerify: true})
+	// 在升级之前拒绝：被限流的 IP 不占用 WebSocket 连接和 goroutine。
+	ip := g.guard.clientIP(r)
+	if !g.guard.allowHandshake(ip) {
+		http.Error(w, "too many connection attempts", http.StatusTooManyRequests)
+		g.log.Info("conn rejected", "reason", "handshake rate limited", "ip", ip)
+		return
+	}
+	ws, err := websocket.Accept(w, r, g.acceptOptions())
 	if err != nil {
 		g.log.Warn("websocket accept failed", "err", err)
 		return
@@ -81,38 +113,18 @@ func (g *Gateway) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 	platform := r.URL.Query().Get("platform")
 	if !platforms[platform] {
-		// 开发期缺陷，不发 kicked（PRD C-05）。
 		ws.Close(protocol.CloseInvalidPlatform, "invalid platform")
 		g.log.Info("conn rejected", "reason", "invalid platform", "platform", platform)
 		return
 	}
-	token := r.URL.Query().Get("token")
-	if token == "" {
-		token = strings.TrimPrefix(r.Header.Get("Authorization"), "Bearer ")
-	}
-	claims, verr := g.verifier.Verify(token)
-	if errors.Is(verr, auth.ErrInvalidToken) {
-		g.kick(ws, protocol.KickTokenInvalid)
-		return
-	}
-	version, err := g.revocation.TokenVersion(r.Context(), claims.UserID)
-	if err != nil {
-		g.log.Error("check revocation", "err", err, "uid", claims.UserID)
-		ws.Close(websocket.StatusInternalError, "internal error")
-		return
-	}
-	if claims.Version < version {
-		g.kick(ws, protocol.KickBanned)
-		return
-	}
-	if errors.Is(verr, auth.ErrExpiredToken) {
-		g.kick(ws, protocol.KickTokenExpired)
+	claims, authID, ok := g.authenticate(r.Context(), ws, ip)
+	if !ok {
 		return
 	}
 	uid := claims.UserID
 
 	c := &conn{
-		id:        g.nextID.Add(1),
+		id:        g.cfg.NodeID + "-" + strconv.FormatUint(g.nextID.Add(1), 10),
 		uid:       uid,
 		platform:  platform,
 		expiresAt: claims.ExpiresAt,
@@ -121,13 +133,71 @@ func (g *Gateway) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		done:      make(chan struct{}),
 		gw:        g,
 	}
-	g.hub.Register(c)
+	// auth 的 ack 先入队、再登记到在线表：保证客户端先收到 ack，再收到任何推送。
+	c.write(protocol.AckOK(authID, protocol.AuthAck{UserID: uid, ServerTime: g.clock.Now().UnixMilli()}))
+	for _, old := range g.hub.Register(c, g.cfg.MaxConnsPerUser) {
+		old.Kick(protocol.KickTooManyConns)
+		g.log.Info("conn evicted", "conn", old.ConnID(), "uid", uid, "reason", protocol.KickTooManyConns)
+	}
 	g.log.Info("conn open", "conn", c.id, "uid", uid, "platform", platform)
 
 	reason := c.run(context.Background())
 
 	g.hub.Unregister(c)
 	g.log.Info("conn closed", "conn", c.id, "uid", uid, "reason", reason)
+}
+
+func (g *Gateway) acceptOptions() *websocket.AcceptOptions {
+	if slices.Contains(g.cfg.AllowedOrigins, "*") {
+		return &websocket.AcceptOptions{InsecureSkipVerify: true}
+	}
+	return &websocket.AcceptOptions{OriginPatterns: g.cfg.AllowedOrigins}
+}
+
+// authenticate 等待并校验第一帧 auth。失败时已经关闭连接，返回 ok=false。
+func (g *Gateway) authenticate(ctx context.Context, ws *websocket.Conn, ip string) (claims auth.Claims, reqID string, ok bool) {
+	// 用定时器而不是 Read 的 ctx 超时：ctx 到期时库会直接断开底层连接，客户端拿不到 4401（同空闲超时）。
+	timer := time.AfterFunc(g.cfg.AuthTimeout, func() {
+		ws.Close(protocol.CloseAuthRequired, "auth timeout")
+	})
+	typ, data, err := ws.Read(ctx)
+	if !timer.Stop() || err != nil {
+		g.log.Info("conn rejected", "reason", "no auth frame", "err", err)
+		return auth.Claims{}, "", false
+	}
+	var in protocol.InFrame
+	if typ != websocket.MessageText || json.Unmarshal(data, &in) != nil || in.Cmd != protocol.CmdAuth || in.ID == "" {
+		ws.Close(protocol.CloseAuthRequired, "first frame must be auth")
+		g.log.Info("conn rejected", "reason", "first frame is not auth", "cmd", in.Cmd)
+		return auth.Claims{}, "", false
+	}
+	var req protocol.AuthReq
+	_ = json.Unmarshal(in.Data, &req) // 解析失败时 token 为空，按无效凭证处理
+
+	claims, verr := g.verifier.Verify(req.Token)
+	if errors.Is(verr, auth.ErrInvalidToken) {
+		// 只统计"凭证无效"：过期和被强制下线是正常用户也会遇到的情况，不算攻击。
+		if g.guard.authFailed(ip) {
+			g.log.Warn("ip blocked", "reason", "too many invalid tokens", "ip", ip, "for", g.cfg.Guard.BlockFor)
+		}
+		g.kick(ws, protocol.KickTokenInvalid)
+		return auth.Claims{}, "", false
+	}
+	version, err := g.revocation.TokenVersion(ctx, claims.UserID)
+	if err != nil {
+		g.log.Error("check revocation", "err", err, "uid", claims.UserID)
+		ws.Close(websocket.StatusInternalError, "internal error")
+		return auth.Claims{}, "", false
+	}
+	if claims.Version < version {
+		g.kick(ws, protocol.KickBanned)
+		return auth.Claims{}, "", false
+	}
+	if errors.Is(verr, auth.ErrExpiredToken) {
+		g.kick(ws, protocol.KickTokenExpired)
+		return auth.Claims{}, "", false
+	}
+	return claims, in.ID, true
 }
 
 // kick 下发 kicked 事件，**写完后**再用对应关闭码关闭连接（PRD F-AUTH-03 规则 3）。
@@ -142,7 +212,7 @@ func (g *Gateway) kick(ws *websocket.Conn, reason string) {
 
 // conn 是一个 WebSocket 连接，实现 hub.Client。
 type conn struct {
-	id        uint64
+	id        string
 	uid       string
 	platform  string
 	expiresAt time.Time
@@ -153,7 +223,7 @@ type conn struct {
 	gw        *Gateway
 }
 
-func (c *conn) ConnID() uint64 { return c.id }
+func (c *conn) ConnID() string { return c.id }
 func (c *conn) UserID() string { return c.uid }
 
 // Kick 踢下线（异步，不阻塞调用方），只生效一次。
@@ -226,8 +296,12 @@ func (c *conn) handle(ctx context.Context, data []byte) {
 		c.write(protocol.AckErr(in.ID, protocol.Errorf(protocol.CodeInvalidFrame, "invalid frame")))
 		return
 	}
-	if in.Cmd == protocol.CmdPing {
+	switch in.Cmd {
+	case protocol.CmdPing:
 		c.write(protocol.OutFrame{Cmd: protocol.CmdPong})
+		return
+	case protocol.CmdAuth:
+		c.write(protocol.AckErr(in.ID, protocol.Errorf(protocol.CodeBadRequest, "already authenticated")))
 		return
 	}
 	if out := c.gw.handler.Handle(ctx, c, in); out != nil {
