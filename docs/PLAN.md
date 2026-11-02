@@ -9,6 +9,23 @@
 
 ---
 
+## 0. 整体布局（2026-11-02 更新）
+
+| # | 部分 | 内容 | 技术 | 使用者 |
+|---|---|---|---|---|
+| 1 | **服务端** | IM 服务：长连接、消息、群、会话、聊天室、推送；管理接口、运维接口 | Go 单二进制（可扩展为集群，见 [ARCH-v1](arch/ARCH-v1.md)） | — |
+| 2a | **管理后台 H5** | 业务运营：用户、群、消息查询与删除、禁言、系统推送、敏感词 | React（`consoles/admin`） | 运营 / 客服 |
+| 2b | **运维后台 H5** | 运维：节点与在线连接、消息量与延迟指标、错误码分布、备份记录、配置检查、审计日志 | React（`consoles/ops`） | 运维 / 开发 |
+| 3 | **统一 SDK** | 移动端 + PC + H5 共用的通信网络层和数据层：连接与重连、鉴权、收发、同步、会话、未读、本地缓存 | `sdk-ts`（H5、PC）；`sdk-kmp`（Android、iOS）；两套 SDK 跑同一批协议用例 | 各端 App |
+| 4 | **客户端 App** | 接入 SDK 开发页面，UI 和基本功能参考微信：会话列表、聊天页、通讯录、我 | H5（React）→ PC（Tauri 壳）→ Android（Compose）→ iOS（SwiftUI） | 最终用户 |
+
+**顺序**：先把核心业务做扎实——服务端核心（B0～B5）→ SDK → H5 客户端；之后是 PC、移动端，以及两个后台。
+两个后台和"参考微信的 UI"是新的需求范围，和核心业务一样走完整流程：**产品规划（PRD）→ 需求评审 → 需求分发（后端、前端任务单）→ 测试用例（每个功能点）**，见 [docs/process](process/README.md)。
+
+**推进方式**：AI 按 [工作队列](process/QUEUE.md) 自主推进，遵守 [自主工作规则](process/AUTONOMY.md)；每天早上出日报（`docs/reports/daily/`），需要 Frank 授权或拍板的事项集中在 [待授权清单](reports/PENDING.md)。
+
+---
+
 ## 1. 产品范围（参考主流应用）
 
 | 能力 | 参考 | P0 (MVP) | P1 | P2 |
@@ -160,8 +177,11 @@ im-mvp/
 ├── sdk-ts/                  # TypeScript SDK（H5 + PC）
 ├── android/                 # Compose App
 ├── ios/                     # SwiftUI App
-├── web/                     # React：H5 + PC 共用
+├── web/                     # React：H5 + PC 共用（UI 参考微信）
 ├── desktop/                 # Tauri 壳，加载 web/
+├── consoles/
+│   ├── admin/               # 管理后台 H5（业务运营）
+│   └── ops/                 # 运维后台 H5
 └── tools/                   # 压测、模拟业务服务端（发推送脚本）
 ```
 
