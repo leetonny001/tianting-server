@@ -7,6 +7,7 @@
 
 | # | 日期 | 事项 | 为什么需要你 | 不处理的影响 | 建议 |
 |---|---|---|---|---|---|
+| P-2 | 2026-11-02 | 创建"自主开发"定时任务 `im-autodev`（每天 09:30、14:30） | 安全分类器要求本人确认：任务会自动改代码并推送 | 只有日报，开发要在聊天里让 AI 做 | 按 [AUTODEV_TASK.md](../process/AUTODEV_TASK.md) 在应用里创建，或允许 AI 创建 |
 | P-1 | 2026-11-02 | gh 令牌补 `workflow` 权限：`gh auth refresh -h github.com -s workflow` | 账号权限变更 | 无阻塞：AI 修改 `.github/workflows/` 时改用 SSH 推送即可 | 有空时做一次 |
 
 ## 已处理
