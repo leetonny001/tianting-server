@@ -220,7 +220,7 @@ func (s *SQLite) GroupExists(ctx context.Context, groupID string) (bool, error) 
 	return err == nil, err
 }
 
-func (s *SQLite) CreateGroup(ctx context.Context, groupID, name string, members []string) error {
+func (s *SQLite) CreateGroup(ctx context.Context, g Group, members []string) error {
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
 		return err
@@ -229,35 +229,95 @@ func (s *SQLite) CreateGroup(ctx context.Context, groupID, name string, members 
 
 	now := time.Now().UnixMilli()
 	if _, err := tx.ExecContext(ctx,
-		`INSERT INTO chat_groups (group_id, name, created_at) VALUES (?, ?, ?)`,
-		groupID, name, now); err != nil {
+		`INSERT INTO chat_groups (group_id, name, history_visible, created_at) VALUES (?, ?, ?, ?)`,
+		g.GroupID, g.Name, g.HistoryVisible, now); err != nil {
 		if isUniqueViolation(err) {
 			return ErrExists
 		}
 		return err
 	}
-	if err := insertMembers(ctx, tx, groupID, members, now); err != nil {
+	if _, err := insertMembers(ctx, tx, g.GroupID, members, now); err != nil {
 		return err
 	}
 	return tx.Commit()
 }
 
-func (s *SQLite) AddGroupMembers(ctx context.Context, groupID string, members []string) error {
+func (s *SQLite) AddGroupMembers(ctx context.Context, groupID string, members []string, maxTotal int) ([]string, error) {
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return nil, err
+	}
+	defer tx.Rollback()
+
+	if err := groupExistsTx(ctx, tx, groupID); err != nil {
+		return nil, err
+	}
+	added, err := insertMembers(ctx, tx, groupID, members, time.Now().UnixMilli())
+	if err != nil {
+		return nil, err
+	}
+	var total int
+	if err := tx.QueryRowContext(ctx, `SELECT count(*) FROM group_members WHERE group_id = ?`, groupID).Scan(&total); err != nil {
+		return nil, err
+	}
+	if total > maxTotal {
+		return nil, ErrLimitExceeded // 回滚：一人都不加
+	}
+	return added, tx.Commit()
+}
+
+func (s *SQLite) RemoveGroupMembers(ctx context.Context, groupID string, members []string) ([]string, error) {
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return nil, err
+	}
+	defer tx.Rollback()
+
+	if err := groupExistsTx(ctx, tx, groupID); err != nil {
+		return nil, err
+	}
+	var removed []string
+	for _, uid := range members {
+		res, err := tx.ExecContext(ctx, `DELETE FROM group_members WHERE group_id = ? AND user_id = ?`, groupID, uid)
+		if err != nil {
+			return nil, err
+		}
+		if n, _ := res.RowsAffected(); n > 0 {
+			removed = append(removed, uid)
+		}
+	}
+	return removed, tx.Commit()
+}
+
+func (s *SQLite) GetGroup(ctx context.Context, groupID string) (Group, error) {
+	var g Group
+	err := s.db.QueryRowContext(ctx,
+		`SELECT group_id, name, history_visible, created_at FROM chat_groups WHERE group_id = ?`, groupID).
+		Scan(&g.GroupID, &g.Name, &g.HistoryVisible, &g.CreatedAt)
+	if errors.Is(err, sql.ErrNoRows) {
+		return Group{}, ErrNotFound
+	}
+	return g, err
+}
+
+func (s *SQLite) UpdateGroup(ctx context.Context, groupID string, u GroupUpdate) error {
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
 		return err
 	}
 	defer tx.Rollback()
-
-	var one int
-	if err := tx.QueryRowContext(ctx, `SELECT 1 FROM chat_groups WHERE group_id = ?`, groupID).Scan(&one); err != nil {
-		if errors.Is(err, sql.ErrNoRows) {
-			return ErrNotFound
-		}
+	if err := groupExistsTx(ctx, tx, groupID); err != nil {
 		return err
 	}
-	if err := insertMembers(ctx, tx, groupID, members, time.Now().UnixMilli()); err != nil {
-		return err
+	if u.Name != nil {
+		if _, err := tx.ExecContext(ctx, `UPDATE chat_groups SET name = ? WHERE group_id = ?`, *u.Name, groupID); err != nil {
+			return err
+		}
+	}
+	if u.HistoryVisible != nil {
+		if _, err := tx.ExecContext(ctx, `UPDATE chat_groups SET history_visible = ? WHERE group_id = ?`, *u.HistoryVisible, groupID); err != nil {
+			return err
+		}
 	}
 	return tx.Commit()
 }
@@ -280,14 +340,23 @@ func (s *SQLite) GroupMembers(ctx context.Context, groupID string) ([]string, er
 	return out, rows.Err()
 }
 
-func (s *SQLite) IsGroupMember(ctx context.Context, groupID, userID string) (bool, error) {
-	var one int
+func (s *SQLite) GroupMember(ctx context.Context, groupID, userID string) (GroupMember, bool, error) {
+	m := GroupMember{UserID: userID}
 	err := s.db.QueryRowContext(ctx,
-		`SELECT 1 FROM group_members WHERE group_id = ? AND user_id = ?`, groupID, userID).Scan(&one)
+		`SELECT join_seq FROM group_members WHERE group_id = ? AND user_id = ?`, groupID, userID).Scan(&m.JoinSeq)
 	if errors.Is(err, sql.ErrNoRows) {
-		return false, nil
+		return GroupMember{}, false, nil
 	}
-	return err == nil, err
+	return m, err == nil, err
+}
+
+func groupExistsTx(ctx context.Context, tx *sql.Tx, groupID string) error {
+	var one int
+	err := tx.QueryRowContext(ctx, `SELECT 1 FROM chat_groups WHERE group_id = ?`, groupID).Scan(&one)
+	if errors.Is(err, sql.ErrNoRows) {
+		return ErrNotFound
+	}
+	return err
 }
 
 func (s *SQLite) UpsertUsers(ctx context.Context, users []User) error {
@@ -332,6 +401,20 @@ func (s *SQLite) UserExists(ctx context.Context, userID string) (bool, error) {
 		return false, nil
 	}
 	return err == nil, err
+}
+
+func (s *SQLite) MissingUsers(ctx context.Context, userIDs []string) ([]string, error) {
+	var missing []string
+	for _, uid := range userIDs {
+		ok, err := s.UserExists(ctx, uid)
+		if err != nil {
+			return nil, err
+		}
+		if !ok {
+			missing = append(missing, uid)
+		}
+	}
+	return missing, nil
 }
 
 func (s *SQLite) RevokeTokens(ctx context.Context, userID string) error {
@@ -386,16 +469,32 @@ func scanMessage(r rowScanner) (Message, error) {
 	return m, nil
 }
 
-func insertMembers(ctx context.Context, tx *sql.Tx, groupID string, members []string, now int64) error {
+// insertMembers 插入新成员并返回实际新加入的；已经是成员的不变（不重置 join_seq）。
+// join_seq 取会话当前的 maxSeq，和消息的 seq 分配在同一个数据库里读取：
+// SQLite 单连接天然互斥；Postgres 实现需要对 conv_seq 行加锁（FOR SHARE）再读。
+func insertMembers(ctx context.Context, tx *sql.Tx, groupID string, members []string, now int64) ([]string, error) {
+	var joinSeq int64
+	err := tx.QueryRowContext(ctx, `SELECT max_seq FROM conv_seq WHERE conv_id = ?`, groupConvID(groupID)).Scan(&joinSeq)
+	if err != nil && !errors.Is(err, sql.ErrNoRows) {
+		return nil, err
+	}
+	var added []string
 	for _, uid := range members {
-		if _, err := tx.ExecContext(ctx,
-			`INSERT INTO group_members (group_id, user_id, joined_at) VALUES (?, ?, ?)
-			 ON CONFLICT DO NOTHING`, groupID, uid, now); err != nil {
-			return fmt.Errorf("add member %s: %w", uid, err)
+		res, err := tx.ExecContext(ctx,
+			`INSERT INTO group_members (group_id, user_id, joined_at, join_seq) VALUES (?, ?, ?, ?)
+			 ON CONFLICT DO NOTHING`, groupID, uid, now, joinSeq)
+		if err != nil {
+			return nil, fmt.Errorf("add member %s: %w", uid, err)
+		}
+		if n, _ := res.RowsAffected(); n > 0 {
+			added = append(added, uid)
 		}
 	}
-	return nil
+	return added, nil
 }
+
+// groupConvID 与 protocol.GroupConvID 一致（store 不依赖 protocol 包）；契约测试会校验两者一致。
+func groupConvID(groupID string) string { return "group:" + groupID }
 
 func isUniqueViolation(err error) bool {
 	return err != nil && strings.Contains(err.Error(), "UNIQUE constraint failed")

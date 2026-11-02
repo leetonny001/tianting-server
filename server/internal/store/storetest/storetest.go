@@ -9,6 +9,7 @@ import (
 	"sync"
 	"testing"
 
+	"im-mvp/server/internal/protocol"
 	"im-mvp/server/internal/store"
 )
 
@@ -26,6 +27,10 @@ func Run(t *testing.T, open Opener) {
 		{"SaveMessageConcurrentSeqIsContiguous", testSaveMessageConcurrentSeqIsContiguous},
 		{"ListMessagesPaging", testListMessagesPaging},
 		{"Groups", testGroups},
+		{"GroupSettings", testGroupSettings},
+		{"GroupJoinSeq", testGroupJoinSeq},
+		{"GroupMemberLimit", testGroupMemberLimit},
+		{"MissingUsers", testMissingUsers},
 		{"ReadSeqOnlyMovesForward", testReadSeqOnlyMovesForward},
 		{"ListMessagesBefore", testListMessagesBefore},
 		{"GroupExists", testGroupExists},
@@ -139,27 +144,143 @@ func testListMessagesPaging(t *testing.T, open Opener) {
 func testGroups(t *testing.T, open Opener) {
 	s, ctx := open(t), context.Background()
 
-	if err := s.CreateGroup(ctx, "g1", "Group 1", []string{"a", "b"}); err != nil {
+	if err := s.CreateGroup(ctx, store.Group{GroupID: "g1", Name: "Group 1"}, []string{"a", "b"}); err != nil {
 		t.Fatal(err)
 	}
-	if err := s.CreateGroup(ctx, "g1", "dup", nil); !errors.Is(err, store.ErrExists) {
+	if err := s.CreateGroup(ctx, store.Group{GroupID: "g1", Name: "dup"}, nil); !errors.Is(err, store.ErrExists) {
 		t.Errorf("duplicate create: %v", err)
 	}
-	if err := s.AddGroupMembers(ctx, "g1", []string{"b", "c"}); err != nil {
-		t.Fatal(err)
+	added, err := s.AddGroupMembers(ctx, "g1", []string{"b", "c"}, 2000)
+	if err != nil || fmt.Sprint(added) != "[c]" {
+		t.Fatalf("add: added=%v err=%v (b is already a member)", added, err)
 	}
-	if err := s.AddGroupMembers(ctx, "nope", []string{"a"}); !errors.Is(err, store.ErrNotFound) {
+	if _, err := s.AddGroupMembers(ctx, "nope", []string{"a"}, 2000); !errors.Is(err, store.ErrNotFound) {
 		t.Errorf("add to missing group: %v", err)
 	}
 	members, _ := s.GroupMembers(ctx, "g1")
 	if fmt.Sprint(members) != "[a b c]" {
 		t.Errorf("members = %v", members)
 	}
-	if ok, _ := s.IsGroupMember(ctx, "g1", "c"); !ok {
+	if _, ok, _ := s.GroupMember(ctx, "g1", "c"); !ok {
 		t.Error("c should be member")
 	}
-	if ok, _ := s.IsGroupMember(ctx, "g1", "z"); ok {
+	if _, ok, _ := s.GroupMember(ctx, "g1", "z"); ok {
 		t.Error("z should not be member")
+	}
+
+	removed, err := s.RemoveGroupMembers(ctx, "g1", []string{"b", "z"})
+	if err != nil || fmt.Sprint(removed) != "[b]" {
+		t.Fatalf("remove: removed=%v err=%v (z is not a member)", removed, err)
+	}
+	if _, err := s.RemoveGroupMembers(ctx, "nope", []string{"a"}); !errors.Is(err, store.ErrNotFound) {
+		t.Errorf("remove from missing group: %v", err)
+	}
+	if members, _ := s.GroupMembers(ctx, "g1"); fmt.Sprint(members) != "[a c]" {
+		t.Errorf("members after remove = %v", members)
+	}
+}
+
+func testGroupSettings(t *testing.T, open Opener) {
+	s, ctx := open(t), context.Background()
+	s.CreateGroup(ctx, store.Group{GroupID: "g1", Name: "初始", HistoryVisible: true}, nil)
+	g, err := s.GetGroup(ctx, "g1")
+	if err != nil || g.Name != "初始" || !g.HistoryVisible || g.CreatedAt == 0 {
+		t.Fatalf("GetGroup = %+v, %v", g, err)
+	}
+	name, off := "改名", false
+	if err := s.UpdateGroup(ctx, "g1", store.GroupUpdate{Name: &name}); err != nil {
+		t.Fatal(err)
+	}
+	if g, _ := s.GetGroup(ctx, "g1"); g.Name != "改名" || !g.HistoryVisible {
+		t.Errorf("after name update: %+v (historyVisible must be unchanged)", g)
+	}
+	s.UpdateGroup(ctx, "g1", store.GroupUpdate{HistoryVisible: &off})
+	if g, _ := s.GetGroup(ctx, "g1"); g.Name != "改名" || g.HistoryVisible {
+		t.Errorf("after visibility update: %+v", g)
+	}
+	if _, err := s.GetGroup(ctx, "nope"); !errors.Is(err, store.ErrNotFound) {
+		t.Errorf("get missing: %v", err)
+	}
+	if err := s.UpdateGroup(ctx, "nope", store.GroupUpdate{Name: &name}); !errors.Is(err, store.ErrNotFound) {
+		t.Errorf("update missing: %v", err)
+	}
+}
+
+// JoinSeq = 入群时会话的 maxSeq；重复添加不重置；移除后再加入按新的 maxSeq 计算（PRD F-GRP-01 规则 6、7，C-36）。
+func testGroupJoinSeq(t *testing.T, open Opener) {
+	s, ctx := open(t), context.Background()
+	s.CreateGroup(ctx, store.Group{GroupID: "g1", Name: "g"}, []string{"a"})
+	send := func(n int, prefix string) {
+		for i := range n {
+			if _, _, err := s.SaveMessage(ctx, newMsg(fmt.Sprintf("%s%d", prefix, i), protocol.GroupConvID("g1"), "a", fmt.Sprintf("%s-%04d", prefix, i))); err != nil {
+				t.Fatal(err)
+			}
+		}
+	}
+	joinSeq := func(uid string) int64 {
+		m, ok, err := s.GroupMember(ctx, "g1", uid)
+		if err != nil || !ok {
+			t.Fatalf("%s not a member: %v", uid, err)
+		}
+		return m.JoinSeq
+	}
+	if joinSeq("a") != 0 {
+		t.Errorf("initial member joinSeq = %d", joinSeq("a"))
+	}
+	send(10, "m")
+	s.AddGroupMembers(ctx, "g1", []string{"d"}, 2000)
+	if joinSeq("d") != 10 {
+		t.Errorf("d joinSeq = %d, want 10", joinSeq("d"))
+	}
+	send(5, "n")
+	s.AddGroupMembers(ctx, "g1", []string{"d"}, 2000) // 幂等：不重置
+	if joinSeq("d") != 10 {
+		t.Errorf("re-adding an existing member reset joinSeq to %d", joinSeq("d"))
+	}
+	s.RemoveGroupMembers(ctx, "g1", []string{"d"})
+	send(2, "o")
+	s.AddGroupMembers(ctx, "g1", []string{"d"}, 2000)
+	if joinSeq("d") != 17 {
+		t.Errorf("rejoin joinSeq = %d, want 17", joinSeq("d"))
+	}
+}
+
+// 总人数上限在事务内检查：超出时一人都不加；并发加人也不能突破上限。
+func testGroupMemberLimit(t *testing.T, open Opener) {
+	s, ctx := open(t), context.Background()
+	s.CreateGroup(ctx, store.Group{GroupID: "g1", Name: "g"}, []string{"a", "b", "c"})
+	if _, err := s.AddGroupMembers(ctx, "g1", []string{"d", "e"}, 4); !errors.Is(err, store.ErrLimitExceeded) {
+		t.Fatalf("over limit: %v", err)
+	}
+	if members, _ := s.GroupMembers(ctx, "g1"); len(members) != 3 {
+		t.Fatalf("partial add on limit error: %v", members)
+	}
+	// 重复成员不占名额。
+	if _, err := s.AddGroupMembers(ctx, "g1", []string{"a", "d"}, 4); err != nil {
+		t.Fatalf("exactly at limit: %v", err)
+	}
+
+	s.CreateGroup(ctx, store.Group{GroupID: "race", Name: "g"}, nil)
+	var wg sync.WaitGroup
+	for i := range 10 {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			s.AddGroupMembers(ctx, "race", []string{fmt.Sprintf("u%da", i), fmt.Sprintf("u%db", i)}, 5)
+		}()
+	}
+	wg.Wait()
+	if members, _ := s.GroupMembers(ctx, "race"); len(members) > 5 {
+		t.Errorf("concurrent adds exceeded the limit: %d members", len(members))
+	}
+}
+
+func testMissingUsers(t *testing.T, open Opener) {
+	s, ctx := open(t), context.Background()
+	s.UpsertUsers(ctx, []store.User{{UserID: "a"}, {UserID: "c"}})
+	missing, err := s.MissingUsers(ctx, []string{"a", "x", "c", "y"})
+	if err != nil || fmt.Sprint(missing) != "[x y]" {
+		t.Errorf("missing = %v, %v", missing, err)
 	}
 }
 
@@ -200,7 +321,7 @@ func testListMessagesBefore(t *testing.T, open Opener) {
 
 func testGroupExists(t *testing.T, open Opener) {
 	s, ctx := open(t), context.Background()
-	s.CreateGroup(ctx, "empty", "空群", nil)
+	s.CreateGroup(ctx, store.Group{GroupID: "empty", Name: "空群"}, nil)
 	if ok, _ := s.GroupExists(ctx, "empty"); !ok {
 		t.Error("group with no members must exist")
 	}

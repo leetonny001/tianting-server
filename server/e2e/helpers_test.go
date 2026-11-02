@@ -73,8 +73,18 @@ func newEnvCfg(t *testing.T, mutate func(*app.Config)) *env {
 // adminPost 调用管理接口，返回状态码和响应体。
 func (e *env) adminPost(path string, body any, key string) (int, []byte) {
 	e.t.Helper()
-	b, _ := json.Marshal(body)
-	req, _ := http.NewRequest(http.MethodPost, e.srv.URL+path, bytes.NewReader(b))
+	return e.adminDo(http.MethodPost, path, body, key)
+}
+
+// adminDo 用指定方法调用管理接口；body 为 nil 时不带请求体。
+func (e *env) adminDo(method, path string, body any, key string) (int, []byte) {
+	e.t.Helper()
+	var rd io.Reader
+	if body != nil {
+		b, _ := json.Marshal(body)
+		rd = bytes.NewReader(b)
+	}
+	req, _ := http.NewRequest(method, e.srv.URL+path, rd)
 	req.Header.Set("Content-Type", "application/json")
 	if key != "" {
 		req.Header.Set("X-Admin-Key", key)
@@ -99,8 +109,12 @@ func (e *env) token(uid string) string {
 	return r.Token
 }
 
+// createGroup 建群。成员必须是已注册用户（AC-GRP-01-10），这里先注册。
 func (e *env) createGroup(gid string, members ...string) {
 	e.t.Helper()
+	if len(members) > 0 {
+		e.users(members...)
+	}
 	code, body := e.adminPost("/admin/groups", map[string]any{"groupId": gid, "name": gid, "members": members}, adminKey)
 	if code != http.StatusCreated {
 		e.t.Fatalf("create group: %d %s", code, body)

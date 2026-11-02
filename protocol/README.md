@@ -7,6 +7,7 @@
 | `schema/frame.schema.json` | WebSocket 帧的 JSON Schema（2020-12） |
 | `vectors/frames.json` | 单帧校验用例：`valid` 必须通过，`invalid` 必须拒绝 |
 | `errors.json` / [ERRORS.md](ERRORS.md) | 错误码、关闭码、被踢原因 |
+| [ADMIN.md](ADMIN.md) | 管理接口（给业务服务端） |
 
 ## 1. 连接
 

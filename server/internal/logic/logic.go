@@ -5,11 +5,12 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"log/slog"
-	"slices"
 
 	"github.com/google/uuid"
 
+	"im-mvp/server/internal/cache"
 	"im-mvp/server/internal/clock"
 	"im-mvp/server/internal/delivery"
 	"im-mvp/server/internal/protocol"
@@ -25,11 +26,13 @@ type Service struct {
 	clock   clock.Clock
 	faults  *Faults // 仅测试模式非 nil
 	limiter ratelimit.Limiter
+	members *memberCache
 	newID   func() string
 }
 
 // New 创建 Service。limiter 按用户限制发送速率（所有连接合计，PRD F-MSG-07）。
-func New(st store.Store, router delivery.Router, clk clock.Clock, faults *Faults, limiter ratelimit.Limiter, log *slog.Logger) *Service {
+// inv 用于订阅群成员缓存的失效通知（TopicGroupMembers）。
+func New(st store.Store, router delivery.Router, clk clock.Clock, faults *Faults, limiter ratelimit.Limiter, inv cache.Invalidator, log *slog.Logger) *Service {
 	return &Service{
 		store:   st,
 		router:  router,
@@ -37,6 +40,7 @@ func New(st store.Store, router delivery.Router, clk clock.Clock, faults *Faults
 		clock:   clk,
 		faults:  faults,
 		limiter: limiter,
+		members: newMemberCache(st, clk, inv),
 		// UUIDv7 按时间递增，作为主键插入时对 B 树更友好。
 		newID: func() string { return uuid.Must(uuid.NewV7()).String() },
 	}
@@ -167,23 +171,19 @@ func targetConvID(req protocol.SendReq, uid string) string {
 	return protocol.RoomConvID(req.To)
 }
 
-// groupMembersFor 返回群成员；群不存在返回 4043，uid 不是成员返回 4033。
+// groupMembersFor 返回群成员（走缓存）；群不存在返回 4043，uid 不是成员返回 4033。
 func (s *Service) groupMembersFor(ctx context.Context, gid, uid string) ([]string, *protocol.Error) {
-	exists, err := s.store.GroupExists(ctx, gid)
-	if err != nil {
-		return nil, s.internal("check group", err)
-	}
-	if !exists {
-		return nil, protocol.Errorf(protocol.CodeGroupNotFound, "group %s not found", gid)
-	}
-	members, err := s.store.GroupMembers(ctx, gid)
+	e, err := s.members.get(ctx, gid)
 	if err != nil {
 		return nil, s.internal("load group members", err)
 	}
-	if !slices.Contains(members, uid) {
+	if !e.exists {
+		return nil, protocol.Errorf(protocol.CodeGroupNotFound, "group %s not found", gid)
+	}
+	if !e.has(uid) {
 		return nil, protocol.Errorf(protocol.CodeNotGroupMember, "not a member of group %s", gid)
 	}
-	return members, nil
+	return e.members, nil
 }
 
 // fanout 投递给在线的接收者，以及发送者自己的其他设备。离线用户不处理，上线后 sync。
@@ -210,17 +210,19 @@ func (s *Service) sync(ctx context.Context, c delivery.Session, raw json.RawMess
 	if perr != nil {
 		return nil, perr
 	}
-	if perr := s.authorize(ctx, c.UserID(), req.ConvID); perr != nil {
+	minSeq, perr := s.authorize(ctx, c.UserID(), req.ConvID)
+	if perr != nil {
 		return nil, perr
 	}
 
+	// 群历史可见性（BE-032）：两个方向都只返回 seq >= minSeq 的消息，翻到 minSeq 时 hasMore=false。
 	var msgs []store.Message
 	var hasMore bool
 	var err error
 	if req.AfterSeq != nil {
-		msgs, hasMore, err = s.store.ListMessages(ctx, req.ConvID, *req.AfterSeq, limit)
+		msgs, hasMore, err = s.store.ListMessages(ctx, req.ConvID, max(*req.AfterSeq, minSeq-1), limit)
 	} else {
-		msgs, hasMore, err = s.store.ListMessagesBefore(ctx, req.ConvID, *req.BeforeSeq, 1, limit)
+		msgs, hasMore, err = s.store.ListMessagesBefore(ctx, req.ConvID, *req.BeforeSeq, minSeq, limit)
 	}
 	if err != nil {
 		return nil, s.internal("list messages", err)
@@ -240,7 +242,7 @@ func (s *Service) read(ctx context.Context, c delivery.Session, raw json.RawMess
 	if perr := req.Validate(); perr != nil {
 		return nil, perr
 	}
-	if perr := s.authorize(ctx, c.UserID(), req.ConvID); perr != nil {
+	if _, perr := s.authorize(ctx, c.UserID(), req.ConvID); perr != nil {
 		return nil, perr
 	}
 	if err := s.store.SetReadSeq(ctx, c.UserID(), req.ConvID, req.Seq); err != nil {
@@ -249,36 +251,48 @@ func (s *Service) read(ctx context.Context, c delivery.Session, raw json.RawMess
 	return protocol.Empty{}, nil
 }
 
-// authorize 检查用户能否访问会话：单聊必须是其中一方（4032），群必须存在（4043）且是成员（4033）。
-func (s *Service) authorize(ctx context.Context, uid, convID string) *protocol.Error {
+// authorize 检查用户能否访问会话，并返回用户能看到的最小 seq（minSeq）：
+// 单聊必须是其中一方（4032），minSeq=1；群必须存在（4043）且是成员（4033），minSeq 见 groupMinSeq。
+// 被移除的成员连以前看过的消息也拉不到（PRD AC-GRP-01-4）。
+func (s *Service) authorize(ctx context.Context, uid, convID string) (minSeq int64, perr *protocol.Error) {
 	conv, perr := protocol.ParseConvID(convID)
 	if perr != nil {
-		return perr
+		return 0, perr
 	}
 	switch conv.Type {
 	case protocol.ConvC2C:
 		if !conv.Has(uid) {
-			return protocol.Errorf(protocol.CodeNotConvParticipant, "not a participant of %s", convID)
+			return 0, protocol.Errorf(protocol.CodeNotConvParticipant, "not a participant of %s", convID)
 		}
+		return 1, nil
 	case protocol.ConvGroup:
-		exists, err := s.store.GroupExists(ctx, conv.A)
-		if err != nil {
-			return s.internal("check group", err)
+		g, err := s.store.GetGroup(ctx, conv.A)
+		if errors.Is(err, store.ErrNotFound) {
+			return 0, protocol.Errorf(protocol.CodeGroupNotFound, "group %s not found", conv.A)
 		}
-		if !exists {
-			return protocol.Errorf(protocol.CodeGroupNotFound, "group %s not found", conv.A)
-		}
-		ok, err := s.store.IsGroupMember(ctx, conv.A, uid)
 		if err != nil {
-			return s.internal("check group member", err)
+			return 0, s.internal("get group", err)
+		}
+		m, ok, err := s.store.GroupMember(ctx, conv.A, uid)
+		if err != nil {
+			return 0, s.internal("check group member", err)
 		}
 		if !ok {
-			return protocol.Errorf(protocol.CodeNotGroupMember, "not a member of %s", convID)
+			return 0, protocol.Errorf(protocol.CodeNotGroupMember, "not a member of %s", convID)
 		}
+		return groupMinSeq(g, m), nil
 	default:
-		return protocol.Errorf(protocol.CodeBadRequest, "room messages cannot be synced")
+		return 0, protocol.Errorf(protocol.CodeBadRequest, "room messages cannot be synced")
 	}
-	return nil
+}
+
+// groupMinSeq：historyVisible 时可以看全部历史（1），否则只能看入群之后的（joinSeq+1）。
+// 设置在查询时生效（PRD F-GRP-01 规则 6），所以每次现算，不存下来。
+func groupMinSeq(g store.Group, m store.GroupMember) int64 {
+	if g.HistoryVisible {
+		return 1
+	}
+	return m.JoinSeq + 1
 }
 
 func (s *Service) internal(op string, err error) *protocol.Error {

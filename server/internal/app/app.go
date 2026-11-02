@@ -15,6 +15,7 @@ import (
 	"im-mvp/server/internal/admin"
 	"im-mvp/server/internal/api"
 	"im-mvp/server/internal/auth"
+	"im-mvp/server/internal/cache"
 	"im-mvp/server/internal/clock"
 	"im-mvp/server/internal/gateway"
 	"im-mvp/server/internal/hub"
@@ -79,7 +80,8 @@ func New(cfg Config) (*App, error) {
 	if sendRate <= 0 {
 		sendRate = defaultSendRate
 	}
-	svc := logic.New(st, h, clk, faults, ratelimit.New(sendRate, sendRate, clk), cfg.Logger)
+	inv := cache.NewLocal() // 单节点：失效通知直接在本机回调；集群时换成经消息总线广播的实现
+	svc := logic.New(st, h, clk, faults, ratelimit.New(sendRate, sendRate, clk), inv, cfg.Logger)
 
 	a := &App{store: st, hub: h}
 	mux := api.NewRouter(api.Info{Version: cfg.Version, StartedAt: time.Now(), Ready: a.ready})
@@ -88,7 +90,7 @@ func New(cfg Config) (*App, error) {
 		gw.NodeID = randomNodeID()
 	}
 	mux.Handle("GET /ws", gateway.New(gw, signer, st, clk, h, svc, cfg.Logger))
-	adm := admin.New(cfg.AdminKey, signer, st, h, clk, cfg.TestMode, cfg.Logger)
+	adm := admin.New(cfg.AdminKey, signer, st, h, inv, clk, cfg.TestMode, cfg.Logger)
 	adm.Register(mux)
 	if cfg.TestMode {
 		adm.RegisterTestRoutes(mux, faults, clk)

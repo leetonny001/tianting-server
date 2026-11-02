@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"im-mvp/server/internal/auth"
+	"im-mvp/server/internal/cache"
 	"im-mvp/server/internal/clock"
 	"im-mvp/server/internal/delivery"
 	"im-mvp/server/internal/logic"
@@ -22,7 +23,9 @@ const (
 	maxTokenTTL     = 30 * 24 * time.Hour
 	minTokenTTL     = 60 * time.Second // 非测试模式的下限（PRD C-13）
 	minTestTokenTTL = time.Second      // 测试模式的下限（PRD 6.1 节）
-	maxGroupMembers = 2000
+	maxGroupMembers = 2000             // PRD F-GRP-01 规则 2
+	maxMemberBatch  = 500              // 加 / 移除成员接口单次上限（建群不受此限，C-04）
+	maxGroupNameLen = 50               // 去首尾空白后按码点计数（C-38）
 	maxImportBatch  = 500
 	maxNicknameLen  = 32
 	maxAvatarLen    = 512
@@ -35,13 +38,15 @@ type Admin struct {
 	signer   *auth.Signer
 	store    store.Store
 	router   delivery.Router
+	inv      cache.Invalidator
 	clock    clock.Clock
 	log      *slog.Logger
 	testMode bool
 }
 
-func New(key string, signer *auth.Signer, st store.Store, router delivery.Router, clk clock.Clock, testMode bool, log *slog.Logger) *Admin {
-	return &Admin{key: key, signer: signer, store: st, router: router, clock: clk, testMode: testMode, log: log}
+// inv 用于在群成员变动后通知各节点的成员缓存失效（logic.TopicGroupMembers）。
+func New(key string, signer *auth.Signer, st store.Store, router delivery.Router, inv cache.Invalidator, clk clock.Clock, testMode bool, log *slog.Logger) *Admin {
+	return &Admin{key: key, signer: signer, store: st, router: router, inv: inv, clock: clk, testMode: testMode, log: log}
 }
 
 // Register 把管理路由挂到 mux 上。
@@ -51,7 +56,10 @@ func (a *Admin) Register(mux *http.ServeMux) {
 	mux.Handle("GET /admin/users/{userId}", a.guard(a.getUser))
 	mux.Handle("POST /admin/users/{userId}/force-logout", a.guard(a.forceLogout))
 	mux.Handle("POST /admin/groups", a.guard(a.createGroup))
+	mux.Handle("GET /admin/groups/{groupId}", a.guard(a.getGroup))
+	mux.Handle("PATCH /admin/groups/{groupId}", a.guard(a.updateGroup))
 	mux.Handle("POST /admin/groups/{groupId}/members", a.guard(a.addMembers))
+	mux.Handle("DELETE /admin/groups/{groupId}/members", a.guard(a.removeMembers))
 }
 
 // RegisterTestRoutes 注册故障注入和时钟接口，只能在测试模式下调用（PRD 6.1 节）。
@@ -280,72 +288,6 @@ func (a *Admin) tokenTTL(seconds int64) time.Duration {
 		lower = minTestTokenTTL
 	}
 	return min(max(time.Duration(seconds)*time.Second, lower), maxTokenTTL)
-}
-
-type groupReq struct {
-	GroupID string   `json:"groupId"`
-	Name    string   `json:"name"`
-	Members []string `json:"members"`
-}
-
-func (a *Admin) createGroup(w http.ResponseWriter, r *http.Request) {
-	var req groupReq
-	if !readJSON(w, r, &req) {
-		return
-	}
-	if !protocol.ValidID(req.GroupID) {
-		writeErr(w, protocol.Errorf(protocol.CodeInvalidID, "invalid groupId"))
-		return
-	}
-	if !validMembers(w, req.Members) {
-		return
-	}
-	err := a.store.CreateGroup(r.Context(), req.GroupID, req.Name, req.Members)
-	switch {
-	case errors.Is(err, store.ErrExists):
-		writeErr(w, protocol.Errorf(protocol.CodeGroupExists, "group already exists"))
-	case err != nil:
-		a.internal(w, "create group", err)
-	default:
-		writeJSON(w, http.StatusCreated, struct{}{})
-	}
-}
-
-type membersReq struct {
-	Members []string `json:"members"`
-}
-
-func (a *Admin) addMembers(w http.ResponseWriter, r *http.Request) {
-	var req membersReq
-	if !readJSON(w, r, &req) {
-		return
-	}
-	if !validMembers(w, req.Members) {
-		return
-	}
-	err := a.store.AddGroupMembers(r.Context(), r.PathValue("groupId"), req.Members)
-	switch {
-	case errors.Is(err, store.ErrNotFound):
-		writeErr(w, protocol.Errorf(protocol.CodeGroupNotFound, "group not found"))
-	case err != nil:
-		a.internal(w, "add members", err)
-	default:
-		writeJSON(w, http.StatusOK, struct{}{})
-	}
-}
-
-func validMembers(w http.ResponseWriter, members []string) bool {
-	if len(members) > maxGroupMembers {
-		writeErr(w, protocol.Errorf(protocol.CodeGroupMemberLimitExceeded, "too many members"))
-		return false
-	}
-	for _, m := range members {
-		if !protocol.ValidID(m) {
-			writeErr(w, protocol.Errorf(protocol.CodeInvalidID, "invalid member id %s", m))
-			return false
-		}
-	}
-	return true
 }
 
 func (a *Admin) internal(w http.ResponseWriter, op string, err error) {
