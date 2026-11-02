@@ -39,11 +39,13 @@
 | B0 基础对齐 | BE-001 ～ BE-006 | 协议、错误码、测试模式、文本校验、持久化、M1 能力回归 |
 | B1 用户与鉴权 | BE-010 ～ BE-015 | 用户表、凭证规则、先升级再踢、强制下线、演示登录、关闭码 |
 | B2 消息 | BE-020 ～ BE-024 | 用户存在校验、去重校验、sync 翻页、限流、消息字段 |
+| **B2.5 架构与安全基座** | BE-060 ～ BE-069 | 版本化迁移、存储契约测试、投递 / 限流 / 缓存接口、备份恢复、安全 P0（见 `docs/arch/ARCH-v1.md`） |
 | B3 群 | BE-030 ～ BE-034 | 群模型、群管理接口、历史可见性、成员缓存、成员变动事件 |
 | B4 会话 | BE-040 ～ BE-043 | 会话列表、未读、已读多端同步（P1）、昵称（P1） |
-| B5 非功能 | BE-050 ～ BE-051 | 压测工具、可观测与安全配置 |
+| B5 非功能 | BE-050 ～ BE-051 | 压测工具、可观测 |
+| B6 集群化（二期） | BE-070 ～ BE-075 | Postgres 实现、数据迁移工具、NATS 投递、Redis 在线路由与限流、多节点 e2e |
 
-依赖顺序：B0 → B1 → B2 → B3 → B4 → B5（B3 中的 BE-030 依赖 BE-010 的用户表）。前端可以在 BE-001 完成（协议定稿）后开始并行开发 SDK。
+依赖顺序：B0 → B1 → B2 → B2.5 → B3 → B4 → B5（B3 中的 BE-030 依赖 BE-010 的用户表）。前端可以在 BE-001 完成（协议定稿）后开始并行开发 SDK。
 
 ---
 
@@ -189,6 +191,72 @@
 
 ---
 
+## B2.5 架构与安全基座
+
+设计依据：`docs/arch/ARCH-v1.md`。目标是让 B3 之后的代码一开始就按"可分布式、可换库、安全优先"的约束来写。
+
+### BE-060 版本化数据库迁移
+- 优先级：P0
+- 依赖：—
+- AC：（架构：ARCH 3.1）
+- 内容：`store/migrations/sqlite/*.sql`（embed）+ `schema_migrations(version, applied_at, checksum)`；每个迁移一个事务；已执行文件的 checksum 变化时拒绝启动；`im-server migrate up|status`；`IM_AUTO_MIGRATE`（开发默认开，生产默认关）。现有建表语句改为 `0001_init.sql`，已有数据库可以无损升级。
+
+### BE-061 存储契约测试
+- 优先级：P0
+- 依赖：BE-060
+- AC：（架构：ARCH 3.2）
+- 内容：`store/storetest` 共享测试集（seq 连续且并发不重复、去重、翻页边界、只前进的已读、事务原子性、令牌版本号）；SQLite 实现接入；预留 `IM_TEST_PG_DSN`。SQL 只使用 ARCH 3.3 列出的通用语法。
+
+### BE-062 投递、在线路由、限流、缓存失效接口
+- 优先级：P0
+- 依赖：—
+- AC：（架构：ARCH 2.2）
+- 内容：新增 `delivery.Router`（`DeliverToUser`、`KickUser`）和 `cache.Invalidator`；`ratelimit.Limiter` 抽成接口；`logic`、`admin` 不再直接 import `hub`。一期只有本地实现，行为不变（现有 e2e 全部通过即为验收）。增加架构测试：`logic` 包的依赖里不能出现 `hub`。
+
+### BE-063 备份与恢复
+- 优先级：P0
+- 依赖：BE-060
+- AC：（架构：ARCH 3.4）
+- 内容：`im-server backup -o <file>` 和 `POST /admin/backup`（`VACUUM INTO` 一致性快照，写入期间不阻塞收发消息）；`im-server restore`；自动化恢复演练测试：写入数据 → 备份 → 删除数据库 → 恢复 → 逐会话校验条数和最大 seq。备份加密和上传对象存储在部署脚本中完成（M7）。
+
+### BE-064 生产启动保护、Origin 白名单、资源上限
+- 优先级：P0
+- 依赖：—
+- AC：AC-AUTH-05-1（原 BE-051 的安全部分提前）
+- 内容：S3、S4、S6——`IM_ENV=production` 时缺少密钥、密钥短于 32 字节、等于开发默认值、开启测试模式或演示登录都拒绝启动；`IM_ALLOWED_ORIGINS`（未配置时只允许本机；没有 Origin 头的原生端放行）；HTTP `ReadTimeout` / `WriteTimeout` / `IdleTimeout`；单用户最多 10 个连接，超出时踢掉最早的连接（新增踢线原因 `tooManyConnections`，需要更新 errors.json）。
+
+### BE-065 WS 鉴权改为首帧 auth
+- 优先级：P0
+- 依赖：决策 A2、PRD v1.2 C-52
+- AC：（新增，PRD v1.2）
+- 内容：S1——握手 URL 只带 `platform`；第一帧必须是 `{"cmd":"auth","data":{"token":…}}`，5 秒内没有收到以 4010 关闭；auth 之前的其他命令返回 4010 并关闭；鉴权失败沿用"先升级再踢"的错误码与顺序（4009 → 4010 → 4012 → 4011）；auth 成功返回 ack（含 userId、服务端时间）。为平滑过渡，`IM_LEGACY_QUERY_TOKEN=1` 时仍接受 URL token（生产启动保护禁止开启）。同步修改 Schema、测试用例、现有 e2e。
+
+### BE-066 握手限流与日志脱敏
+- 优先级：P0
+- 依赖：BE-062、BE-065
+- AC：（架构：S7、S9）
+- 内容：按 IP 的新建连接令牌桶和鉴权失败计数（连续失败临时封禁）；只信任 `IM_TRUSTED_PROXIES` 传来的 `X-Forwarded-For`；日志脱敏测试：发送带特征串的 token 和消息正文，断言整个测试过程的日志输出里都不出现。
+
+### BE-067 JWT 密钥轮换
+- 优先级：P0
+- 依赖：—
+- AC：（架构：S5）
+- 内容：token 头部带 `kid`；`IM_JWT_KEYS=kid1:secret1,kid2:secret2`、`IM_JWT_ACTIVE_KID`；旧密钥只验证不签发；未知 `kid` 视为 token 无效。兼容 `IM_JWT_SECRET`（视为单把密钥）。
+
+### BE-068 CI 安全扫描
+- 优先级：P0
+- 依赖：—
+- AC：（架构：S11）
+- 内容：GitHub Actions：`go test -race`、`go vet`、`govulncheck`、`gosec`、`go mod verify`、`tools/trace.py --check`；高危漏洞阻断合并。
+
+### BE-069 就绪检查与优雅下线
+- 优先级：P1
+- 依赖：BE-062
+- AC：（架构：ARCH 2.4）
+- 内容：`/readyz`（数据库可用才就绪）；SIGTERM 时先把就绪状态置为失败，再给在线连接下发 `kicked/serverShutdown`，最后关闭。
+
+---
+
 ## B3 群
 
 ### BE-030 群模型与建群 / 加成员规则
@@ -273,8 +341,24 @@
 ### BE-051 可观测与安全配置
 - 优先级：P0
 - 依赖：BE-015
-- AC：AC-AUTH-05-1
-- 内容：连接断开日志记录关闭码和原因；`IM_ALLOWED_ORIGINS` 配置 WS Origin 白名单（不配置时只允许本机来源，演示模式例外）；`IM_ENV=production` 时，如果没有配置密钥或开启了测试模式 / 演示登录，拒绝启动。
+- AC：—（原 AC 已移到 BE-064）
+- 内容：连接断开日志记录关闭码和原因；Prometheus 指标（在线连接数、收发消息速率、ack 延迟、错误码分布）。Origin 白名单和生产启动保护已提前到 BE-064。
+
+---
+
+---
+
+## B6 集群化（二期，设计见 ARCH 第 2、3 节）
+
+| 任务 | 内容 |
+|---|---|
+| BE-070 Postgres 存储实现 | 通过 BE-061 契约测试；`migrations/postgres`；连接池；`sync` 可走只读副本 |
+| BE-071 数据迁移工具 | `im-server export` / `import`（JSON Lines），导入后逐会话校验条数、最大 seq、内容哈希抽样 |
+| BE-072 NATS 投递 | `delivery.Router` 的集群实现；`cache.Invalidator` 经总线广播 |
+| BE-073 Redis 在线路由与限流 | Presence（TTL 续期）；Lua 原子令牌桶 |
+| BE-074 去重表拆分 | `client_msg_dedup` 按 `from_uid` 分片（ARCH 2.3） |
+| BE-075 多节点 e2e | docker compose 起 3 个节点 + Postgres + NATS + Redis，跨节点收发、踢线、杀掉一个节点后客户端自动重连且不丢不重 |
+| 安全 P1 | S8 管理接口签名与审计、S10 备份加密与字段加密、S13 保留期与注销、S14 内容审核回调 |
 
 ---
 
