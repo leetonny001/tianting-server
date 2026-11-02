@@ -3,6 +3,7 @@ package logic
 
 import (
 	"bytes"
+	"cmp"
 	"context"
 	"encoding/json"
 	"errors"
@@ -66,7 +67,9 @@ func (s *Service) Handle(ctx context.Context, c delivery.Session, in protocol.In
 		data, err = s.sync(ctx, c, in.Data)
 	case protocol.CmdRead:
 		data, err = s.read(ctx, c, in.Data)
-	case protocol.CmdConvs, protocol.CmdJoinRoom, protocol.CmdLeaveRoom:
+	case protocol.CmdConvs:
+		data, err = s.convs(ctx, c)
+	case protocol.CmdJoinRoom, protocol.CmdLeaveRoom:
 		err = protocol.Errorf(protocol.CodeBadRequest, "%s is not available yet", in.Cmd)
 	default:
 		err = protocol.Errorf(protocol.CodeUnknownCmd, "unknown cmd %q", in.Cmd)
@@ -105,7 +108,7 @@ func (s *Service) send(ctx context.Context, c delivery.Session, raw json.RawMess
 	}
 
 	var convID string
-	var recipients []string
+	var recipients, convUsers []string
 	switch req.ConvType {
 	case protocol.ConvC2C:
 		// 对方必须存在（D5）；给自己发不用查。
@@ -120,6 +123,10 @@ func (s *Service) send(ctx context.Context, c delivery.Session, raw json.RawMess
 		}
 		convID = protocol.C2CConvID(uid, req.To)
 		recipients = []string{req.To}
+		convUsers = []string{uid, req.To}
+		if req.To == uid {
+			convUsers = []string{uid}
+		}
 	case protocol.ConvGroup:
 		members, perr := s.groupMembersFor(ctx, req.To, uid)
 		if perr != nil {
@@ -143,6 +150,8 @@ func (s *Service) send(ctx context.Context, c delivery.Session, raw json.RawMess
 		Type:        req.Type,
 		Body:        body,
 		TS:          s.clock.Now().UnixMilli(),
+		Summary:     protocol.Summary(req.Body.Text), // custom 消息没有文本摘要，客户端按 type 显示
+		ConvUsers:   convUsers,
 	})
 	if err != nil {
 		return nil, false, s.internal("save message", err)
@@ -153,6 +162,8 @@ func (s *Service) send(ctx context.Context, c delivery.Session, raw json.RawMess
 	// 重发的消息第一次已经投递过，不再投递；没收到的端会靠 sync 补齐。
 	if !dup && !s.faults.takeSkipDelivery(req.ClientMsgID) {
 		s.fanout(saved, recipients, c.ConnID())
+		// 发言即已读：存储层已经把发送者的已读位置推进到这条消息，通知发送者的其他端（BE-042）。
+		s.pushReadUpdated(uid, saved.ConvID, saved.Seq, c.ConnID())
 	}
 	if s.faults.takeDropAck(req.ClientMsgID) {
 		return nil, true, nil
@@ -245,10 +256,97 @@ func (s *Service) read(ctx context.Context, c delivery.Session, raw json.RawMess
 	if _, perr := s.authorize(ctx, c.UserID(), req.ConvID); perr != nil {
 		return nil, perr
 	}
-	if err := s.store.SetReadSeq(ctx, c.UserID(), req.ConvID, req.Seq); err != nil {
+	readSeq, advanced, err := s.store.SetReadSeq(ctx, c.UserID(), req.ConvID, req.Seq)
+	if err != nil {
 		return nil, s.internal("set read seq", err)
 	}
+	// 已读位置前进了才通知其他端：重复、回退、截断后不变的上报都不推送（TC-SYNC-02-05）。
+	if advanced {
+		s.pushReadUpdated(c.UserID(), req.ConvID, readSeq, c.ConnID())
+	}
 	return protocol.Empty{}, nil
+}
+
+// maxConvs 是会话列表的上限（C-03）。
+const maxConvs = 500
+
+func (s *Service) convs(ctx context.Context, c delivery.Session) (any, *protocol.Error) {
+	rows, truncated, err := s.store.ListConversations(ctx, c.UserID(), maxConvs)
+	if err != nil {
+		return nil, s.internal("list conversations", err)
+	}
+	out := protocol.ConvsAck{Convs: make([]protocol.Conversation, 0, len(rows)), Truncated: truncated}
+	for _, r := range rows {
+		out.Convs = append(out.Convs, toConversation(r))
+	}
+	return out, nil
+}
+
+// toConversation 把存储层的原始数据算成协议里的会话（PRD F-CONV-01、F-CONV-02）。
+func toConversation(r store.ConvRow) protocol.Conversation {
+	conv, _ := protocol.ParseConvID(r.ConvID) // 来自我们自己写入的数据，格式可信
+	out := protocol.Conversation{
+		ConvID:    r.ConvID,
+		Type:      conv.Type,
+		MaxSeq:    r.MaxSeq,
+		ReadSeq:   r.ReadSeq,
+		MinSeq:    1,
+		UpdatedAt: r.UpdatedAt,
+	}
+	switch conv.Type {
+	case protocol.ConvGroup:
+		out.Name = r.GroupName
+		out.MinSeq = groupMinSeq(store.Group{HistoryVisible: r.HistoryVisible}, store.GroupMember{JoinSeq: r.JoinSeq})
+	default:
+		// 单聊名称：对方有昵称用昵称，否则用 userId（BE-043；昵称修改后下次拉取生效，C-19）。
+		out.Name = cmp.Or(r.PeerNickname, r.PeerID)
+	}
+	// 未读 = maxSeq − max(readSeq, joinSeq)，从入群时刻算起，与 historyVisible 无关（C-02）。
+	out.Unread = max(0, r.MaxSeq-max(r.ReadSeq, r.JoinSeq))
+	if r.LastVisible {
+		out.LastMsg = &protocol.LastMsg{MsgID: r.Last.MsgID, From: r.Last.From, Type: r.Last.Type, Text: r.Last.Text, TS: r.Last.TS}
+	}
+	return out
+}
+
+func (s *Service) pushReadUpdated(uid, convID string, readSeq int64, exceptConn string) {
+	s.pushEvent(uid, protocol.ReadUpdatedEvent{Type: protocol.EventReadUpdated, ConvID: convID, ReadSeq: readSeq}, exceptConn)
+}
+
+func (s *Service) pushEvent(uid string, ev any, exceptConn string) {
+	frame, err := json.Marshal(protocol.Event(ev))
+	if err != nil {
+		s.log.Error("marshal event", "err", err)
+		return
+	}
+	s.router.DeliverToUser(uid, frame, exceptConn)
+}
+
+// NotifyConvAdded 给被加入群的用户的所有在线连接下发 convAdded，内容与该用户 convs 里的这一项相同（BE-034）。
+// 由管理接口在加成员、建群成功后调用；只传本次真正新加入的用户（幂等操作不发事件，C-36）。
+// 一次查询拿到全部新成员的会话（建 2000 人群时不能逐个查）。
+func (s *Service) NotifyConvAdded(ctx context.Context, convID string, userIDs []string) {
+	conv, perr := protocol.ParseConvID(convID)
+	if perr != nil || conv.Type != protocol.ConvGroup {
+		return
+	}
+	rows, err := s.store.GroupConversations(ctx, conv.A, userIDs)
+	if err != nil {
+		s.log.Error("load conversations for convAdded", "err", err, "conv", convID)
+		return
+	}
+	for _, uid := range userIDs {
+		if r, ok := rows[uid]; ok { // 不在结果里：刚加入又被移除了
+			s.pushEvent(uid, protocol.ConvAddedEvent{Type: protocol.EventConvAdded, Conv: toConversation(r)}, "")
+		}
+	}
+}
+
+// NotifyConvRemoved 给被移出群的用户的所有在线连接下发 convRemoved（BE-034）。
+func (s *Service) NotifyConvRemoved(convID string, userIDs []string) {
+	for _, uid := range userIDs {
+		s.pushEvent(uid, protocol.ConvRemovedEvent{Type: protocol.EventConvRemoved, ConvID: convID}, "")
+	}
 }
 
 // authorize 检查用户能否访问会话，并返回用户能看到的最小 seq（minSeq）：

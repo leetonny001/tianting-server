@@ -212,6 +212,8 @@ func (e *env) dialRaw(label, url string, header http.Header) *client {
 	if err != nil {
 		e.t.Fatalf("dial %s: %v", label, err)
 	}
+	// 下行不限帧大小（C-07）：500 个会话的 convs 应答就超过库默认的 32KB 读取上限。SDK 也要这样设置。
+	ws.SetReadLimit(16 << 20)
 	c := &client{t: e.t, uid: label, ws: ws, in: make(chan frame, 1024)}
 	go func() {
 		defer close(c.in)

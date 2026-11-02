@@ -130,10 +130,14 @@ func (s *SQLite) SaveMessage(ctx context.Context, m Message) (Message, bool, err
 		return Message{}, false, err
 	}
 
+	// 分配 seq，同时记下会话的最后一条消息（同一行、同一个事务）。
 	if err := tx.QueryRowContext(ctx,
-		`INSERT INTO conv_seq (conv_id, max_seq) VALUES (?, 1)
-		 ON CONFLICT (conv_id) DO UPDATE SET max_seq = max_seq + 1
-		 RETURNING max_seq`, m.ConvID).Scan(&m.Seq); err != nil {
+		`INSERT INTO conv_seq (conv_id, max_seq, last_msg_id, last_from, last_type, last_text, last_ts)
+		 VALUES (?, 1, ?, ?, ?, ?, ?)
+		 ON CONFLICT (conv_id) DO UPDATE SET max_seq = max_seq + 1,
+		   last_msg_id = excluded.last_msg_id, last_from = excluded.last_from, last_type = excluded.last_type,
+		   last_text = excluded.last_text, last_ts = excluded.last_ts
+		 RETURNING max_seq`, m.ConvID, m.MsgID, m.From, m.Type, m.Summary, m.TS).Scan(&m.Seq); err != nil {
 		return Message{}, false, fmt.Errorf("allocate seq: %w", err)
 	}
 
@@ -142,6 +146,25 @@ func (s *SQLite) SaveMessage(ctx context.Context, m Message) (Message, bool, err
 		 VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
 		m.MsgID, m.ConvID, m.Seq, m.From, m.ClientMsgID, m.Type, string(m.Body), m.TS); err != nil {
 		return Message{}, false, fmt.Errorf("insert message: %w", err)
+	}
+	// 单聊：会话进入双方的会话列表。
+	for i, uid := range m.ConvUsers {
+		peer := uid
+		if len(m.ConvUsers) == 2 {
+			peer = m.ConvUsers[1-i]
+		}
+		if _, err := tx.ExecContext(ctx,
+			`INSERT INTO user_conv (user_id, conv_id, peer_id, created_at) VALUES (?, ?, ?, ?)
+			 ON CONFLICT DO NOTHING`, uid, m.ConvID, peer, m.TS); err != nil {
+			return Message{}, false, fmt.Errorf("add conversation: %w", err)
+		}
+	}
+	// 发言即已读：发送者的已读位置推进到这条消息。
+	if _, err := tx.ExecContext(ctx,
+		`INSERT INTO read_seq (user_id, conv_id, seq) VALUES (?, ?, ?)
+		 ON CONFLICT (user_id, conv_id) DO UPDATE SET seq = MAX(seq, excluded.seq)`,
+		m.From, m.ConvID, m.Seq); err != nil {
+		return Message{}, false, fmt.Errorf("mark read: %w", err)
 	}
 	return m, false, tx.Commit()
 }
@@ -227,7 +250,10 @@ func (s *SQLite) CreateGroup(ctx context.Context, g Group, members []string) err
 	}
 	defer tx.Rollback()
 
-	now := time.Now().UnixMilli()
+	now := g.CreatedAt
+	if now == 0 {
+		now = time.Now().UnixMilli()
+	}
 	if _, err := tx.ExecContext(ctx,
 		`INSERT INTO chat_groups (group_id, name, history_visible, created_at) VALUES (?, ?, ?, ?)`,
 		g.GroupID, g.Name, g.HistoryVisible, now); err != nil {
@@ -242,7 +268,7 @@ func (s *SQLite) CreateGroup(ctx context.Context, g Group, members []string) err
 	return tx.Commit()
 }
 
-func (s *SQLite) AddGroupMembers(ctx context.Context, groupID string, members []string, maxTotal int) ([]string, error) {
+func (s *SQLite) AddGroupMembers(ctx context.Context, groupID string, members []string, maxTotal int, joinedAt int64) ([]string, error) {
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
 		return nil, err
@@ -252,7 +278,7 @@ func (s *SQLite) AddGroupMembers(ctx context.Context, groupID string, members []
 	if err := groupExistsTx(ctx, tx, groupID); err != nil {
 		return nil, err
 	}
-	added, err := insertMembers(ctx, tx, groupID, members, time.Now().UnixMilli())
+	added, err := insertMembers(ctx, tx, groupID, members, joinedAt)
 	if err != nil {
 		return nil, err
 	}
@@ -437,12 +463,29 @@ func (s *SQLite) TokenVersion(ctx context.Context, userID string) (int64, error)
 	return v, err
 }
 
-func (s *SQLite) SetReadSeq(ctx context.Context, userID, convID string, seq int64) error {
-	_, err := s.db.ExecContext(ctx,
+func (s *SQLite) SetReadSeq(ctx context.Context, userID, convID string, seq int64) (int64, bool, error) {
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return 0, false, err
+	}
+	defer tx.Rollback()
+	var maxSeq, cur int64
+	if err := tx.QueryRowContext(ctx, `SELECT max_seq FROM conv_seq WHERE conv_id = ?`, convID).Scan(&maxSeq); err != nil && !errors.Is(err, sql.ErrNoRows) {
+		return 0, false, err
+	}
+	if err := tx.QueryRowContext(ctx, `SELECT seq FROM read_seq WHERE user_id = ? AND conv_id = ?`, userID, convID).Scan(&cur); err != nil && !errors.Is(err, sql.ErrNoRows) {
+		return 0, false, err
+	}
+	seq = min(seq, maxSeq) // 超过 maxSeq 的按 maxSeq 记，未读数不会变成负数
+	if seq <= cur {
+		return cur, false, nil // 只前进不后退
+	}
+	if _, err := tx.ExecContext(ctx,
 		`INSERT INTO read_seq (user_id, conv_id, seq) VALUES (?, ?, ?)
-		 ON CONFLICT (user_id, conv_id) DO UPDATE SET seq = MAX(seq, excluded.seq)`,
-		userID, convID, seq)
-	return err
+		 ON CONFLICT (user_id, conv_id) DO UPDATE SET seq = excluded.seq`, userID, convID, seq); err != nil {
+		return 0, false, err
+	}
+	return seq, true, tx.Commit()
 }
 
 func (s *SQLite) ReadSeq(ctx context.Context, userID, convID string) (int64, error) {
@@ -453,6 +496,115 @@ func (s *SQLite) ReadSeq(ctx context.Context, userID, convID string) (int64, err
 		return 0, nil
 	}
 	return seq, err
+}
+
+// 会话列表查询：单聊来自 user_conv，群来自 group_members。
+// 群的 minSeq = historyVisible ? 1 : join_seq+1；最后一条消息的 seq（= max_seq）小于 minSeq 时
+// 不可展示（入群前、且历史不可见），此时按入群时间排序，避免在会话列表里泄露入群前的消息。
+// 两个分支都带 user_id 列，%s 处填 WHERE 条件。
+const (
+	c2cConvSelect = `
+	SELECT uc.user_id, uc.conv_id, cs.max_seq, COALESCE(rs.seq, 0) AS read_seq, 0 AS join_seq,
+	       '' AS group_name, 0 AS history_visible, uc.peer_id, COALESCE(u.nickname, '') AS peer_nickname,
+	       cs.max_seq > 0 AS last_visible, uc.created_at AS joined_at,
+	       cs.last_msg_id, cs.last_from, cs.last_type, cs.last_text, cs.last_ts
+	FROM user_conv uc
+	JOIN conv_seq cs ON cs.conv_id = uc.conv_id
+	LEFT JOIN read_seq rs ON rs.user_id = uc.user_id AND rs.conv_id = uc.conv_id
+	LEFT JOIN users u ON u.user_id = uc.peer_id
+	WHERE %s`
+
+	groupConvSelect = `
+	SELECT gm.user_id, 'group:' || gm.group_id AS conv_id, COALESCE(cs.max_seq, 0) AS max_seq,
+	       COALESCE(rs.seq, 0) AS read_seq, gm.join_seq,
+	       g.name AS group_name, g.history_visible, '' AS peer_id, '' AS peer_nickname,
+	       COALESCE(cs.max_seq, 0) >= CASE WHEN g.history_visible THEN 1 ELSE gm.join_seq + 1 END AS last_visible,
+	       gm.joined_at,
+	       COALESCE(cs.last_msg_id, '') AS last_msg_id, COALESCE(cs.last_from, '') AS last_from,
+	       COALESCE(cs.last_type, '') AS last_type, COALESCE(cs.last_text, '') AS last_text,
+	       COALESCE(cs.last_ts, 0) AS last_ts
+	FROM group_members gm
+	JOIN chat_groups g ON g.group_id = gm.group_id
+	LEFT JOIN conv_seq cs ON cs.conv_id = 'group:' || gm.group_id
+	LEFT JOIN read_seq rs ON rs.user_id = gm.user_id AND rs.conv_id = 'group:' || gm.group_id
+	WHERE %s`
+
+	// convColumns 是外层统一选出的列，顺序与 scanConv 一致（第一列 user_id）。
+	convColumns = `user_id, conv_id, max_seq, read_seq, join_seq, group_name, history_visible, peer_id, peer_nickname,
+	       last_visible, CASE WHEN last_visible THEN last_ts ELSE joined_at END AS updated_at,
+	       last_msg_id, last_from, last_type, last_text, last_ts`
+)
+
+// convQuery 拼出外层查询：branches 是已经填好条件的分支（UNION ALL）。
+// 拼接的只有代码里的常量片段，用户输入全部通过 ? 占位符绑定，没有注入风险。
+func convQuery(branches ...string) string {
+	return `SELECT ` + convColumns + ` FROM (` + strings.Join(branches, " UNION ALL ") + `) ORDER BY updated_at DESC, conv_id ASC` // #nosec G202 -- constant fragments only
+}
+
+func (s *SQLite) ListConversations(ctx context.Context, userID string, limit int) ([]ConvRow, bool, error) {
+	q := convQuery(fmt.Sprintf(c2cConvSelect, "uc.user_id = ?"), fmt.Sprintf(groupConvSelect, "gm.user_id = ?")) + ` LIMIT ?` // #nosec G202 -- constant fragments only; values are bound with ?
+	rows, err := s.db.QueryContext(ctx, q, userID, userID, limit+1)
+	if err != nil {
+		return nil, false, err
+	}
+	defer rows.Close()
+	out := make([]ConvRow, 0, min(limit, 64))
+	for rows.Next() {
+		c, err := scanConv(rows)
+		if err != nil {
+			return nil, false, err
+		}
+		out = append(out, c)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, false, err
+	}
+	truncated := len(out) > limit
+	if truncated {
+		out = out[:limit]
+	}
+	return out, truncated, nil
+}
+
+func (s *SQLite) GetConversation(ctx context.Context, userID, convID string) (ConvRow, bool, error) {
+	q := convQuery(
+		fmt.Sprintf(c2cConvSelect, "uc.user_id = ? AND uc.conv_id = ?"),
+		fmt.Sprintf(groupConvSelect, "gm.user_id = ? AND 'group:' || gm.group_id = ?"))
+	c, err := scanConv(s.db.QueryRowContext(ctx, q, userID, convID, userID, convID))
+	if errors.Is(err, sql.ErrNoRows) {
+		return ConvRow{}, false, nil
+	}
+	return c, err == nil, err
+}
+
+func (s *SQLite) GroupConversations(ctx context.Context, groupID string, userIDs []string) (map[string]ConvRow, error) {
+	want := make(map[string]bool, len(userIDs))
+	for _, u := range userIDs {
+		want[u] = true
+	}
+	rows, err := s.db.QueryContext(ctx, convQuery(fmt.Sprintf(groupConvSelect, "gm.group_id = ?")), groupID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := make(map[string]ConvRow, len(userIDs))
+	for rows.Next() {
+		c, err := scanConv(rows)
+		if err != nil {
+			return nil, err
+		}
+		if want[c.UserID] {
+			out[c.UserID] = c
+		}
+	}
+	return out, rows.Err()
+}
+
+func scanConv(r rowScanner) (ConvRow, error) {
+	var c ConvRow
+	err := r.Scan(&c.UserID, &c.ConvID, &c.MaxSeq, &c.ReadSeq, &c.JoinSeq, &c.GroupName, &c.HistoryVisible, &c.PeerID, &c.PeerNickname,
+		&c.LastVisible, &c.UpdatedAt, &c.Last.MsgID, &c.Last.From, &c.Last.Type, &c.Last.Text, &c.Last.TS)
+	return c, err
 }
 
 const msgColumns = `msg_id, client_msg_id, conv_id, seq, from_uid, type, body, ts`

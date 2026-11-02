@@ -57,14 +57,16 @@ func (a *Admin) createGroup(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, protocol.Errorf(protocol.CodeGroupMemberLimitExceeded, "a group can have at most %d members", maxGroupMembers))
 		return
 	}
-	err := a.store.CreateGroup(ctx, store.Group{GroupID: req.GroupID, Name: name, HistoryVisible: req.HistoryVisible}, members)
+	g := store.Group{GroupID: req.GroupID, Name: name, HistoryVisible: req.HistoryVisible, CreatedAt: a.clock.Now().UnixMilli()}
+	err := a.store.CreateGroup(ctx, g, members)
 	switch {
 	case errors.Is(err, store.ErrExists): // 并发建同一个群
 		writeErr(w, protocol.Errorf(protocol.CodeGroupExists, "group already exists"))
 	case err != nil:
 		a.internal(w, "create group", err)
 	default:
-		a.inv.Invalidate(logic.TopicGroupMembers, req.GroupID) // 之前可能缓存过"群不存在"
+		a.inv.Invalidate(logic.TopicGroupMembers, req.GroupID)                      // 之前可能缓存过"群不存在"
+		a.notifier.NotifyConvAdded(ctx, protocol.GroupConvID(req.GroupID), members) // 在线的初始成员收到 convAdded（C-35）
 		writeJSON(w, http.StatusCreated, struct{}{})
 	}
 }
@@ -81,7 +83,7 @@ func (a *Admin) addMembers(w http.ResponseWriter, r *http.Request) {
 	if !a.checkUsersExist(w, r, members) {
 		return
 	}
-	added, err := a.store.AddGroupMembers(r.Context(), gid, members, maxGroupMembers)
+	added, err := a.store.AddGroupMembers(r.Context(), gid, members, maxGroupMembers, a.clock.Now().UnixMilli())
 	switch {
 	case errors.Is(err, store.ErrNotFound):
 		writeErr(w, protocol.Errorf(protocol.CodeGroupNotFound, "group not found"))
@@ -92,6 +94,7 @@ func (a *Admin) addMembers(w http.ResponseWriter, r *http.Request) {
 	default:
 		if len(added) > 0 {
 			a.inv.Invalidate(logic.TopicGroupMembers, gid)
+			a.notifier.NotifyConvAdded(r.Context(), protocol.GroupConvID(gid), added) // 只通知新加入的（C-36）
 		}
 		writeJSON(w, http.StatusOK, struct {
 			Added []string `json:"added"`
@@ -113,6 +116,7 @@ func (a *Admin) removeMembers(w http.ResponseWriter, r *http.Request) {
 	default:
 		if len(removed) > 0 {
 			a.inv.Invalidate(logic.TopicGroupMembers, gid)
+			a.notifier.NotifyConvRemoved(protocol.GroupConvID(gid), removed)
 		}
 		writeJSON(w, http.StatusOK, struct {
 			Removed []string `json:"removed"`

@@ -24,6 +24,10 @@ type Message struct {
 	Type        string
 	Body        json.RawMessage
 	TS          int64
+
+	// 以下字段只在 SaveMessage 时传入，不随消息读出。
+	Summary   string   // 会话列表里的摘要（调用方截断好，前 100 个码点）
+	ConvUsers []string // 单聊：双方 userId，让会话出现在双方的会话列表里；群消息为空
 }
 
 // Group 是群（PRD F-GRP-01）。
@@ -46,6 +50,33 @@ type GroupUpdate struct {
 	HistoryVisible *bool
 }
 
+// ConvRow 是会话列表里的一项（原始数据，由 logic 计算 minSeq、未读数等）。
+type ConvRow struct {
+	UserID         string // 这是谁的会话
+	ConvID         string
+	MaxSeq         int64
+	ReadSeq        int64
+	JoinSeq        int64  // 群：入群时的 maxSeq；单聊为 0
+	GroupName      string // 群名；单聊为空
+	HistoryVisible bool   // 群设置；单聊为 false
+	PeerID         string // 单聊对方；群为空
+	PeerNickname   string // 单聊对方的昵称，可能为空
+	// UpdatedAt 是排序依据：最后一条**该用户可见**的消息的时间；没有可见消息的群用入群时间。
+	UpdatedAt int64
+	// LastVisible 为 false 时没有可展示的最后一条消息（群里没有消息，或者只有入群前、且历史不可见的消息）。
+	LastVisible bool
+	Last        LastMessage
+}
+
+// LastMessage 是会话最后一条消息的摘要。
+type LastMessage struct {
+	MsgID string
+	From  string
+	Type  string
+	Text  string
+	TS    int64
+}
+
 // User 是 IM 用户（PRD F-USER-01）。
 type User struct {
 	UserID    string
@@ -58,6 +89,8 @@ type User struct {
 type Store interface {
 	// SaveMessage 为消息分配会话内递增 seq 并保存。
 	// 同一发送者重复提交同一 ClientMsgID 时不新建，返回第一次保存的消息且 dup=true。
+	// 同一个事务里还会：更新会话的最后一条消息；单聊把会话加入双方的会话列表（ConvUsers）；
+	// 把发送者的已读位置推进到这条消息（发言即已读，PRD F-CONV-02 规则 2）。
 	SaveMessage(ctx context.Context, m Message) (saved Message, dup bool, err error)
 	// FindByClientMsgID 按（发送者，clientMsgId）查找已保存的消息，用于在限流前先识别重发。
 	FindByClientMsgID(ctx context.Context, from, clientMsgID string) (Message, bool, error)
@@ -66,13 +99,15 @@ type Store interface {
 	// ListMessagesBefore 返回 minSeq <= seq < beforeSeq 中最近的 limit 条（按 seq 升序），以及更早的是否还有。
 	ListMessagesBefore(ctx context.Context, convID string, beforeSeq, minSeq int64, limit int) (msgs []Message, hasMore bool, err error)
 
-	// CreateGroup 建群。群已存在返回 ErrExists。初始成员的 JoinSeq 为会话当前的 maxSeq（新群为 0）。
+	// CreateGroup 建群。群已存在返回 ErrExists。初始成员的 JoinSeq 为会话当前的 maxSeq（新群为 0），
+	// 入群时间为 g.CreatedAt（由调用方按注入的时钟传入）。
 	CreateGroup(ctx context.Context, g Group, members []string) error
 	// AddGroupMembers 加成员，返回本次新加入的成员（已经是成员的不变，不重置 JoinSeq，C-36）。
 	// 新成员的 JoinSeq 为会话当前的 maxSeq，必须和 seq 分配互斥地读取。
 	// 群不存在返回 ErrNotFound；加完后总人数超过 maxTotal 返回 ErrLimitExceeded，一人都不加。
 	// 总人数在同一个事务里检查，并发加人也不会突破上限。
-	AddGroupMembers(ctx context.Context, groupID string, members []string, maxTotal int) (added []string, err error)
+	// joinedAt 是入群时间（没有消息的群在会话列表里按它排序）。
+	AddGroupMembers(ctx context.Context, groupID string, members []string, maxTotal int, joinedAt int64) (added []string, err error)
 	// RemoveGroupMembers 移除成员，返回实际被移除的（不是成员的忽略，C-36）。群不存在返回 ErrNotFound。
 	RemoveGroupMembers(ctx context.Context, groupID string, members []string) (removed []string, err error)
 	// GetGroup 不存在时返回 ErrNotFound。
@@ -100,9 +135,19 @@ type Store interface {
 	// TokenVersion 返回用户当前的令牌版本号；用户不存在时为 0。
 	TokenVersion(ctx context.Context, userID string) (int64, error)
 
-	// SetReadSeq 记录已读位置，只前进不后退。
-	SetReadSeq(ctx context.Context, userID, convID string, seq int64) error
+	// SetReadSeq 记录已读位置：超过会话 maxSeq 的按 maxSeq 记，只前进不后退（PRD F-CONV-02 规则 4）。
+	// 返回记录后的已读位置，以及这次是否前进了（用于推送 readUpdated）。
+	SetReadSeq(ctx context.Context, userID, convID string, seq int64) (readSeq int64, advanced bool, err error)
 	ReadSeq(ctx context.Context, userID, convID string) (int64, error)
+
+	// ListConversations 返回用户的会话列表：按 UpdatedAt 倒序、ConvID 升序（字节序），最多 limit 个；
+	// 超过时 truncated=true（C-03）。包括发过或收到过消息的单聊、所在的全部群。
+	ListConversations(ctx context.Context, userID string, limit int) (convs []ConvRow, truncated bool, err error)
+	// GetConversation 返回用户的某个会话；不在其会话列表里时 ok=false。
+	GetConversation(ctx context.Context, userID, convID string) (c ConvRow, ok bool, err error)
+	// GroupConversations 一次查出群里这些成员各自的会话（用于给新成员批量下发 convAdded）；
+	// 不是成员的不出现在结果里。
+	GroupConversations(ctx context.Context, groupID string, userIDs []string) (map[string]ConvRow, error)
 
 	Close() error
 }

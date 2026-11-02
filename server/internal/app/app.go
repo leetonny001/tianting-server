@@ -90,7 +90,7 @@ func New(cfg Config) (*App, error) {
 		gw.NodeID = randomNodeID()
 	}
 	mux.Handle("GET /ws", gateway.New(gw, signer, st, clk, h, svc, cfg.Logger))
-	adm := admin.New(cfg.AdminKey, signer, st, h, inv, clk, cfg.TestMode, cfg.Logger)
+	adm := admin.New(cfg.AdminKey, signer, st, h, inv, svc, clk, cfg.TestMode, cfg.Logger)
 	adm.Register(mux)
 	if cfg.TestMode {
 		adm.RegisterTestRoutes(mux, faults, clk)

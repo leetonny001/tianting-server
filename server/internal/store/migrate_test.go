@@ -143,3 +143,50 @@ func TestEmbeddedMigrationsAreContiguous(t *testing.T) {
 		}
 	}
 }
+
+// BE-040：迁移 0003 从已有数据回填会话列表（最后一条消息、单聊双方）。
+// 模拟 B3 时期（只执行到 0002）的数据库，写入数据后再升级。
+func TestMigration0003Backfill(t *testing.T) {
+	ctx := context.Background()
+	db := rawDB(t)
+	all, err := SQLiteMigrations()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := Migrate(ctx, db, all[:2]); err != nil {
+		t.Fatal(err)
+	}
+	for _, q := range []string{
+		`INSERT INTO conv_seq (conv_id, max_seq) VALUES ('c2c:alice:bob', 2), ('group:g1', 1)`,
+		`INSERT INTO messages VALUES ('m1', 'c2c:alice:bob', 1, 'alice', 'c1', 'text', '{"text":"first"}', 100)`,
+		`INSERT INTO messages VALUES ('m2', 'c2c:alice:bob', 2, 'bob', 'c2', 'text', '{"text":"` + strings.Repeat("长", 120) + `"}', 200)`,
+		`INSERT INTO messages VALUES ('m3', 'group:g1', 1, 'alice', 'c3', 'text', '{"text":"group"}', 300)`,
+	} {
+		if _, err := db.Exec(q); err != nil {
+			t.Fatalf("%s: %v", q, err)
+		}
+	}
+	if _, err := Migrate(ctx, db, all); err != nil {
+		t.Fatal(err)
+	}
+	s := &SQLite{db: db}
+	for _, uid := range []string{"alice", "bob"} {
+		convs, _, err := s.ListConversations(ctx, uid, 10)
+		if err != nil || len(convs) != 1 {
+			t.Fatalf("%s: %+v %v", uid, convs, err)
+		}
+		c := convs[0]
+		want := map[string]string{"alice": "bob", "bob": "alice"}[uid]
+		if c.ConvID != "c2c:alice:bob" || c.PeerID != want || c.MaxSeq != 2 || c.Last.MsgID != "m2" || c.UpdatedAt != 200 {
+			t.Errorf("%s: %+v", uid, c)
+		}
+		if n := len([]rune(c.Last.Text)); n != 100 {
+			t.Errorf("backfilled summary has %d code points, want 100", n)
+		}
+	}
+	var last string
+	db.QueryRow(`SELECT last_text FROM conv_seq WHERE conv_id = 'group:g1'`).Scan(&last)
+	if last != "group" {
+		t.Errorf("group last text = %q", last)
+	}
+}

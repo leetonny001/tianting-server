@@ -2,6 +2,7 @@
 package admin
 
 import (
+	"context"
 	"crypto/subtle"
 	"encoding/json"
 	"errors"
@@ -39,14 +40,22 @@ type Admin struct {
 	store    store.Store
 	router   delivery.Router
 	inv      cache.Invalidator
+	notifier ConvNotifier
 	clock    clock.Clock
 	log      *slog.Logger
 	testMode bool
 }
 
-// inv 用于在群成员变动后通知各节点的成员缓存失效（logic.TopicGroupMembers）。
-func New(key string, signer *auth.Signer, st store.Store, router delivery.Router, inv cache.Invalidator, clk clock.Clock, testMode bool, log *slog.Logger) *Admin {
-	return &Admin{key: key, signer: signer, store: st, router: router, inv: inv, clock: clk, testMode: testMode, log: log}
+// ConvNotifier 在群成员变动后给相关用户下发 convAdded / convRemoved（由 logic.Service 实现）。
+type ConvNotifier interface {
+	NotifyConvAdded(ctx context.Context, convID string, userIDs []string)
+	NotifyConvRemoved(convID string, userIDs []string)
+}
+
+// inv 用于在群成员变动后通知各节点的成员缓存失效（logic.TopicGroupMembers）；
+// notifier 用于给被加入 / 移出的用户下发会话事件。
+func New(key string, signer *auth.Signer, st store.Store, router delivery.Router, inv cache.Invalidator, notifier ConvNotifier, clk clock.Clock, testMode bool, log *slog.Logger) *Admin {
+	return &Admin{key: key, signer: signer, store: st, router: router, inv: inv, notifier: notifier, clock: clk, testMode: testMode, log: log}
 }
 
 // Register 把管理路由挂到 mux 上。

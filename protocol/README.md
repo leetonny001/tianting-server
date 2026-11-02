@@ -34,11 +34,11 @@ ws(s)://{host}/ws?platform={android|ios|web|pc}
 | `auth` | 上行 | 鉴权，必须是第一帧；成功后再发返回 4000 | `{userId, serverTime}` |
 | `send` | 上行 | 发消息 | `{msgId, convId, seq, ts}` |
 | `sync` | 上行 | 拉消息：`afterSeq`（补拉之后的）或 `beforeSeq`（翻页拉之前的），二选一 | `{messages, hasMore}`，按 seq 升序 |
-| `convs` | 上行 | 拉会话列表 *（BE-040）* | `{convs, truncated}` |
+| `convs` | 上行 | 拉会话列表：按 `updatedAt` 倒序、`convId` 升序，最多 500 个 | `{convs, truncated}` |
 | `read` | 上行 | 上报已读位置 | `{}` |
 | `ping` | 上行 | 心跳 | 回 `pong`（不是 ack） |
 | `msg` | 下行 | 新消息 | — |
-| `event` | 下行 | `kicked`、`convAdded`、`convRemoved`、`readUpdated`（P1） | — |
+| `event` | 下行 | `kicked`；`convAdded`（被拉进群，内容与 convs 的一项相同）、`convRemoved`（被移出群）；`readUpdated`（自己在其他端的已读位置前进了，包括发言即已读） | — |
 | `joinRoom` / `leaveRoom` / `push` | — | 二期（聊天室、系统推送） | — |
 
 ## 3. 交互规则
