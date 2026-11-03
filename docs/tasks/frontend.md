@@ -23,6 +23,7 @@
 | FE-006 已读与未读 | ✅ 完成 | 可见 + 停在会话才报、1 秒节流、本地未读与服务端公式一致（已读基线） |
 | FE-007 测试替身 | ✅ 完成 | `FakeTransport`、`FakeClock`，从 `@tianting/sdk/testing` 导出 |
 | FE-008 文本校验 | ✅ 完成 | 与服务端共用 `protocol/vectors/text.json`（37 条） |
+| FE-010～FE-018 H5 基础 | 🟡 主体完成 | tianting-web `3859f45`：登录 + sessionStorage + 刷新重连 + 退出确认、会话列表与连接状态条、发起单聊、聊天页（历史、滚动、时间分隔、发送状态 / 重发、超长）、纯文本渲染（lint 禁止 innerHTML）、群聊发送者 / 被移出、错误文案（命令 + 码）、离开页面提示、演示面板。缺：发送者昵称（FE-103）、群成员数（FE-204）、管理密钥 HAR 检查脚本、iOS Safari 手工验证 |
 
 测试：单元 82 个（假传输层 + 假时钟）、集成 6 个（真实 im-server）；变异测试验证退避上限、缺口等待。设计说明见 [docs/sdk/README.md](../sdk/README.md)。
 

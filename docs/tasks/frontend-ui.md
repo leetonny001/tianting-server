@@ -20,6 +20,8 @@
 | FE-300～FE-313（M4：宽屏、深色、群管理、Tauri） | ⬜ 未开始 | — |
 | FE-350～FE-354（第二批 / P1） | ⬜ 未开始 | 依赖 PRD-admin 第二批服务端与协议 |
 | FE-380～FE-387（原生端总任务） | ⬜ 未开始 | M5 / M6 |
+| FE-200～FE-202 SDK 缺口 | ✅ 完成 | tianting-sdk-ts `572312a`、`3eb87f7`：`parseConvIdStrict`（`protocol/vectors/convid.json`）、`peerId`、`totalUnread` / `pendingCount` 事件、`sendFailed` |
+| FE-220～FE-222、FE-224、FE-229～FE-232、FE-235、FE-237（M3 部分） | 🟡 第一批 | tianting-web `3859f45`：工程与 CI 检查（token、对比度、颜色字面量、品牌词、首屏体积）、应用壳、通用组件、气泡、发送状态、消息菜单、输入区、状态条 / 被踢弹窗 / 标题、我与设置。社交页面 FE-238～FE-244 等 PRD-social 服务端 |
 
 ## 实现约定（前端 UI）
 
