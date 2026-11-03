@@ -29,9 +29,10 @@ const (
 )
 
 type env struct {
-	t   *testing.T
-	srv *httptest.Server
-	app *app.App
+	t        *testing.T
+	srv      *httptest.Server // 对外端口：/ws、/healthz、/readyz
+	adminSrv *httptest.Server // 管理端口：/admin/*（PRD-admin F-KEY-01）
+	app      *app.App
 }
 
 // newEnv 启动测试模式的服务（PRD 6.1 节：故障注入、时钟注入、短有效期 token 可用）。
@@ -64,11 +65,13 @@ func newEnvCfg(t *testing.T, mutate func(*app.Config)) *env {
 		t.Fatal(err)
 	}
 	srv := httptest.NewServer(a.Handler())
+	adminSrv := httptest.NewServer(a.AdminHandler())
 	t.Cleanup(func() {
 		srv.Close()
+		adminSrv.Close()
 		a.Close()
 	})
-	return &env{t: t, srv: srv, app: a}
+	return &env{t: t, srv: srv, adminSrv: adminSrv, app: a}
 }
 
 // adminPost 调用管理接口，返回状态码和响应体。
@@ -80,12 +83,23 @@ func (e *env) adminPost(path string, body any, key string) (int, []byte) {
 // adminDo 用指定方法调用管理接口；body 为 nil 时不带请求体。
 func (e *env) adminDo(method, path string, body any, key string) (int, []byte) {
 	e.t.Helper()
+	return e.do(e.adminSrv.URL, method, path, body, key)
+}
+
+// publicPost 调用对外端口上的 HTTP 接口（演示登录 /demo/login）。
+func (e *env) publicPost(path string, body any) (int, []byte) {
+	e.t.Helper()
+	return e.do(e.srv.URL, http.MethodPost, path, body, "")
+}
+
+func (e *env) do(base, method, path string, body any, key string) (int, []byte) {
+	e.t.Helper()
 	var rd io.Reader
 	if body != nil {
 		b, _ := json.Marshal(body)
 		rd = bytes.NewReader(b)
 	}
-	req, _ := http.NewRequest(method, e.srv.URL+path, rd)
+	req, _ := http.NewRequest(method, base+path, rd)
 	req.Header.Set("Content-Type", "application/json")
 	if key != "" {
 		req.Header.Set("X-Admin-Key", key)

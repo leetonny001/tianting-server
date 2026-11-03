@@ -154,3 +154,36 @@ func TestGracefulShutdown(t *testing.T) {
 		t.Errorf("server exit: %v (want clean exit)", err)
 	}
 }
+
+// AC-KEY-01-2、AC-KEY-01-3、AC-KEY-01-5（进程级）：管理端口的启动保护。
+func TestAdminAddrStartupGuards(t *testing.T) {
+	bin := buildServer(t)
+	db := filepath.Join(t.TempDir(), "im.db")
+	if out, err := runBin(t, bin, []string{"IM_DB=" + db}, "migrate", "up"); err != nil {
+		t.Fatalf("migrate up: %v\n%s", err, out)
+	}
+	prod := []string{
+		"IM_ENV=production", "IM_ADDR=127.0.0.1:0", "IM_DB=" + db, "IM_METRICS_ADDR=off",
+		"IM_JWT_SECRET=jwt-0123456789abcdef0123456789abcdef", "IM_ADMIN_KEY=adm-0123456789abcdef0123456789abcdef",
+	}
+	// 01-2：生产环境、非回环管理地址、没有 TLS → 拒绝启动。
+	out, err := runBin(t, bin, append(prod, "IM_ADMIN_ADDR=10.0.0.5:8081"))
+	if err == nil || !strings.Contains(out, "IM_ADMIN_TLS_CERT") {
+		t.Errorf("non-loopback admin addr without TLS: err=%v\n%s", err, out)
+	}
+	// 01-5：两组地址冲突 → 拒绝启动并指出冲突的两项。
+	for _, tc := range []struct {
+		env  []string
+		want string
+	}{
+		{[]string{"IM_ADMIN_ADDR=127.0.0.1:9090", "IM_METRICS_ADDR=127.0.0.1:9090"}, "IM_ADMIN_ADDR and IM_METRICS_ADDR"},
+		{[]string{"IM_ADMIN_ADDR=127.0.0.1:8081", "IM_OPS_ADDR=127.0.0.1:8081"}, "IM_ADMIN_ADDR and IM_OPS_ADDR"},
+	} {
+		if out, err := runBin(t, bin, append(append([]string{}, prod...), tc.env...)); err == nil || !strings.Contains(out, tc.want) {
+			t.Errorf("%v: err=%v\n%s", tc.env, err, out)
+		}
+	}
+	// 01-3：回环地址允许明文，正常启动并可以签发 token。
+	srv := startServer(t, bin, db, prod[0], prod[4], prod[5])
+	srv.token(t, "alice")
+}

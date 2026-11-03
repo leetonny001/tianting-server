@@ -49,6 +49,7 @@ go test -race ./...                    # 单测 + 契约测试 + 端到端测试
 | `IM_DB` | `im.db` | SQLite 文件 |
 | `IM_JWT_SECRET` / `IM_ADMIN_KEY` | 开发密钥 | 生产必须设置，至少 32 字节 |
 | `IM_ALLOWED_ORIGINS` | 只允许本机 | 浏览器 Origin 白名单 |
+| `IM_ADMIN_ADDR` | `127.0.0.1:8081` | 管理接口 `/admin/*`，只给内网；对外端口上没有 |
 | `IM_METRICS_ADDR` | `127.0.0.1:9090` | Prometheus 指标和 pprof，只给内网 |
 
 运维命令：`im-server migrate up|status`、`im-server backup -o FILE`、`im-server restore -i FILE`。
@@ -56,9 +57,9 @@ go test -race ./...                    # 单测 + 契约测试 + 端到端测试
 ### 手动体验
 
 ```bash
-# 1. 业务服务端为用户签发 token，并建群
-curl -s -X POST localhost:8080/admin/users/token -H 'X-Admin-Key: dev-admin-key' -d '{"userId":"alice"}'
-curl -s -X POST localhost:8080/admin/groups -H 'X-Admin-Key: dev-admin-key' \
+# 1. 业务服务端为用户签发 token，并建群（管理接口在单独的管理端口 IM_ADMIN_ADDR，默认 127.0.0.1:8081）
+curl -s -X POST localhost:8081/admin/users/token -H 'X-Admin-Key: dev-admin-key' -d '{"userId":"alice"}'
+curl -s -X POST localhost:8081/admin/groups -H 'X-Admin-Key: dev-admin-key' \
   -d '{"groupId":"g1","name":"测试群","members":["alice"]}'
 
 # 2. 用任意 WebSocket 客户端（如 websocat）连接 ws://localhost:8080/ws?platform=web

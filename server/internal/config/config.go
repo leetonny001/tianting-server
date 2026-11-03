@@ -8,6 +8,7 @@ import (
 	"cmp"
 	"errors"
 	"fmt"
+	"net"
 	"net/netip"
 	"strconv"
 	"strings"
@@ -40,7 +41,15 @@ type Server struct {
 	// MetricsAddr 是 /metrics 的监听地址（BE-051），默认只监听本机；为空表示不开启。
 	// 不和 Addr 共用端口：指标是内部运行数据，不能暴露到公网。
 	MetricsAddr string
-	App         app.Config
+	// AdminAddr 是管理接口 /admin/* 的监听地址（PRD-admin F-KEY-01），默认 127.0.0.1:8081；为空表示不开启。
+	// 对外端口上不注册任何管理路由。非回环地址在生产环境必须配置 TLS（AdminTLSCert / AdminTLSKey）。
+	AdminAddr    string
+	AdminTLSCert string
+	AdminTLSKey  string
+	// OpsAddr、PprofAddr 预留给运维接口和 pprof（PRD-ops F-OPS-16、F-OPS-17），目前只参与地址冲突检查。
+	OpsAddr   string
+	PprofAddr string
+	App       app.Config
 }
 
 // Load 读取并校验配置。getenv 通常是 os.Getenv，测试时可以传入假实现。
@@ -56,13 +65,18 @@ func Load(getenv func(string) string) (cfg Server, warnings []string, err error)
 	prod := cfg.Env == EnvProduction
 
 	cfg.Addr = cmp.Or(getenv("IM_ADDR"), ":8080")
-	switch v := getenv("IM_METRICS_ADDR"); v {
-	case "":
-		cfg.MetricsAddr = "127.0.0.1:9090"
-	case "off":
-	default:
-		cfg.MetricsAddr = v
+	cfg.MetricsAddr = addrEnv(getenv, "IM_METRICS_ADDR", "127.0.0.1:9090")
+	cfg.AdminAddr = addrEnv(getenv, "IM_ADMIN_ADDR", "127.0.0.1:8081")
+	cfg.OpsAddr = addrEnv(getenv, "IM_OPS_ADDR", "")
+	cfg.PprofAddr = addrEnv(getenv, "IM_PPROF_ADDR", "")
+	cfg.AdminTLSCert, cfg.AdminTLSKey = getenv("IM_ADMIN_TLS_CERT"), getenv("IM_ADMIN_TLS_KEY")
+	if (cfg.AdminTLSCert == "") != (cfg.AdminTLSKey == "") {
+		bad("IM_ADMIN_TLS_CERT and IM_ADMIN_TLS_KEY must be set together")
 	}
+	problems = append(problems, addrConflicts(map[string]string{
+		"IM_ADDR": cfg.Addr, "IM_ADMIN_ADDR": cfg.AdminAddr, "IM_OPS_ADDR": cfg.OpsAddr,
+		"IM_METRICS_ADDR": cfg.MetricsAddr, "IM_PPROF_ADDR": cfg.PprofAddr,
+	})...)
 	a := &cfg.App
 	a.DBPath = cmp.Or(getenv("IM_DB"), "im.db")
 	a.AutoMigrate = boolEnv(getenv, "IM_AUTO_MIGRATE", !prod, bad) // 生产默认由发布流程执行 migrate up
@@ -140,6 +154,16 @@ func Load(getenv func(string) string) (cfg Server, warnings []string, err error)
 	}
 	gw.NodeID = getenv("IM_NODE_ID")
 	a.Gateway = gw
+	if v := getenv("IM_ADMIN_ALLOWED_CIDRS"); v != "" {
+		for _, item := range splitList(v) {
+			p, perr := parsePrefix(item)
+			if perr != nil {
+				bad("IM_ADMIN_ALLOWED_CIDRS: %q is not an IP or CIDR", item)
+				continue
+			}
+			a.AdminAllowedCIDRs = append(a.AdminAllowedCIDRs, p)
+		}
+	}
 
 	if prod {
 		problems = append(problems, productionProblems(cfg)...)
@@ -191,7 +215,50 @@ func productionProblems(cfg Server) []string {
 	if containsWildcard(a.Gateway.AllowedOrigins) {
 		out = append(out, "IM_ALLOWED_ORIGINS must not contain * in production")
 	}
+	// 管理端口只有绑定回环地址（同机部署的业务服务端）时允许明文（PRD-admin F-KEY-01 规则 2）。
+	if cfg.AdminAddr != "" && cfg.AdminTLSCert == "" && !isLoopback(cfg.AdminAddr) {
+		out = append(out, "IM_ADMIN_ADDR "+cfg.AdminAddr+" is not a loopback address: IM_ADMIN_TLS_CERT and IM_ADMIN_TLS_KEY are required in production")
+	}
 	return out
+}
+
+// addrEnv 读取监听地址：未设置用默认值，"off" 表示不开启（返回空串）。
+func addrEnv(getenv func(string) string, key, def string) string {
+	switch v := getenv(key); v {
+	case "":
+		return def
+	case "off":
+		return ""
+	default:
+		return v
+	}
+}
+
+// addrConflicts 检查已启用的监听地址两两不同（PRD-admin F-KEY-01 规则 4）。
+func addrConflicts(addrs map[string]string) []string {
+	var out []string
+	keys := []string{"IM_ADDR", "IM_ADMIN_ADDR", "IM_OPS_ADDR", "IM_METRICS_ADDR", "IM_PPROF_ADDR"}
+	for i, a := range keys {
+		for _, b := range keys[i+1:] {
+			if addrs[a] != "" && addrs[a] == addrs[b] {
+				out = append(out, fmt.Sprintf("%s and %s must be different (both %s)", a, b, addrs[a]))
+			}
+		}
+	}
+	return out
+}
+
+// isLoopback 判断监听地址是否只绑定本机（127.0.0.0/8、::1、localhost）；":8081" 这种监听全部网卡的不算。
+func isLoopback(addr string) bool {
+	host, _, err := net.SplitHostPort(addr)
+	if err != nil || host == "" {
+		return false
+	}
+	if host == "localhost" {
+		return true
+	}
+	ip, err := netip.ParseAddr(host)
+	return err == nil && ip.IsLoopback()
 }
 
 func parseKeys(raw string) ([]auth.Key, error) {

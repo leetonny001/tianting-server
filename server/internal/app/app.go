@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"log/slog"
 	"net/http"
+	"net/netip"
 	"sync/atomic"
 	"time"
 
@@ -34,12 +35,14 @@ type Config struct {
 	JWTKeys      []auth.Key // 多把签名密钥（密钥轮换，ARCH S5）
 	JWTActiveKID string     // 签发新 token 用的密钥 ID
 	AdminKey     string
-	Gateway      gateway.Config
-	TestMode     bool // 开启故障注入、时钟注入、短有效期 token（PRD 6.1 节），生产必须关闭
-	DemoLogin    bool // 开启演示登录 /demo/login（PRD F-AUTH-04），生产必须关闭
-	SendRate     int  // 每个用户每秒可发消息数，0 表示默认值 20（PRD F-MSG-07）
-	Version      string
-	Logger       *slog.Logger
+	// AdminAllowedCIDRs 非空时，管理端口只接受来自这些网段的 TCP 连接（只看对端地址，不解析 X-Forwarded-For）。
+	AdminAllowedCIDRs []netip.Prefix
+	Gateway           gateway.Config
+	TestMode          bool // 开启故障注入、时钟注入、短有效期 token（PRD 6.1 节），生产必须关闭
+	DemoLogin         bool // 开启演示登录 /demo/login（PRD F-AUTH-04），生产必须关闭
+	SendRate          int  // 每个用户每秒可发消息数，0 表示默认值 20（PRD F-MSG-07）
+	Version           string
+	Logger            *slog.Logger
 }
 
 const defaultSendRate = 20
@@ -47,6 +50,7 @@ const defaultSendRate = 20
 // App 是组装好的服务。
 type App struct {
 	handler  http.Handler
+	admin    http.Handler
 	store    *store.SQLite
 	hub      *hub.Hub
 	metrics  *metrics.Metrics
@@ -93,20 +97,27 @@ func New(cfg Config) (*App, error) {
 		gw.NodeID = randomNodeID()
 	}
 	mux.Handle("GET /ws", gateway.New(gw, signer, st, clk, h, svc, m, cfg.Logger))
+	// 管理接口只注册在单独的管理 mux 上（PRD-admin F-KEY-01）：对外端口上请求 /admin/* 是 404。
 	adm := admin.New(cfg.AdminKey, signer, st, h, inv, svc, clk, cfg.TestMode, cfg.Logger)
-	adm.Register(mux)
+	adminMux := http.NewServeMux()
+	adm.Register(adminMux)
 	if cfg.TestMode {
-		adm.RegisterTestRoutes(mux, faults, clk)
+		adm.RegisterTestRoutes(adminMux, faults, clk)
 	}
 	if cfg.DemoLogin {
-		adm.RegisterDemoLogin(mux)
+		adm.RegisterDemoLogin(mux) // 演示登录给浏览器用，留在对外端口
 	}
 
 	a.handler = mux
+	a.admin = admin.AllowCIDRs(cfg.AdminAllowedCIDRs, adminMux)
 	return a, nil
 }
 
+// Handler 是对外端口：/ws、/healthz、/readyz，以及演示环境的 /demo/login。
 func (a *App) Handler() http.Handler { return a.handler }
+
+// AdminHandler 是管理端口（IM_ADMIN_ADDR）上的 /admin/*，由 main 单独监听。
+func (a *App) AdminHandler() http.Handler { return a.admin }
 
 // MetricsHandler 是 /metrics。由 main 挂在单独的内网地址上（IM_METRICS_ADDR），不和对外端口共用。
 func (a *App) MetricsHandler() http.Handler { return a.metrics.Handler() }

@@ -20,7 +20,7 @@ func (e *env) importUsers(users ...map[string]any) (int, []byte) {
 
 func (e *env) getUser(uid string) (int, map[string]any) {
 	e.t.Helper()
-	req, _ := http.NewRequest(http.MethodGet, e.srv.URL+"/admin/users/"+uid, nil)
+	req, _ := http.NewRequest(http.MethodGet, e.adminSrv.URL+"/admin/users/"+uid, nil)
 	req.Header.Set("X-Admin-Key", adminKey)
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
@@ -189,13 +189,13 @@ func TestRevokedBeatsExpired(t *testing.T) {
 // AC-AUTH-04-1、AC-AUTH-04-3、AC-AUTH-04-4、C-21：演示登录。
 func TestDemoLogin(t *testing.T) {
 	off := newEnv(t)
-	if code, _ := off.adminPost("/demo/login", map[string]any{"username": "alice"}, ""); code != http.StatusNotFound {
+	if code, _ := off.publicPost("/demo/login", map[string]any{"username": "alice"}); code != http.StatusNotFound {
 		t.Errorf("demo login disabled: %d, want 404", code)
 	}
 
 	e := newEnvCfg(t, func(c *app.Config) { c.DemoLogin = true })
 	e.users("bob")
-	code, body := e.adminPost("/demo/login", map[string]any{"username": "  alice  "}, "") // 不带管理密钥
+	code, body := e.publicPost("/demo/login", map[string]any{"username": "  alice  "}) // 不带管理密钥
 	if code != http.StatusOK {
 		t.Fatalf("demo login: %d %s", code, body)
 	}
@@ -215,7 +215,7 @@ func TestDemoLogin(t *testing.T) {
 	mustAck[protocol.SendAck](t, c.sendText(protocol.ConvC2C, "bob", "cid-demo-0001", "hi"))
 
 	for _, bad := range []string{"a b", "", "   "} {
-		code, body := e.adminPost("/demo/login", map[string]any{"username": bad}, "")
+		code, body := e.publicPost("/demo/login", map[string]any{"username": bad})
 		assertAdminErr(t, code, body, http.StatusBadRequest, protocol.CodeInvalidID)
 	}
 }

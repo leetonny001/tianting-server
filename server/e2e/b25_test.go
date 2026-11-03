@@ -280,3 +280,33 @@ func TestLogsDoNotLeakSecrets(t *testing.T) {
 func newTextLogger(w io.Writer) *slog.Logger {
 	return slog.New(slog.NewTextHandler(w, &slog.HandlerOptions{Level: slog.LevelDebug}))
 }
+
+// AC-KEY-01-1、AC-KEY-01-6：管理接口（含测试接口）只在管理端口上；对外端口上是 404。
+func TestAdminRoutesOnlyOnAdminPort(t *testing.T) {
+	e := newEnv(t)
+	for _, tc := range []struct{ method, path, body string }{
+		{http.MethodPost, "/admin/users/token", `{"userId":"u1"}`},
+		{http.MethodGet, "/admin/users/u1", ""},
+		{http.MethodPost, "/admin/test/clock", `{"nowMs":null}`},
+	} {
+		for _, base := range []struct {
+			url  string
+			want int
+		}{{e.srv.URL, http.StatusNotFound}, {e.adminSrv.URL, http.StatusOK}} {
+			req, _ := http.NewRequest(tc.method, base.url+tc.path, strings.NewReader(tc.body))
+			req.Header.Set("X-Admin-Key", adminKey)
+			resp, err := http.DefaultClient.Do(req)
+			if err != nil {
+				t.Fatal(err)
+			}
+			resp.Body.Close()
+			if resp.StatusCode != base.want {
+				t.Errorf("%s %s on %s: %d, want %d", tc.method, tc.path, base.url, resp.StatusCode, base.want)
+			}
+		}
+	}
+	// 对外端口仍然提供健康检查。
+	if resp, err := http.Get(e.srv.URL + "/healthz"); err != nil || resp.StatusCode != http.StatusOK {
+		t.Fatalf("healthz on public port: %v %v", resp, err)
+	}
+}

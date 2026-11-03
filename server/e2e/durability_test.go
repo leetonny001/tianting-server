@@ -58,8 +58,9 @@ func TestAckedMessageSurvivesKill9(t *testing.T) {
 }
 
 type serverProc struct {
-	cmd  *exec.Cmd
-	addr string
+	cmd       *exec.Cmd
+	addr      string
+	adminAddr string
 }
 
 var (
@@ -93,16 +94,16 @@ func buildServer(t *testing.T) string {
 
 func startServer(t *testing.T, bin, db string, extraEnv ...string) *serverProc {
 	t.Helper()
-	addr := freeAddr(t)
+	addr, adminAddr := freeAddr(t), freeAddr(t)
 	cmd := exec.Command(bin)
-	// IM_METRICS_ADDR=off：默认的 127.0.0.1:9090 会和本机正在运行的其他实例冲突。
-	cmd.Env = append(os.Environ(), "IM_ADDR="+addr, "IM_DB="+db, "IM_ADMIN_KEY="+adminKey, "IM_JWT_SECRET=e2e-secret-0123456789", "IM_METRICS_ADDR=off")
+	// IM_METRICS_ADDR=off：默认的 127.0.0.1:9090 会和本机正在运行的其他实例冲突；管理端口同理用随机端口。
+	cmd.Env = append(os.Environ(), "IM_ADDR="+addr, "IM_ADMIN_ADDR="+adminAddr, "IM_DB="+db, "IM_ADMIN_KEY="+adminKey, "IM_JWT_SECRET=e2e-secret-0123456789", "IM_METRICS_ADDR=off")
 	cmd.Env = append(cmd.Env, extraEnv...)
 	cmd.Stdout, cmd.Stderr = io.Discard, io.Discard
 	if err := cmd.Start(); err != nil {
 		t.Fatal(err)
 	}
-	p := &serverProc{cmd: cmd, addr: addr}
+	p := &serverProc{cmd: cmd, addr: addr, adminAddr: adminAddr}
 	t.Cleanup(func() { cmd.Process.Kill(); cmd.Wait() })
 	for i := 0; i < 100; i++ {
 		if resp, err := http.Get("http://" + addr + "/healthz"); err == nil {
@@ -140,7 +141,7 @@ func (p *serverProc) dial(t *testing.T, token string) *websocket.Conn {
 
 func (p *serverProc) token(t *testing.T, uid string) string {
 	t.Helper()
-	req, _ := http.NewRequest(http.MethodPost, "http://"+p.addr+"/admin/users/token", bytes.NewReader([]byte(`{"userId":"`+uid+`"}`)))
+	req, _ := http.NewRequest(http.MethodPost, "http://"+p.adminAddr+"/admin/users/token", bytes.NewReader([]byte(`{"userId":"`+uid+`"}`)))
 	req.Header.Set("X-Admin-Key", adminKey)
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {

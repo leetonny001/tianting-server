@@ -15,6 +15,10 @@
 //	IM_JWT_SECRET         用户 token 签名密钥（production 至少 32 字节）
 //	IM_JWT_KEYS           多把签名密钥 "k1:secret1,k2:secret2"（密钥轮换），配合 IM_JWT_ACTIVE_KID
 //	IM_ADMIN_KEY          管理接口密钥（请求头 X-Admin-Key，production 至少 32 字节）
+//	IM_ADMIN_ADDR         管理接口 /admin/* 的监听地址，默认 127.0.0.1:8081；off 关闭。对外端口上没有管理接口
+//	IM_ADMIN_TLS_CERT / IM_ADMIN_TLS_KEY  管理端口的 TLS 证书和私钥；production 下管理地址不是回环地址时必须配置
+//	IM_ADMIN_ALLOWED_CIDRS 管理端口允许的来源网段（逗号分隔），只看 TCP 对端地址
+//	IM_OPS_ADDR / IM_PPROF_ADDR  预留（运维接口、pprof），已启用的监听地址两两不能相同
 //	IM_ALLOWED_ORIGINS    浏览器 Origin 白名单，逗号分隔；默认只允许本机
 //	IM_MAX_CONNS_PER_USER 每个用户的连接上限，默认 10
 //	IM_IDLE_TIMEOUT       空闲超时（如 90s），默认 90s
@@ -129,6 +133,31 @@ func serve(logger *slog.Logger) error {
 			}
 		}()
 	}
+	// /admin/* 单独监听内网地址（PRD-admin F-KEY-01）。
+	var adminSrv *http.Server
+	if cfg.AdminAddr != "" {
+		adminSrv = &http.Server{
+			Addr:              cfg.AdminAddr,
+			Handler:           a.AdminHandler(),
+			ReadHeaderTimeout: 5 * time.Second,
+			ReadTimeout:       30 * time.Second,
+			WriteTimeout:      30 * time.Second,
+			IdleTimeout:       120 * time.Second,
+			MaxHeaderBytes:    16 << 10,
+		}
+		go func() {
+			logger.Info("admin listening", "addr", cfg.AdminAddr, "tls", cfg.AdminTLSCert != "")
+			var err error
+			if cfg.AdminTLSCert != "" {
+				err = adminSrv.ListenAndServeTLS(cfg.AdminTLSCert, cfg.AdminTLSKey)
+			} else {
+				err = adminSrv.ListenAndServe()
+			}
+			if err != nil && !errors.Is(err, http.ErrServerClosed) {
+				errc <- fmt.Errorf("admin: %w", err)
+			}
+		}()
+	}
 	go func() {
 		logger.Info("im-server listening", "addr", cfg.Addr, "env", cfg.Env, "version", version)
 		if err := srv.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
@@ -150,6 +179,9 @@ func serve(logger *slog.Logger) error {
 	defer cancel()
 	if metricsSrv != nil {
 		_ = metricsSrv.Shutdown(shutdownCtx)
+	}
+	if adminSrv != nil {
+		_ = adminSrv.Shutdown(shutdownCtx)
 	}
 	return srv.Shutdown(shutdownCtx)
 }

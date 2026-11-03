@@ -145,3 +145,68 @@ func TestHandshakeLimits(t *testing.T) {
 		t.Errorf("guard = %+v, %v", cfg.App.Gateway.Guard, err)
 	}
 }
+
+// PRD-admin F-KEY-01：管理端口默认 127.0.0.1:8081，off 关闭；来源网段解析。
+func TestAdminAddr(t *testing.T) {
+	cfg, _, err := Load(envOf(nil))
+	if err != nil || cfg.AdminAddr != "127.0.0.1:8081" {
+		t.Fatalf("default admin addr = %q, err %v", cfg.AdminAddr, err)
+	}
+	cfg, _, err = Load(envOf(map[string]string{"IM_ADMIN_ADDR": "off", "IM_ADMIN_ALLOWED_CIDRS": "10.0.0.0/8, 192.168.1.5"}))
+	if err != nil || cfg.AdminAddr != "" || len(cfg.App.AdminAllowedCIDRs) != 2 {
+		t.Fatalf("cfg = %+v, err %v", cfg, err)
+	}
+	if _, _, err := Load(envOf(map[string]string{"IM_ADMIN_ALLOWED_CIDRS": "10.0.0.0/33"})); err == nil {
+		t.Error("invalid CIDR accepted")
+	}
+	if _, _, err := Load(envOf(map[string]string{"IM_ADMIN_TLS_CERT": "c.pem"})); err == nil {
+		t.Error("TLS cert without key accepted")
+	}
+}
+
+// AC-KEY-01-2、AC-KEY-01-3：生产环境管理地址不是回环地址时必须配置 TLS；回环地址允许明文。
+func TestProductionAdminTLS(t *testing.T) {
+	prod := func(extra map[string]string) error {
+		m := map[string]string{"IM_ENV": "production", "IM_JWT_SECRET": strongJWT, "IM_ADMIN_KEY": strongAdmin}
+		for k, v := range extra {
+			m[k] = v
+		}
+		_, _, err := Load(envOf(m))
+		return err
+	}
+	if err := prod(map[string]string{"IM_ADMIN_ADDR": "10.0.0.5:8081"}); err == nil || !strings.Contains(err.Error(), "IM_ADMIN_TLS_CERT") {
+		t.Errorf("non-loopback admin addr without TLS: err = %v", err)
+	}
+	if err := prod(map[string]string{"IM_ADMIN_ADDR": ":8081"}); err == nil {
+		t.Error("admin addr on all interfaces without TLS accepted")
+	}
+	for _, ok := range []string{"127.0.0.1:8081", "[::1]:8081", "localhost:8081"} {
+		if err := prod(map[string]string{"IM_ADMIN_ADDR": ok}); err != nil {
+			t.Errorf("loopback %s rejected: %v", ok, err)
+		}
+	}
+	if err := prod(map[string]string{"IM_ADMIN_ADDR": "10.0.0.5:8081", "IM_ADMIN_TLS_CERT": "c.pem", "IM_ADMIN_TLS_KEY": "k.pem"}); err != nil {
+		t.Errorf("non-loopback with TLS rejected: %v", err)
+	}
+}
+
+// AC-KEY-01-5：已启用的监听地址两两不能相同，错误里指出冲突的两项。
+func TestAddrConflicts(t *testing.T) {
+	for _, tc := range []struct {
+		env  map[string]string
+		want string
+	}{
+		{map[string]string{"IM_ADMIN_ADDR": "127.0.0.1:9090", "IM_METRICS_ADDR": "127.0.0.1:9090"}, "IM_ADMIN_ADDR and IM_METRICS_ADDR"},
+		{map[string]string{"IM_ADMIN_ADDR": "127.0.0.1:8081", "IM_OPS_ADDR": "127.0.0.1:8081"}, "IM_ADMIN_ADDR and IM_OPS_ADDR"},
+		{map[string]string{"IM_METRICS_ADDR": "127.0.0.1:7000", "IM_PPROF_ADDR": "127.0.0.1:7000"}, "IM_METRICS_ADDR and IM_PPROF_ADDR"},
+	} {
+		_, _, err := Load(envOf(tc.env))
+		if err == nil || !strings.Contains(err.Error(), tc.want) {
+			t.Errorf("%v: err = %v, want mention of %q", tc.env, err, tc.want)
+		}
+	}
+	// 关闭的地址不参与比较。
+	if _, _, err := Load(envOf(map[string]string{"IM_ADMIN_ADDR": "off", "IM_METRICS_ADDR": "off"})); err != nil {
+		t.Errorf("two disabled addresses: %v", err)
+	}
+}

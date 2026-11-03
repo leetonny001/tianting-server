@@ -1,5 +1,7 @@
 # 管理接口（给业务服务端）
 
+管理接口**只在单独的管理端口上提供**（`IM_ADMIN_ADDR`，默认 `127.0.0.1:8081`，`off` 关闭）；对外端口（`IM_ADDR`）上请求 `/admin/*` 返回 404。生产环境管理地址不是回环地址时必须配置 TLS（`IM_ADMIN_TLS_CERT` / `IM_ADMIN_TLS_KEY`），可以用 `IM_ADMIN_ALLOWED_CIDRS` 限制来源网段（只看 TCP 对端地址，不解析 `X-Forwarded-For`），见 PRD-admin F-KEY-01。
+
 所有接口都需要请求头 `X-Admin-Key`；请求和响应都是 JSON。错误统一返回 `{"code": 4xxx, "msg": "..."}`，HTTP 状态码由错误码前三位决定（见 [ERRORS.md](ERRORS.md)）。
 管理密钥只能放在业务服务端，**不能下发到任何客户端**。
 

@@ -30,6 +30,7 @@ const (
 type server struct {
 	bin, db, logPath string
 	addr, metrics    string
+	adminAddr        string // 管理端口（IM_ADMIN_ADDR），和对外端口分开
 	cmd              *exec.Cmd
 	log              *os.File
 }
@@ -41,7 +42,7 @@ func newServer(bin, dir, name string) *server {
 // start 启动服务端（复用同一个数据库文件，可以用来做 kill -9 后重启）。
 // 压测机和服务端在同一台机器上，所有连接都来自 127.0.0.1，所以调高按 IP 的握手限流。
 func (s *server) start() error {
-	s.addr, s.metrics = freeAddr(), freeAddr()
+	s.addr, s.metrics, s.adminAddr = freeAddr(), freeAddr(), freeAddr()
 	f, err := os.OpenFile(s.logPath, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0o600)
 	if err != nil {
 		return err
@@ -49,7 +50,7 @@ func (s *server) start() error {
 	s.log = f
 	s.cmd = exec.Command(s.bin) // #nosec G204 -- 可执行文件路径来自运维传入的 -bin 参数
 	s.cmd.Env = append(os.Environ(),
-		"IM_ADDR="+s.addr, "IM_DB="+s.db, "IM_METRICS_ADDR="+s.metrics,
+		"IM_ADDR="+s.addr, "IM_DB="+s.db, "IM_METRICS_ADDR="+s.metrics, "IM_ADMIN_ADDR="+s.adminAddr,
 		"IM_ADMIN_KEY="+adminKey, "IM_JWT_SECRET="+jwtSecret,
 		"IM_HANDSHAKE_RATE=100000", "IM_HANDSHAKE_BURST=100000",
 	)
@@ -98,7 +99,7 @@ func (s *server) wsURL() string { return "ws://" + s.addr + "/ws" }
 
 func (s *server) admin(method, path string, body any) ([]byte, error) {
 	b, _ := json.Marshal(body)
-	req, _ := http.NewRequest(method, "http://"+s.addr+path, bytes.NewReader(b))
+	req, _ := http.NewRequest(method, "http://"+s.adminAddr+path, bytes.NewReader(b))
 	req.Header.Set("X-Admin-Key", adminKey)
 	req.Header.Set("Content-Type", "application/json")
 	resp, err := http.DefaultClient.Do(req)
