@@ -36,6 +36,8 @@
 | `GET /readyz` | 可以接收流量（数据库可用、没有在下线）；不可用时 503 |
 | `GET /metrics` | Prometheus 指标。**只在单独的内网地址上提供**（`IM_METRICS_ADDR`，默认 `127.0.0.1:9090`，`off` 关闭），对外端口上没有：在线连接数（按平台）、握手结果、上行命令数和错误码分布、命令处理耗时、新消息数、关闭码分布（按关闭方）、被踢原因、慢连接数，以及 Go 运行时和进程指标 |
 
+`IM_METRICS_ADDR` 上还提供 `/debug/pprof/`（Go 性能分析），同样只在内网。内存规划和 `GOMEMLIMIT` 设置见 [内存分析](../docs/reports/mem-2026-11-03.md)。
+
 备份、恢复、数据库迁移通过命令行完成（`im-server backup / restore / migrate`），不提供 HTTP 接口。
 
 ## 仅测试 / 演示环境

@@ -133,16 +133,24 @@ func TestCloseIsLogged(t *testing.T) {
 	}
 }
 
-// BE-051：/metrics 只在单独的内网地址上提供，对外端口上没有。
+// BE-051、Q5a：/metrics 和 /debug/pprof/ 只在单独的内网地址上提供，对外端口上没有。
 func TestMetricsOnSeparateListener(t *testing.T) {
 	bin := buildServer(t)
 	metricsAddr := freeAddr(t)
 	srv := startServer(t, bin, filepath.Join(t.TempDir(), "im.db"), "IM_METRICS_ADDR="+metricsAddr)
-	if resp, err := http.Get("http://" + srv.addr + "/metrics"); err == nil {
-		resp.Body.Close()
-		if resp.StatusCode != http.StatusNotFound {
-			t.Errorf("public port serves /metrics: %d", resp.StatusCode)
+	for _, path := range []string{"/metrics", "/debug/pprof/", "/debug/pprof/heap"} {
+		if resp, err := http.Get("http://" + srv.addr + path); err == nil {
+			resp.Body.Close()
+			if resp.StatusCode != http.StatusNotFound {
+				t.Errorf("public port serves %s: %d", path, resp.StatusCode)
+			}
 		}
+	}
+	// pprof 在内网地址上可用（Q5a）。
+	if resp, err := http.Get("http://" + metricsAddr + "/debug/pprof/heap?debug=1"); err != nil || resp.StatusCode != http.StatusOK {
+		t.Errorf("pprof on metrics listener: %v %v", resp, err)
+	} else {
+		resp.Body.Close()
 	}
 	ws := srv.dial(t, srv.token(t, "alice"))
 	defer ws.Close(websocket.StatusNormalClosure, "")

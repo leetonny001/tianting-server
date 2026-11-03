@@ -220,4 +220,5 @@ SQL 编写约束（现在就遵守，换库时几乎不用改）：
 | CI（BE-068） | `.github/workflows/server.yml` | gosec 中危及以上阻断；低危的 G104（忽略关闭连接等的返回值）不阻断 |
 | 优雅下线（BE-069） | `/readyz`；SIGTERM → readyz 503 → 等待 `IM_DRAIN_DELAY` → `kicked/serverShutdown`（1001）→ 退出 | — |
 | 可观测（BE-051，B5） | `internal/metrics`（Prometheus）；连接关闭日志记录关闭码、原因、关闭方、在线时长 | `/metrics` 单独监听内网地址，不和对外端口共用；标签只用取值有限的字段，客户端传来的未知命令统一记为 `unknown`，防止有人用随机命令名把指标基数撑爆 |
+| 内存（Q5a） | 发送队列按需分配、写协程按需启动；`/debug/pprof/` 挂在内网指标端口 | 每连接约 32 KB 存活内存；部署时按容器内存的 80% 设 `GOMEMLIMIT`，且至少是存活内存的 1.5～2 倍（[内存分析](../reports/mem-2026-11-03.md)） |
 

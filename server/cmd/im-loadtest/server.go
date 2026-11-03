@@ -6,6 +6,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net"
 	"net/http"
 	"os"
@@ -16,6 +17,9 @@ import (
 	"sync"
 	"time"
 )
+
+// serverEnv 是额外传给服务端的环境变量（-server-env），例如 GOMEMLIMIT。
+var serverEnv []string
 
 const (
 	adminKey  = "loadtest-admin-key-0123456789abcdef"
@@ -49,6 +53,7 @@ func (s *server) start() error {
 		"IM_ADMIN_KEY="+adminKey, "IM_JWT_SECRET="+jwtSecret,
 		"IM_HANDSHAKE_RATE=100000", "IM_HANDSHAKE_BURST=100000",
 	)
+	s.cmd.Env = append(s.cmd.Env, serverEnv...)
 	s.cmd.Stdout, s.cmd.Stderr = f, f
 	if err := s.cmd.Start(); err != nil {
 		return err
@@ -186,11 +191,24 @@ func (s *server) scrape() map[string]float64 {
 	return out
 }
 
+// liveMem 先让服务端做一次 GC（/debug/pprof/heap?gc=1），再读 Go 堆和栈的占用，得到"真正存活"的内存。
+// 不用进程 RSS 判断泄漏：macOS 会压缩、回收进程内存，同一进程 30 秒内 RSS 能在 110MB 和 560MB 之间跳（Q5a 实测）；
+// GC 前的堆读数也混着还没回收的垃圾。
+func (s *server) liveMem() float64 {
+	if resp, err := http.Get("http://" + s.metrics + "/debug/pprof/heap?gc=1"); err == nil {
+		io.Copy(io.Discard, resp.Body)
+		resp.Body.Close()
+	}
+	v := s.scrape()
+	return v["go_memstats_heap_alloc_bytes"] + v["go_memstats_stack_inuse_bytes"]
+}
+
 // monitor 每隔 interval 采样服务端的内存、CPU、goroutine，记录峰值。
 type monitor struct {
 	mu                 sync.Mutex
-	peakRSS, firstRSS  float64
+	peakRSS, firstRSS  float64 // 进程 RSS（macOS 上波动很大，只作参考）
 	lastRSS            float64
+	peakHeap           float64 // Go 堆占用峰值（含未回收的垃圾，反映 GC 前的最高水位）
 	peakGoroutines     float64
 	cpuStart, cpuEnd   float64
 	wallStart, wallEnd time.Time
@@ -211,6 +229,7 @@ func startMonitor(s *server, interval time.Duration) *monitor {
 		}
 		m.lastRSS, m.cpuEnd, m.wallEnd = rss, v["process_cpu_seconds_total"], time.Now()
 		m.peakRSS = max(m.peakRSS, rss)
+		m.peakHeap = max(m.peakHeap, v["go_memstats_heap_inuse_bytes"]+v["go_memstats_stack_inuse_bytes"])
 		m.peakGoroutines = max(m.peakGoroutines, v["go_goroutines"])
 	}
 	go func() {

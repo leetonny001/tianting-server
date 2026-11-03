@@ -344,7 +344,7 @@ func scenarioGroup(cfg config) result {
 	r.row("缺失 / 重复", "%d / %d", gaps, dups)
 	r.row("发送错误", "%s", errCodes.String())
 	r.row("意外断开", "%d", slow)
-	r.row("服务端", "CPU 平均 %.0f%%，内存峰值 %s，goroutine 峰值 %.0f", m.avgCPU()*100, mb(m.peakRSS), m.peakGoroutines)
+	r.row("服务端", "CPU 平均 %.0f%%，Go 内存峰值 %s（RSS 峰值 %s，仅供参考），goroutine 峰值 %.0f", m.avgCPU()*100, mb(m.peakHeap), mb(m.peakRSS), m.peakGoroutines)
 	r.Pass = total > 0 && gaps == 0 && dups == 0 && slow == 0 && errCodes.total() == 0 && sum.P99 <= time.Second
 	return r
 }
@@ -514,7 +514,7 @@ func scenarioCapacity(cfg config) []result {
 		}
 	}
 	m := startMonitor(s, 5*time.Second)
-	baseRSS := s.scrape()["process_resident_memory_bytes"]
+	baseMem := s.liveMem()
 
 	// 1. 以 200 个/秒建立 1 万条空闲连接。
 	connStart := time.Now()
@@ -525,8 +525,8 @@ func scenarioCapacity(cfg config) []result {
 	}
 	defer closeAll(idleConns)
 	time.Sleep(3 * time.Second)
-	connRSS := s.scrape()["process_resident_memory_bytes"]
-	tc03.row("每连接内存", "%.1f KB（RSS %s → %s）", (connRSS-baseRSS)/float64(max(1, len(idleConns)))/1024, mb(baseRSS), mb(connRSS))
+	connMem := s.liveMem()
+	tc03.row("每连接内存", "%.1f KB（GC 后存活的 Go 堆 + 栈：%s → %s）", (connMem-baseMem)/float64(max(1, len(idleConns)))/1024, mb(baseMem), mb(connMem))
 	holdStart := time.Now()
 
 	// 2. 吞吐（TC-02 / TC-05），同时用观测连接对每秒 1 条测延迟。
@@ -566,7 +566,7 @@ func scenarioCapacity(cfg config) []result {
 	mainSecs := time.Since(mainStart).Seconds()
 	time.Sleep(time.Second)
 	// 内存稳定性从吞吐结束时算起：吞吐阶段增加的缓冲区、数据库缓存是正常的，要看的是之后保持期间有没有泄漏。
-	afterLoadRSS := s.scrape()["process_resident_memory_bytes"]
+	afterLoadMem := s.liveMem()
 
 	mainAcks := len(st.acks) - warmAcks
 	rates := st.win.rates()
@@ -630,7 +630,7 @@ func scenarioCapacity(cfg config) []result {
 	}
 	time.Sleep(2 * time.Second)
 	m.finish()
-	endRSS := s.scrape()["process_resident_memory_bytes"]
+	endMem := s.liveMem()
 
 	unexpected := counter{}
 	for _, cs := range []map[string]*client{idleConns, active} {
@@ -641,11 +641,12 @@ func scenarioCapacity(cfg config) []result {
 		}
 	}
 	samples := sampleLat.summary()
-	growth := (endRSS - afterLoadRSS) / afterLoadRSS * 100
+	growth := (endMem - afterLoadMem) / afterLoadMem * 100
 	tc03.row("保持时长", "%s（期间做了吞吐压测 %s）", time.Since(holdStart).Round(time.Second), cfg.throughputDuration)
 	tc03.row("抽样消息", "发送 %d 条，失败 %d（%s），收到 %d；P50 %s，P99 %s", sampleSent.Load(), sampleErr.total(), sampleErr.String(), samples.N, ms(samples.P50), ms(samples.P99))
 	tc03.row("意外断开", "%d（%s）", unexpected.total(), unexpected.String())
-	tc03.row("服务端内存", "建立连接后 %s，吞吐结束 %s，峰值 %s，结束 %s；吞吐结束后增长 %.1f%%", mb(connRSS), mb(afterLoadRSS), mb(m.peakRSS), mb(endRSS), growth)
+	tc03.row("存活内存（GC 后）", "建立连接后 %s，吞吐结束 %s，保持结束 %s；吞吐结束后增长 %.1f%%", mb(connMem), mb(afterLoadMem), mb(endMem), growth)
+	tc03.row("内存峰值", "Go 堆 + 栈 %s；进程 RSS %s（macOS 上波动大，仅供参考）", mb(m.peakHeap), mb(m.peakRSS))
 	tc03.row("服务端", "CPU 平均 %.0f%%，goroutine 峰值 %.0f", m.avgCPU()*100, m.peakGoroutines)
 	tc03.Pass = len(errs) == 0 && len(idleConns) == cfg.conns && unexpected.total() == 0 &&
 		sampleErr.total() == 0 && samples.N == int(sampleSent.Load()) && samples.P99 <= time.Second && growth <= 10

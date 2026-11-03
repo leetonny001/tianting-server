@@ -36,7 +36,12 @@ func main() {
 	flag.DurationVar(&cfg.groupDuration, "group-duration", 5*time.Minute, "group：发送时长")
 	flag.DurationVar(&cfg.killAfter, "kill-after", time.Minute, "kill9：发送多久后强杀")
 	flag.StringVar(&out, "out", "", "把报告（Markdown）写到这个文件")
+	var extraEnv string
+	flag.StringVar(&extraEnv, "server-env", "", "额外传给服务端的环境变量，逗号分隔，如 GOMEMLIMIT=300MiB")
 	flag.Parse()
+	if extraEnv != "" {
+		serverEnv = strings.Split(extraEnv, ",")
+	}
 	if cfg.bin == "" {
 		fmt.Fprintln(os.Stderr, "-bin is required")
 		os.Exit(2)

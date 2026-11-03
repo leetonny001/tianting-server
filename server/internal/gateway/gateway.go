@@ -43,7 +43,7 @@ type RevocationChecker interface {
 type Config struct {
 	IdleTimeout     time.Duration // 多久收不到任何帧就断开（协议约定 90s）
 	WriteTimeout    time.Duration // 单帧写超时
-	SendBuffer      int           // 每个连接的待发送队列长度，满了视为慢连接并断开
+	SendBuffer      int           // 每个连接最多积压多少帧待发送，超过视为慢连接并断开（队列按需分配，不预占内存）
 	ReadLimit       int64         // 单帧最大字节数
 	NodeID          string        // 本节点标识，作为连接 ID 的前缀，保证集群内连接 ID 不重复
 	AuthTimeout     time.Duration // 连接后多久内必须发送 auth（PRD C-52）
@@ -133,7 +133,6 @@ func (g *Gateway) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		platform:  platform,
 		expiresAt: claims.ExpiresAt,
 		ws:        ws,
-		send:      make(chan []byte, g.cfg.SendBuffer),
 		done:      make(chan struct{}),
 		gw:        g,
 	}
@@ -237,11 +236,16 @@ type conn struct {
 	platform  string
 	expiresAt time.Time
 	ws        *websocket.Conn
-	send      chan []byte
 	done      chan struct{} // 关闭后 Send 一律返回 false
-	kickOnce  sync.Once
-	closed    atomic.Pointer[closeReason] // 服务端主动关闭的原因；为空表示是客户端关的
-	gw        *Gateway
+
+	// 待发送队列。按需分配、按需启动写协程，写空后协程退出：
+	// 1 万条空闲连接如果各自预分配 256 格的 channel、常驻一个写协程，要多占约 60MB 堆和约 80MB 栈（Q5a 内存分析）。
+	qmu      sync.Mutex
+	queue    [][]byte
+	writing  bool // 是否有写协程在运行；同一时刻最多一个，保证帧的顺序
+	kickOnce sync.Once
+	closed   atomic.Pointer[closeReason] // 服务端主动关闭的原因；为空表示是客户端关的
+	gw       *Gateway
 }
 
 // closeReason 是连接结束的原因（用于日志和指标）。
@@ -268,22 +272,52 @@ func (c *conn) Kick(reason string) {
 	})
 }
 
-// Send 非阻塞入队。队列满说明客户端读得太慢，直接断开它，由客户端重连后 sync 补齐。
+// Send 非阻塞入队。积压超过 SendBuffer 说明客户端读得太慢，直接断开它，由客户端重连后 sync 补齐。
 func (c *conn) Send(frame []byte) bool {
 	select {
 	case <-c.done:
 		return false
 	default:
 	}
-	select {
-	case c.send <- frame:
-		return true
-	case <-c.done:
-		return false
-	default:
+	c.qmu.Lock()
+	if len(c.queue) >= c.gw.cfg.SendBuffer {
+		c.qmu.Unlock()
 		c.gw.metrics.SlowConsumers.Inc()
 		go c.closeWith(protocol.CloseSlowConsumer, "slow consumer")
 		return false
+	}
+	c.queue = append(c.queue, frame)
+	start := !c.writing
+	c.writing = true
+	c.qmu.Unlock()
+	if start {
+		go c.drain()
+	}
+	return true
+}
+
+// drain 把队列写完后退出。写失败（超时、连接已断）时关闭连接，让读循环退出，统一在 run 里收尾；
+// 此时 writing 保持 true，不会再启动新的写协程。
+func (c *conn) drain() {
+	for {
+		c.qmu.Lock()
+		batch := c.queue
+		c.queue = nil // 释放底层数组，空闲时不占内存
+		if len(batch) == 0 {
+			c.writing = false
+			c.qmu.Unlock()
+			return
+		}
+		c.qmu.Unlock()
+		for _, b := range batch {
+			ctx, cancel := context.WithTimeout(context.Background(), c.gw.cfg.WriteTimeout)
+			err := c.ws.Write(ctx, websocket.MessageText, b)
+			cancel()
+			if err != nil {
+				c.ws.CloseNow()
+				return
+			}
+		}
 	}
 }
 
@@ -295,7 +329,6 @@ func (c *conn) run(parent context.Context) closeReason {
 		cancel()
 		c.ws.CloseNow()
 	}()
-	go c.writeLoop(ctx)
 
 	// 空闲计时：IdleTimeout 内收不到任何帧（包括 ping）就以 4408 关闭。
 	// 不用 Read 的 ctx 超时：coder/websocket 在 ctx 到期时会直接断开底层连接，
@@ -365,23 +398,6 @@ func (c *conn) write(f protocol.OutFrame) {
 		return
 	}
 	c.Send(b)
-}
-
-func (c *conn) writeLoop(ctx context.Context) {
-	for {
-		select {
-		case <-ctx.Done():
-			return
-		case b := <-c.send:
-			wctx, cancel := context.WithTimeout(ctx, c.gw.cfg.WriteTimeout)
-			err := c.ws.Write(wctx, websocket.MessageText, b)
-			cancel()
-			if err != nil {
-				c.ws.CloseNow() // 让读循环退出，统一在 run 里收尾
-				return
-			}
-		}
-	}
 }
 
 // code2name 返回关闭码的名称（用于日志）；不认识的返回空字符串。

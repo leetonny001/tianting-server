@@ -19,10 +19,12 @@
 //	IM_MAX_CONNS_PER_USER 每个用户的连接上限，默认 10
 //	IM_IDLE_TIMEOUT       空闲超时（如 90s），默认 90s
 //	IM_NODE_ID            节点标识（集群部署时设置），默认随机
-//	IM_METRICS_ADDR       Prometheus 指标的监听地址（只给内网），默认 127.0.0.1:9090；off 关闭
+//	IM_METRICS_ADDR       Prometheus 指标和 pprof 的监听地址（只给内网），默认 127.0.0.1:9090；off 关闭
 //	IM_HANDSHAKE_RATE / IM_HANDSHAKE_BURST  每个 IP 的握手速率 / 突发上限，默认 20 / 50（压测时调高）
 //	IM_TRUSTED_PROXIES    可信反向代理（逗号分隔的 IP 或 CIDR），只信任它们传来的 X-Forwarded-For
 //	IM_DRAIN_DELAY        下线时先摘流量再踢连接的等待时间，默认 0（production 建议 5s）
+//	GOMEMLIMIT            Go 运行时的软内存上限，建议设为容器内存的 80% 左右，且至少是存活内存的 1.5～2 倍
+//	                      （每连接约 32 KB，见 docs/reports/mem-2026-11-03.md）；设得比存活数据还低会让 GC 持续运行、CPU 打满
 //	IM_TEST_MODE          设为 1 开启测试模式（production 禁止）
 //	IM_DEMO_LOGIN         设为 1 开启演示登录（production 禁止）
 package main
@@ -34,6 +36,7 @@ import (
 	"fmt"
 	"log/slog"
 	"net/http"
+	"net/http/pprof"
 	"os"
 	"os/signal"
 	"syscall"
@@ -114,6 +117,10 @@ func serve(logger *slog.Logger) error {
 	if cfg.MetricsAddr != "" {
 		mux := http.NewServeMux()
 		mux.Handle("GET /metrics", a.MetricsHandler())
+		// pprof 只挂在这个内网地址上（不用空白导入：那会注册到全局 DefaultServeMux，容易被意外暴露到对外端口）。
+		mux.HandleFunc("GET /debug/pprof/", pprof.Index)
+		mux.HandleFunc("GET /debug/pprof/profile", pprof.Profile)
+		mux.HandleFunc("GET /debug/pprof/trace", pprof.Trace)
 		metricsSrv = &http.Server{Addr: cfg.MetricsAddr, Handler: mux, ReadHeaderTimeout: 5 * time.Second}
 		go func() {
 			logger.Info("metrics listening", "addr", cfg.MetricsAddr)
