@@ -56,7 +56,7 @@ type Admin struct {
 // ConvNotifier 在群成员变动后给相关用户下发 convAdded / convRemoved（由 logic.Service 实现）。
 type ConvNotifier interface {
 	NotifyConvAdded(ctx context.Context, convID string, userIDs []string)
-	NotifyConvRemoved(convID string, userIDs []string)
+	NotifyConvRemoved(convID string, userIDs []string, reason string)
 }
 
 // inv 用于在群成员变动后通知各节点的成员缓存失效（logic.TopicGroupMembers）；
@@ -85,6 +85,7 @@ func (a *Admin) Register(mux *http.ServeMux) {
 	a.route(mux, "PATCH", "/admin/groups/{groupId}", adminauth.ScopeGroupWrite, a.updateGroup)
 	a.route(mux, "POST", "/admin/groups/{groupId}/members", adminauth.ScopeGroupWrite, a.addMembers)
 	a.route(mux, "DELETE", "/admin/groups/{groupId}/members", adminauth.ScopeGroupWrite, a.removeMembers)
+	a.route(mux, "DELETE", "/admin/groups/{groupId}", adminauth.ScopeGroupDissolve, a.dissolveGroup)
 	a.route(mux, "GET", "/admin/audit", adminauth.ScopeAuditRead, a.queryAudit)
 	a.registerSocial(mux)
 }
@@ -129,6 +130,21 @@ func (a *Admin) RegisterTestRoutes(mux *http.ServeMux, faults *logic.Faults, clk
 			clk.Unfreeze()
 		} else {
 			clk.Freeze(time.UnixMilli(*req.NowMs))
+		}
+		writeJSON(w, http.StatusOK, struct{}{})
+	})
+	a.route(mux, "POST", "/admin/test/invalidate", adminauth.ScopeTest, func(w http.ResponseWriter, r *http.Request) {
+		var req struct {
+			Topic string `json:"topic"`
+			Key   string `json:"key"`
+		}
+		if !readJSON(w, r, &req) {
+			return
+		}
+		if l, ok := a.inv.(interface{ InvalidateLocal(topic, key string) }); ok {
+			l.InvalidateLocal(req.Topic, req.Key) // 其他进程的广播：只在本机生效，不再转发
+		} else {
+			a.inv.Invalidate(req.Topic, req.Key)
 		}
 		writeJSON(w, http.StatusOK, struct{}{})
 	})

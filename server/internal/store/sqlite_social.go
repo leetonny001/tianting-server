@@ -15,10 +15,38 @@ import (
 // Postgres 实现在同样的位置用 SELECT … FOR UPDATE。所有修改都经 socialTx：每个用户在一个事务里只分配一个 ver。
 
 type socialTx struct {
-	ctx  context.Context
-	tx   *sql.Tx
-	now  int64
-	vers map[string]int64 // 本事务已分配的 ver
+	ctx   context.Context
+	tx    *sql.Tx
+	now   int64
+	vers  map[string]int64 // 本事务已分配的 ver
+	locks []lockEvent      // 本事务的加锁序列（加锁顺序断言）
+}
+
+// 加锁对象的种类，按 8.3 节全局顺序：群 → 用户 → conv_seq。
+const (
+	lockGroup = 1
+	lockUser  = 2
+	lockConv  = 3
+)
+
+type lockEvent struct {
+	kind int
+	id   string
+}
+
+// onLockOrderViolation 不为 nil 时，事务的加锁序列违反 8.3 节全局顺序就回调（测试注入；生产为 nil，不做任何事）。
+// SQLite 单连接下顺序写错不会死锁，只有这个断言能发现；Postgres 上同样的错误会变成死锁。
+var onLockOrderViolation func(seq string)
+
+// lock 记录一次加锁并检查顺序：种类不能倒退；同一种类内 id 严格递增（字节序）。
+func (t *socialTx) lock(kind int, id string) {
+	if n := len(t.locks); n > 0 && onLockOrderViolation != nil {
+		last := t.locks[n-1]
+		if kind < last.kind || kind == last.kind && id <= last.id {
+			onLockOrderViolation(fmt.Sprintf("%v then {%d %s}", t.locks, kind, id))
+		}
+	}
+	t.locks = append(t.locks, lockEvent{kind, id})
 }
 
 func (s *SQLite) beginSocial(ctx context.Context, now int64) (*socialTx, error) {
@@ -42,6 +70,7 @@ func (t *socialTx) lockUsers(ids ...string) error {
 	ids = slices.Clone(ids)
 	slices.Sort(ids)
 	for _, id := range slices.Compact(ids) {
+		t.lock(lockUser, id)
 		if _, err := t.exec(`INSERT INTO user_social (user_id, updated_at) VALUES (?, ?) ON CONFLICT DO NOTHING`, id, t.now); err != nil {
 			return err
 		}
@@ -1365,6 +1394,26 @@ func (s *SQLite) RepairCounters(ctx context.Context) (int, error) {
 		}
 		n, _ := res.RowsAffected()
 		total += int(n)
+	}
+	return total, nil
+}
+
+func (s *SQLite) CounterDrift(ctx context.Context, sample int) (int, error) {
+	var total int
+	for _, q := range []string{
+		`SELECT count(*) FROM (SELECT * FROM user_social ORDER BY random() LIMIT ?) u
+		 WHERE friend_count <> (SELECT count(*) FROM friends f WHERE f.owner_id = u.user_id AND f.deleted = 0)
+		    OR block_count <> (SELECT count(*) FROM blocks b WHERE b.owner_id = u.user_id AND b.deleted = 0)`,
+		`SELECT count(*) FROM (SELECT * FROM chat_groups ORDER BY random() LIMIT ?) g
+		 WHERE member_count <> (SELECT count(*) FROM group_members gm WHERE gm.group_id = g.group_id)`,
+		`SELECT count(*) FROM (SELECT * FROM user_conv ORDER BY random() LIMIT ?) uc
+		 WHERE sent_count <> (SELECT count(*) FROM messages m WHERE m.conv_id = uc.conv_id AND m.from_uid = uc.user_id)`,
+	} {
+		var n int
+		if err := s.db.QueryRowContext(ctx, q, sample).Scan(&n); err != nil {
+			return total, err
+		}
+		total += n
 	}
 	return total, nil
 }

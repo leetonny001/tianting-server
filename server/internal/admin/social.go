@@ -33,7 +33,7 @@ type SocialService interface {
 	PurgeSocialNow(ctx context.Context) (int, error)
 	ResetLimits(uid string)
 	DropEvents(uid, typ string, count int)
-	SeedSocial(ctx context.Context, sd store.SocialSeed) error
+	SeedSocial(ctx context.Context, sd store.SocialSeed, silent bool) error
 }
 
 // WithSocial 设置社交能力并注册社交管理路由（app 组装时调用）。
@@ -316,6 +316,7 @@ func (a *Admin) registerSocialTestRoutes(mux *http.ServeMux) {
 				UserID  string `json:"userId"`
 			} `json:"groupMembers"`
 			UpdatedAt int64 `json:"updatedAt"`
+			Silent    bool  `json:"silent"` // 不发 socialChanged（e2e 好友制矩阵预置数据用）
 		}
 		if !readJSON(w, r, &req) {
 			return
@@ -335,7 +336,7 @@ func (a *Admin) registerSocialTestRoutes(mux *http.ServeMux) {
 			sd.GroupMembers = append(sd.GroupMembers, store.SeedMember{GroupID: m.GroupID, UserID: m.UserID})
 			groups[m.GroupID] = true
 		}
-		if err := a.social.SeedSocial(r.Context(), sd); err != nil {
+		if err := a.social.SeedSocial(r.Context(), sd, req.Silent); err != nil {
 			a.internal(w, "seed social", err)
 			return
 		}

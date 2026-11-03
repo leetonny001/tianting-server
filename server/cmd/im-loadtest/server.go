@@ -33,6 +33,7 @@ type server struct {
 	adminAddr        string // 管理端口（IM_ADMIN_ADDR），和对外端口分开
 	cmd              *exec.Cmd
 	log              *os.File
+	env              []string // 这个场景额外的环境变量（如 IM_TEST_MODE=1、IM_SOCIAL_DEFAULTS）
 }
 
 func newServer(bin, dir, name string) *server {
@@ -55,6 +56,7 @@ func (s *server) start() error {
 		"IM_HANDSHAKE_RATE=100000", "IM_HANDSHAKE_BURST=100000",
 	)
 	s.cmd.Env = append(s.cmd.Env, serverEnv...)
+	s.cmd.Env = append(s.cmd.Env, s.env...)
 	s.cmd.Stdout, s.cmd.Stderr = f, f
 	if err := s.cmd.Start(); err != nil {
 		return err

@@ -11,6 +11,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"os"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -33,6 +34,67 @@ type env struct {
 	srv      *httptest.Server // 对外端口：/ws、/healthz、/readyz
 	adminSrv *httptest.Server // 管理端口：/admin/*（PRD-admin F-KEY-01）
 	app      *app.App
+	// friendsMatrix：CI 矩阵的好友制一轮（IM_E2E_SOCIAL_MODE=friends，PRD-social BE-116 第 2 条）：
+	// 以 mode=friends 启动，并让注册过的用户两两互为好友（"预置好友关系"），现有私聊用例不改代码跑一遍。
+	friendsMatrix bool
+	known         map[string]bool // userId → 是否登录过
+}
+
+// socialMatrixMode 返回 CI 矩阵要求的好友模式（空字符串 = 默认 open）。
+func socialMatrixMode() string { return os.Getenv("IM_E2E_SOCIAL_MODE") }
+
+// matrixRegistered 在好友制矩阵里给新注册的用户预置好友关系（不发事件）：登录过的用户（签发 token / 演示登录）
+// 与之前注册过的全部用户互为好友；批量导入的用户只与登录过的用户互为好友（避免 2000 人的群夹具产生 n² 条边）。
+// 发消息一定要先登录，所以任意两个能互发私聊的用户之间都有好友关系。
+func (e *env) matrixRegistered(uids []string, actor bool) {
+	var edges []map[string]any
+	for _, u := range uids {
+		was, seen := e.known[u]
+		if seen && (was || !actor) {
+			continue
+		}
+		for k, kActor := range e.known {
+			if k != u && (actor || kActor) && !(seen && kActor) {
+				edges = append(edges, map[string]any{"owner": u, "peer": k}, map[string]any{"owner": k, "peer": u})
+			}
+		}
+		e.known[u] = actor || was
+	}
+	for len(edges) > 0 {
+		n := min(len(edges), 4000)
+		if code, body := e.do(e.adminSrv.URL, http.MethodPost, "/admin/test/social/seed", map[string]any{"friends": edges[:n], "silent": true}, adminKey); code != http.StatusOK {
+			e.t.Fatalf("seed friends for the friends-mode matrix: %d %s", code, body)
+		}
+		edges = edges[n:]
+	}
+}
+
+// matrixHook 识别注册用户的请求（导入、签发 token、演示登录）。
+func (e *env) matrixHook(path string, body any, status int) {
+	if !e.friendsMatrix || status/100 != 2 {
+		return
+	}
+	b, _ := json.Marshal(body)
+	var req struct {
+		UserID   string `json:"userId"`
+		Username string `json:"username"`
+		Users    []struct {
+			UserID string `json:"userId"`
+		} `json:"users"`
+	}
+	json.Unmarshal(b, &req)
+	switch path {
+	case "/admin/users/token":
+		e.matrixRegistered([]string{req.UserID}, true)
+	case "/demo/login":
+		e.matrixRegistered([]string{strings.TrimSpace(req.Username)}, true)
+	case "/admin/users/import":
+		ids := make([]string, len(req.Users))
+		for i, u := range req.Users {
+			ids[i] = u.UserID
+		}
+		e.matrixRegistered(ids, false)
+	}
 }
 
 // newEnv 启动测试模式的服务（PRD 6.1 节：故障注入、时钟注入、短有效期 token 可用）。
@@ -57,9 +119,14 @@ func newEnvCfg(t *testing.T, mutate func(*app.Config)) *env {
 		Version:     "e2e",
 		Logger:      slog.New(slog.NewTextHandler(io.Discard, nil)),
 	}
+	matrix := socialMatrixMode() == "friends"
+	if matrix {
+		cfg.SocialDefaults = `{"mode":"friends"}`
+	}
 	if mutate != nil {
 		mutate(&cfg)
 	}
+	matrix = matrix && cfg.TestMode
 	a, err := app.New(cfg)
 	if err != nil {
 		t.Fatal(err)
@@ -71,7 +138,7 @@ func newEnvCfg(t *testing.T, mutate func(*app.Config)) *env {
 		adminSrv.Close()
 		a.Close()
 	})
-	return &env{t: t, srv: srv, adminSrv: adminSrv, app: a}
+	return &env{t: t, srv: srv, adminSrv: adminSrv, app: a, friendsMatrix: matrix, known: map[string]bool{}}
 }
 
 // adminPost 调用管理接口，返回状态码和响应体。
@@ -110,6 +177,7 @@ func (e *env) do(base, method, path string, body any, key string) (int, []byte) 
 	}
 	defer resp.Body.Close()
 	out, _ := io.ReadAll(resp.Body)
+	e.matrixHook(path, body, resp.StatusCode)
 	return resp.StatusCode, out
 }
 

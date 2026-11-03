@@ -63,7 +63,8 @@ HMAC：`HMAC-SHA256(secret, 待签名串)`；Ed25519：私钥对待签名串签�
 | `GET /admin/groups/{groupId}` | — | `{groupId, name, historyVisible, createdAt, memberCount, members}` | 查询群 |
 | `PATCH /admin/groups/{groupId}` | `{name?, historyVisible?}` | `{}` | 修改设置；至少传一项。`historyVisible` 在查询时生效 |
 | `POST /admin/groups/{groupId}/members` | `{members}` | `{added}` | 加成员，单次 ≤ 500；已经是成员的忽略（不重置入群位置） |
-| `DELETE /admin/groups/{groupId}/members` | `{members}` | `{removed}` | 移除成员，单次 ≤ 500；不是成员的忽略 |
+| `DELETE /admin/groups/{groupId}/members` | `{members}` | `{removed}` | 移除成员，单次 ≤ 500；不是成员的忽略。被移出的人收到 `convRemoved {reason: "removed"}` |
+| `DELETE /admin/groups/{groupId}` | — | `{}` | 解散群（PRD-social F-SOC-26、PRD-admin G-ADM-11）：删除全部成员，消息保留；全部在线成员收到 `convRemoved {reason: "dissolved"}`。之后对该群的查询、加成员、改设置都是 404 / 4043，成员的 `send` / `sync` / `read` 返回 4043；**群 ID 不能复用**（再建 409 / 4090）。不存在或已解散：404 / 4043 |
 
 规则：
 - 群名去首尾空白后 1～50 个字符（按 Unicode 码点）；群 ID、userId 为字母、数字、`_`、`-`，1～64 位。
@@ -71,7 +72,7 @@ HMAC：`HMAC-SHA256(secret, 待签名串)`；Ed25519：私钥对待签名串签�
 - 多个错误同时出现时的优先级：ID 格式 4004 → 其他参数 4000 → 群不存在 4043（建群为已存在 4090）→ 单次超过 500 人 4131 → 用户不存在 4042 → 总人数超过 2000 4130。
 - `historyVisible=false`（默认）：新成员只能看到入群之后的消息；`true`：可以看到全部历史。被移除后再加入，按重新加入的时刻计算。
 
-scope：`POST /admin/users/token` → `token.issue`；`POST /admin/users/import` → `user.write`；`GET /admin/users/{userId}` → `user.read`；`POST /admin/users/{userId}/force-logout` → `user.kick`；`GET /admin/groups/{groupId}` → `group.read`；建群、改设置、加 / 移除成员 → `group.write`；`/admin/test/*` → `test`。完整 scope 目录见 PRD-admin F-KEY-02 规则 2。
+scope：`POST /admin/users/token` → `token.issue`；`POST /admin/users/import` → `user.write`；`GET /admin/users/{userId}` → `user.read`；`POST /admin/users/{userId}/force-logout` → `user.kick`；`GET /admin/groups/{groupId}` → `group.read`；建群、改设置、加 / 移除成员 → `group.write`；解散 → `group.dissolve`（旧密钥不能调用）；`/admin/test/*` → `test`。完整 scope 目录见 PRD-admin F-KEY-02 规则 2。
 
 ## 社交（PRD-social 9.3 节，M3）
 
@@ -111,4 +112,4 @@ scope：`POST /admin/users/token` → `token.issue`；`POST /admin/users/import`
 
 ## 仅测试 / 演示环境
 
-`POST /admin/test/drop-ack`、`/admin/test/skip-delivery`、`/admin/test/clock`、`/admin/test/faults`（`{adminAuditWrite: "fail" | ""}`，模拟审计写失败）、社交测试设施（PRD-social 5.6 节）`/admin/test/social/drop-events {userId, type, count}`、`/admin/test/social/purge`、`/admin/test/social/seed {friends?, blocks?, requests?, groupMembers?, updatedAt?}`、`/admin/test/limits/reset {userId}`（`IM_TEST_MODE=1`），`POST /demo/login {username, nickname?}`（`IM_DEMO_LOGIN=1`，不需要管理密钥；`nickname` 去首尾空白后 1～32 个码点，登录时覆盖该用户的昵称，超长 400 / 4000，不传或为空不改）。生产环境（`IM_ENV=production`）开启这两个开关会拒绝启动。
+`POST /admin/test/drop-ack`、`/admin/test/skip-delivery`、`/admin/test/clock`、`/admin/test/faults`（`{adminAuditWrite: "fail" | ""}`，模拟审计写失败）、社交测试设施（PRD-social 5.6 节）`/admin/test/social/drop-events {userId, type, count}`、`/admin/test/social/purge`、`/admin/test/social/seed {friends?, blocks?, requests?, groupMembers?, updatedAt?}`、`/admin/test/limits/reset {userId}`、`/admin/test/invalidate {topic, key}`（双节点测试环境：其他进程转发来的缓存失效，`IM_TEST_PEERS` 配置转发目标，`IM_TEST_INVALIDATION=off` 时不发也不收）（`IM_TEST_MODE=1`），`POST /demo/login {username, nickname?}`（`IM_DEMO_LOGIN=1`，不需要管理密钥；`nickname` 去首尾空白后 1～32 个码点，登录时覆盖该用户的昵称，超长 400 / 4000，不传或为空不改）。生产环境（`IM_ENV=production`）开启这两个开关会拒绝启动。

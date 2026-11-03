@@ -21,6 +21,7 @@ const noFrameWindow = 300 * time.Millisecond
 type socEnv struct {
 	*env
 	soc testCaller // 持有 social.settings、social.friends、user.read、audit.read
+	dis testCaller // 持有 group.dissolve
 	now int64      // 测试时钟（管理接口签名的时间戳要落在服务端时钟 ±300 秒内）
 }
 
@@ -29,14 +30,18 @@ const t0 = int64(1_800_000_000_000) // 测试时钟起点
 func newSocEnv(t *testing.T) *socEnv { return newSocEnvCfg(t, nil) }
 
 func newSocEnvCfg(t *testing.T, mutate func(*app.Config)) *socEnv {
+	if socialMatrixMode() != "" {
+		t.Skip("社交用例自己设置好友模式，不参加 IM_E2E_SOCIAL_MODE 矩阵")
+	}
 	soc := hmacCaller("soc", adminauth.ScopeSocialSettings, adminauth.ScopeSocialFriends, adminauth.ScopeUserRead, adminauth.ScopeAuditRead)
+	dis := hmacCaller("dis", adminauth.ScopeGroupDissolve)
 	e := newEnvCfg(t, func(c *app.Config) {
-		c.AdminCallers = append(c.AdminCallers, soc.cfg)
+		c.AdminCallers = append(c.AdminCallers, soc.cfg, dis.cfg)
 		if mutate != nil {
 			mutate(c)
 		}
 	})
-	s := &socEnv{env: e, soc: soc}
+	s := &socEnv{env: e, soc: soc, dis: dis}
 	s.setClock(t0)
 	return s
 }
@@ -44,7 +49,7 @@ func newSocEnvCfg(t *testing.T, mutate func(*app.Config)) *socEnv {
 // adm 用社交调用方签名调用管理接口。
 func (s *socEnv) adm(method, path string, body any) (int, []byte) {
 	s.t.Helper()
-	return s.signed(s.soc, method, path, body, signOpts{ts: time.UnixMilli(s.now)})
+	return s.signed(s.soc, method, path, body, signOpts{ts: timeMs(s.now)})
 }
 
 func (s *socEnv) mustAdm(method, path string, body any) []byte {
@@ -275,3 +280,5 @@ func errBody(f frame) string {
 	b, _ := json.Marshal(f.Error)
 	return string(b)
 }
+
+func timeMs(ms int64) time.Time { return time.UnixMilli(ms) }

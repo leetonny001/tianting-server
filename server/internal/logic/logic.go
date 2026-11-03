@@ -360,10 +360,10 @@ func (s *Service) NotifyConvAdded(ctx context.Context, convID string, userIDs []
 	}
 }
 
-// NotifyConvRemoved 给被移出群的用户的所有在线连接下发 convRemoved（BE-034）。
-func (s *Service) NotifyConvRemoved(convID string, userIDs []string) {
+// NotifyConvRemoved 给被移出群（或群被解散）的用户的所有在线连接下发 convRemoved {reason}（BE-034、BE-122）。
+func (s *Service) NotifyConvRemoved(convID string, userIDs []string, reason string) {
 	for _, uid := range userIDs {
-		s.pushEvent(uid, protocol.ConvRemovedEvent{Type: protocol.EventConvRemoved, ConvID: convID}, "")
+		s.pushEvent(uid, protocol.ConvRemovedEvent{Type: protocol.EventConvRemoved, ConvID: convID, Reason: reason}, "")
 	}
 }
 

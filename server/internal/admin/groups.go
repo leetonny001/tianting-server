@@ -116,7 +116,7 @@ func (a *Admin) removeMembers(w http.ResponseWriter, r *http.Request) {
 	default:
 		if len(removed) > 0 {
 			a.inv.Invalidate(logic.TopicGroupMembers, gid)
-			a.notifier.NotifyConvRemoved(protocol.GroupConvID(gid), removed)
+			a.notifier.NotifyConvRemoved(protocol.GroupConvID(gid), removed, protocol.RemovedByAdmin)
 		}
 		writeJSON(w, http.StatusOK, struct {
 			Removed []string `json:"removed"`
@@ -275,4 +275,25 @@ func nonNil(s []string) []string {
 		return []string{}
 	}
 	return s
+}
+
+// dissolveGroup 解散群（PRD-social F-SOC-26、PRD-admin G-ADM-11，BE-122）：删除全部成员、写 dissolved_at，消息保留；
+// 群 ID 不能复用（再次建群 409 / 4090）。全部在线成员收到 convRemoved {reason: dissolved}。
+func (a *Admin) dissolveGroup(w http.ResponseWriter, r *http.Request) {
+	gid := r.PathValue("groupId")
+	if !protocol.ValidID(gid) {
+		writeErr(w, protocol.Errorf(protocol.CodeInvalidID, "invalid groupId"))
+		return
+	}
+	members, err := a.store.DissolveGroup(r.Context(), gid, a.clock.Now().UnixMilli())
+	switch {
+	case errors.Is(err, store.ErrNotFound):
+		writeErr(w, protocol.Errorf(protocol.CodeGroupNotFound, "group not found"))
+	case err != nil:
+		a.internal(w, "dissolve group", err)
+	default:
+		a.inv.Invalidate(logic.TopicGroupMembers, gid)
+		a.notifier.NotifyConvRemoved(protocol.GroupConvID(gid), members, protocol.RemovedDissolved)
+		writeJSON(w, http.StatusOK, struct{}{})
+	}
 }

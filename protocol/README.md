@@ -38,7 +38,7 @@ ws(s)://{host}/ws?platform={android|ios|web|pc}
 | `read` | 上行 | 上报已读位置 | `{}` |
 | `ping` | 上行 | 心跳 | 回 `pong`（不是 ack） |
 | `msg` | 下行 | 新消息 | — |
-| `event` | 下行 | `kicked`；`convAdded`（被拉进群，内容与 convs 的一项相同）、`convRemoved`（被移出群）；`readUpdated`（自己在其他端的已读位置前进了，包括发言即已读）；`socialChanged {ver}`（关系数据变了，只发给 ver 变化的用户，排除发起连接）、`socialSettingsChanged {mode, strangerMsgLimit}`（业务方改了社交配置） | — |
+| `event` | 下行 | `kicked`；`convAdded`（被拉进群，内容与 convs 的一项相同）、`convRemoved {convId, reason?}`（被移出群 `removed` / 群被解散 `dissolved`）；`readUpdated`（自己在其他端的已读位置前进了，包括发言即已读）；`socialChanged {ver}`（关系数据变了，只发给 ver 变化的用户，排除发起连接）、`socialSettingsChanged {mode, strangerMsgLimit}`（业务方改了社交配置） | — |
 | `friendApply` / `friendRespond` / `friendDelete` / `friendRemark` | 上行 | 好友申请、处理申请、单向删除、备注（PRD-social F-SOC-02、03、05） | `{status?, ver, changed, items}` |
 | `block` / `unblock` | 上行 | 拉黑、取消拉黑（F-SOC-07） | `{ver, changed, items}` |
 | `friendRequestsSeen` | 上行 | "新的朋友"标记已读（F-SOC-04） | `{requestSeenVer, ver, changed}` |

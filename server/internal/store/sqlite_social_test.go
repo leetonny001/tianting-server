@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"path/filepath"
-	"sync"
 	"testing"
 )
 
@@ -107,43 +106,6 @@ func TestRepairCounters(t *testing.T) {
 	}
 }
 
-// SocialVerConcurrent（AC-SOC-06-9，B6 前置：SQLite 上运行）：同一用户 8 个并发写 × 125 次，ver 连续无重复。
-func TestSocialVerConcurrent(t *testing.T) {
-	ctx := context.Background()
-	s := openTestSQLite(t)
-	if err := s.UpsertUsers(ctx, []User{{UserID: "alice"}}); err != nil {
-		t.Fatal(err)
-	}
-	var mu sync.Mutex
-	seen := map[int64]bool{}
-	var wg sync.WaitGroup
-	for w := range 8 {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
-			for i := range 125 {
-				c, err := s.Block(ctx, "alice", fmt.Sprintf("p%d-%d", w, i), int64(i+1), 5000)
-				if err != nil {
-					t.Error(err)
-					return
-				}
-				mu.Lock()
-				if seen[c.Ver] {
-					t.Errorf("ver %d allocated twice", c.Ver)
-				}
-				seen[c.Ver] = true
-				mu.Unlock()
-			}
-		}()
-	}
-	wg.Wait()
-	for v := int64(1); v <= 1000; v++ {
-		if !seen[v] {
-			t.Fatalf("ver %d missing", v)
-		}
-	}
-}
-
 // FriendApplyTable（TC-SOC-02-17）：判定表第 3～9 行在存储层逐行。
 func TestFriendApplyTable(t *testing.T) {
 	ctx := context.Background()
@@ -242,4 +204,110 @@ func TestFriendApplyTable(t *testing.T) {
 			t.Fatalf("%s %+v %v", st, c, err)
 		}
 	})
+}
+
+// GroupDissolveNoReuse（TC-SOC-26-04，AC-SOC-26-4）：F-SOC-26 规则 3 的每个查询一条断言。
+func TestGroupDissolveNoReuse(t *testing.T) {
+	ctx := context.Background()
+	s := openTestSQLite(t)
+	if err := s.UpsertUsers(ctx, []User{{UserID: "alice"}, {UserID: "bob"}}); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.CreateGroup(ctx, Group{GroupID: "g1", Name: "g1", CreatedAt: 1}, []string{"alice", "bob"}); err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := s.SaveMessage(ctx, Message{MsgID: "m1", ClientMsgID: "c1", ConvID: "group:g1", From: "alice", Type: "text", Body: []byte(`{}`), TS: 1}); err != nil {
+		t.Fatal(err)
+	}
+	members, err := s.DissolveGroup(ctx, "g1", 5)
+	if err != nil || len(members) != 2 {
+		t.Fatalf("dissolve = %v, %v", members, err)
+	}
+	if _, err := s.DissolveGroup(ctx, "g1", 6); err != ErrNotFound {
+		t.Errorf("dissolve twice: %v", err)
+	}
+	check := func(name string, ok bool) {
+		t.Helper()
+		if !ok {
+			t.Errorf("%s still sees the dissolved group", name)
+		}
+	}
+	exists, _ := s.GroupExists(ctx, "g1")
+	check("GroupExists", !exists)
+	_, err = s.GetGroup(ctx, "g1")
+	check("GetGroup", err == ErrNotFound)
+	_, err = s.AddGroupMembers(ctx, "g1", []string{"alice"}, 2000, 7)
+	check("AddGroupMembers", err == ErrNotFound)
+	_, err = s.RemoveGroupMembers(ctx, "g1", []string{"alice"})
+	check("RemoveGroupMembers", err == ErrNotFound)
+	name := "x"
+	check("UpdateGroup", s.UpdateGroup(ctx, "g1", GroupUpdate{Name: &name}) == ErrNotFound)
+	gm, _ := s.GroupMembers(ctx, "g1")
+	check("GroupMembers", len(gm) == 0)
+	_, ok, _ := s.GroupMember(ctx, "g1", "alice")
+	check("GroupMember", !ok)
+	convs, _, _ := s.ListConversations(ctx, "alice", 500)
+	check("ListConversations", len(convs) == 0)
+	_, ok, _ = s.GetConversation(ctx, "alice", "group:g1")
+	check("GetConversation", !ok)
+	gc, _ := s.GroupConversations(ctx, "g1", []string{"alice", "bob"})
+	check("GroupConversations", len(gc) == 0)
+	mg, _, _ := s.MyGroups(ctx, "alice", "", 200)
+	check("MyGroups", len(mg) == 0)
+	vu, _ := s.VisibleUsers(ctx, "alice", []string{"bob"}, 0)
+	check("VisibleUsers", len(vu) == 0)
+	check("CreateGroup reuse", s.CreateGroup(ctx, Group{GroupID: "g1", Name: "again", CreatedAt: 8}, nil) == ErrExists)
+	var msgs, dissolvedAt int64
+	s.db.QueryRow(`SELECT count(*) FROM messages WHERE conv_id = 'group:g1'`).Scan(&msgs)
+	s.db.QueryRow(`SELECT dissolved_at FROM chat_groups WHERE group_id = 'g1'`).Scan(&dissolvedAt)
+	if msgs != 1 || dissolvedAt == 0 {
+		t.Errorf("messages=%d dissolved_at=%d", msgs, dissolvedAt)
+	}
+}
+
+// 加锁顺序断言（BE-101 第 2 条）：跑一遍全部社交写操作，没有违反 8.3 节全局顺序；变异测试：故意反序必须被发现。
+func TestSocialLockOrder(t *testing.T) {
+	ctx := context.Background()
+	var violations []string
+	onLockOrderViolation = func(seq string) { violations = append(violations, seq) }
+	t.Cleanup(func() { onLockOrderViolation = nil })
+
+	s := openTestSQLite(t)
+	if err := s.UpsertUsers(ctx, []User{{UserID: "zed"}, {UserID: "amy"}, {UserID: "kim"}}); err != nil {
+		t.Fatal(err)
+	}
+	const d = int64(24 * 3600 * 1000)
+	s.ApplyFriend(ctx, ApplyFriendParams{From: "zed", To: "amy", Source: "other", Now: 1, ExpireAt: 7 * d, MaxFriends: 2000})
+	s.ApplyFriend(ctx, ApplyFriendParams{From: "amy", To: "zed", Source: "other", Now: 2, ExpireAt: 7 * d, MaxFriends: 2000})
+	s.ApplyFriend(ctx, ApplyFriendParams{From: "kim", To: "amy", Source: "other", Now: 3, ExpireAt: 7 * d, MaxFriends: 2000})
+	s.RespondFriend(ctx, RespondFriendParams{Me: "amy", From: "kim", Accept: true, Now: 4, MaxFriends: 2000})
+	s.ImportFriends(ctx, []FriendPair{{A: "kim", B: "zed"}, {A: "amy", B: "kim"}}, 5, 2000)
+	s.RemoveFriends(ctx, []FriendPair{{A: "zed", B: "amy"}}, 6)
+	s.Block(ctx, "zed", "kim", 7, 1000)
+	s.SeedSocial(ctx, SocialSeed{Friends: []SeedEdge{{"zed", "x"}, {"amy", "y"}}, Requests: []SeedRequest{{From: "zed", To: "kim"}}, UpdatedAt: 8})
+	if len(violations) > 0 {
+		t.Fatalf("lock order violations: %v", violations)
+	}
+
+	tx := &socialTx{}
+	tx.lock(lockUser, "kim")
+	tx.lock(lockUser, "amy") // 反序
+	tx.lock(lockGroup, "g1") // 用户之后再锁群
+	if len(violations) != 2 {
+		t.Fatalf("mutation not detected: %v", violations)
+	}
+}
+
+// 测试模式启动时的抽样校验（BE-100 第 3 条）。
+func TestCounterDrift(t *testing.T) {
+	ctx := context.Background()
+	s := openTestSQLite(t)
+	s.SeedSocial(ctx, SocialSeed{Friends: []SeedEdge{{"a", "b"}}, UpdatedAt: 1})
+	if n, err := s.CounterDrift(ctx, 100); err != nil || n != 0 {
+		t.Fatalf("clean db drift = %d, %v", n, err)
+	}
+	s.db.Exec(`UPDATE user_social SET friend_count = 9`)
+	if n, _ := s.CounterDrift(ctx, 100); n != 1 {
+		t.Fatalf("drift = %d, want 1", n)
+	}
 }

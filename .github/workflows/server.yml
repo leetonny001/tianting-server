@@ -27,6 +27,14 @@ jobs:
         run: go vet ./...
       - name: test（含 race 检测、进程级 e2e）
         run: go test -race -count=1 ./...
+      - name: 好友制矩阵：mode=friends + 预置好友关系，现有 e2e 不改代码再跑一遍（PRD-social BE-116、AC-SOC-08-13）
+        run: go test -count=1 ./e2e
+        env:
+          IM_E2E_SOCIAL_MODE: friends
+      - name: 同步模型测试：1000 个随机序列，固定种子与随机种子各一半（PRD-social AC-SOC-06-15）
+        run: go test -count=1 -run TestTCSOC0621SyncModel ./e2e
+        env:
+          IM_SOCIAL_MODEL_SEQS: "1000"
 
   security:
     runs-on: ubuntu-latest

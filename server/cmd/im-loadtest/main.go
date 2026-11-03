@@ -13,6 +13,8 @@
 //	group     TC-PERF-00-07  200 人群扩散（P1）
 //	capacity  TC-PERF-00-02/03/05  1 万连接在线 + 500～600 条/秒 + 保持
 //	kill9     TC-PERF-00-06  压测中强杀，已 ack 的消息不丢
+//	social-full   TC-SOC-06-18  全量同步：5000 好友 + 1000 黑名单 + 200 申请（PRD-social AC-SOC-06-12）
+//	c2c-friends   PRD-social 1.3 节：好友制下私聊发送 P99 比开放模式增加 ≤ 2ms
 package main
 
 import (
@@ -69,6 +71,10 @@ func main() {
 			results = append(results, scenarioCapacity(cfg)...)
 		case "kill9":
 			results = append(results, scenarioKill9(cfg))
+		case "social-full":
+			results = append(results, scenarioSocialFull(cfg))
+		case "c2c-friends":
+			results = append(results, scenarioC2CFriends(cfg))
 		default:
 			fmt.Fprintf(os.Stderr, "unknown scenario %q\n", name)
 			os.Exit(2)

@@ -827,4 +827,3 @@ func TestTCSOC0506RemarkBounds(t *testing.T) {
 		t.Fatalf("clear: %+v", cleared)
 	}
 }
-

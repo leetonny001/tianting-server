@@ -233,6 +233,8 @@ type SocialStore interface {
 	SeedSocial(ctx context.Context, s SocialSeed) (map[string]int64, error)
 	// RepairCounters 按基础表重算 friend_count / block_count / member_count / sent_count，返回修复条数（幂等）。
 	RepairCounters(ctx context.Context) (int, error)
+	// CounterDrift 每种计数器随机抽 sample 行，返回与基础表不一致的行数（测试模式启动时校验，PRD-social 8.5 节）。
+	CounterDrift(ctx context.Context, sample int) (int, error)
 }
 
 // SearchRelation 是搜索时我与对方的关系（userSearch 的 relation 由 logic 按优先级算出）。

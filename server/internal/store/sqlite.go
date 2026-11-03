@@ -262,11 +262,44 @@ func (s *SQLite) ListMessagesBefore(ctx context.Context, convID string, beforeSe
 
 func (s *SQLite) GroupExists(ctx context.Context, groupID string) (bool, error) {
 	var one int
-	err := s.db.QueryRowContext(ctx, `SELECT 1 FROM chat_groups WHERE group_id = ?`, groupID).Scan(&one)
+	err := s.db.QueryRowContext(ctx, `SELECT 1 FROM chat_groups WHERE group_id = ? AND dissolved_at = 0`, groupID).Scan(&one)
 	if errors.Is(err, sql.ErrNoRows) {
 		return false, nil
 	}
 	return err == nil, err
+}
+
+func (s *SQLite) DissolveGroup(ctx context.Context, groupID string, now int64) ([]string, error) {
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return nil, err
+	}
+	defer tx.Rollback()
+	if err := groupExistsTx(ctx, tx, groupID); err != nil { // L5：Postgres 实现在这里 SELECT … FOR UPDATE
+		return nil, err
+	}
+	rows, err := tx.QueryContext(ctx, `DELETE FROM group_members WHERE group_id = ? RETURNING user_id`, groupID)
+	if err != nil {
+		return nil, err
+	}
+	var members []string
+	for rows.Next() {
+		var uid string
+		if err := rows.Scan(&uid); err != nil {
+			rows.Close()
+			return nil, err
+		}
+		members = append(members, uid)
+	}
+	rows.Close()
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	if _, err := tx.ExecContext(ctx, `UPDATE chat_groups SET dissolved_at = ?, member_count = 0 WHERE group_id = ?`, max(now, 1), groupID); err != nil {
+		return nil, err
+	}
+	slices.Sort(members)
+	return members, tx.Commit()
 }
 
 func (s *SQLite) CreateGroup(ctx context.Context, g Group, members []string) error {
@@ -360,7 +393,7 @@ func (s *SQLite) RemoveGroupMembers(ctx context.Context, groupID string, members
 func (s *SQLite) GetGroup(ctx context.Context, groupID string) (Group, error) {
 	var g Group
 	err := s.db.QueryRowContext(ctx,
-		`SELECT group_id, name, history_visible, created_at, member_count FROM chat_groups WHERE group_id = ?`, groupID).
+		`SELECT group_id, name, history_visible, created_at, member_count FROM chat_groups WHERE group_id = ? AND dissolved_at = 0`, groupID).
 		Scan(&g.GroupID, &g.Name, &g.HistoryVisible, &g.CreatedAt, &g.MemberCount)
 	if errors.Is(err, sql.ErrNoRows) {
 		return Group{}, ErrNotFound
@@ -420,7 +453,7 @@ func (s *SQLite) GroupMember(ctx context.Context, groupID, userID string) (Group
 
 func groupExistsTx(ctx context.Context, tx *sql.Tx, groupID string) error {
 	var one int
-	err := tx.QueryRowContext(ctx, `SELECT 1 FROM chat_groups WHERE group_id = ?`, groupID).Scan(&one)
+	err := tx.QueryRowContext(ctx, `SELECT 1 FROM chat_groups WHERE group_id = ? AND dissolved_at = 0`, groupID).Scan(&one)
 	if errors.Is(err, sql.ErrNoRows) {
 		return ErrNotFound
 	}
@@ -566,7 +599,7 @@ const (
 	       COALESCE(cs.last_type, '') AS last_type, COALESCE(cs.last_text, '') AS last_text,
 	       COALESCE(cs.last_ts, 0) AS last_ts
 	FROM group_members gm
-	JOIN chat_groups g ON g.group_id = gm.group_id
+	JOIN chat_groups g ON g.group_id = gm.group_id AND g.dissolved_at = 0
 	LEFT JOIN conv_seq cs ON cs.conv_id = 'group:' || gm.group_id
 	LEFT JOIN read_seq rs ON rs.user_id = gm.user_id AND rs.conv_id = 'group:' || gm.group_id
 	WHERE %s`

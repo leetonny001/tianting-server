@@ -14,14 +14,17 @@
 
 | 任务 | 状态 | 说明 |
 |---|---|---|
-| BE-100、BE-102、BE-103、BE-105～BE-115（M3 功能） | ✅ 2026-11-03 | 迁移 `0006_social.sql`（勘误 E-26）与回填、`im-server repair counters`、发布手册 [release-m3.md](../process/release-m3.md)；社交配置（默认值 / 校验 / PATCH / `IM_SOCIAL_DEFAULTS` / 缓存失效 + 60 秒 TTL / `socialSettingsChanged`）；限流器 `Reconfigure` / 退还 / 按用户清空（突发值见勘误 E-24）；测试设施 drop-events / purge / seed / limits/reset；12 个社交命令、两个事件、12 个错误码、Schema 与 vectors；好友申请判定表 9 行、处理 / 删除 / 备注、同步轮（游标 HMAC、排序键归并、`restart`）、红点、清理任务（每小时）、拉黑、私聊判定顺序（预扣 + 退还）、陌生人限额（`SaveMessage` 事务内）、搜索 / 隐私、`users` 可见范围、`myGroups`；管理接口（配置、导入 / 删除 / 查询好友、官方账号，X-5 之后形态，勘误 E-25）。测试：e2e 95 个（`server/e2e/social_*_test.go`，用例名带 TC-SOC 编号），存储契约 `FriendApplyTable`、`SocialVerConcurrent`、`RepairCounters`、0006 迁移回填；`go test -race ./...` 全过，现有 e2e 不改断言全过（AC-SOC-08-13，只给 X-5 路由遍历测试补了新路由的样例） |
-| BE-101（存储基座） | 🔄 部分 | 完成：按字节序锁用户（SQLite 下只建行）、每事务每用户只分配一个 ver（`verFor` 记忆化）、`SocialVerConcurrent`。未做：`locktrace` 构建标签的加锁顺序断言与变异测试、Postgres `lock_timeout` / `store_deadlock_total`（随 B6） |
-| BE-100 第 3 条（测试模式启动时抽样校验计数器） | ⬜ | `repair counters` 已有，抽样校验未接入启动流程 |
-| BE-104（双节点测试环境） | ⬜ 未开始 | AC-SOC-01-5；配置缓存的失效与 TTL 已有单元测试（`TestCacheInvalidationAndTTL`） |
-| BE-116 第 2 条（CI 矩阵：`mode=friends` 下跑现有私聊 e2e） | ⬜ | 默认配置下现有 e2e 已全过 |
-| BE-117（Postgres 并发测试代码） | 🔄 部分 | 已在 SQLite 上：`SocialVerConcurrent`、`StrangerLimitRace`（e2e `TestTCSOC0814`）、新对象配额并发（`TestTCSOC0817`）；其余 5 项待写 |
-| BE-118～BE-121（专项测试） | ⬜ 未开始 | `vectors/social.json` 与参考客户端、同步模型随机测试、防枚举逐路径用例 + 日志扫描汇总、性能压测（AC-SOC-06-12、09-9） |
-| BE-122（M3，解散群） | ⬜ 未开始 | 与 PRD-admin G-ADM-11 / F-ADM-24 同一实现，工作量计入 PRD-admin |
+| BE-100、BE-102、BE-103、BE-105～BE-115（M3 功能） | ✅ 2026-11-03 | 迁移 `0006_social.sql`（勘误 E-26）与回填、`im-server repair counters`、发布手册 [release-m3.md](../process/release-m3.md)；社交配置（默认值 / 校验 / PATCH / `IM_SOCIAL_DEFAULTS` / 缓存失效 + 60 秒 TTL / `socialSettingsChanged`）；限流器 `Reconfigure` / 退还 / 按用户清空（突发值见勘误 E-24）；测试设施 drop-events / purge / seed / limits/reset；12 个社交命令、两个事件、12 个错误码、Schema 与 vectors；好友申请判定表 9 行、处理 / 删除 / 备注、同步轮（游标 HMAC、排序键归并、`restart`）、红点、清理任务（每小时）、拉黑、私聊判定顺序（预扣 + 退还）、陌生人限额（`SaveMessage` 事务内）、搜索 / 隐私、`users` 可见范围、`myGroups`；管理接口（配置、导入 / 删除 / 查询好友、官方账号，X-5 之后形态，勘误 E-25）。测试：e2e（`server/e2e/social_*_test.go`，用例名带 TC-SOC 编号），存储契约 `FriendApplyTable`、`SocialVerConcurrent`、`RepairCounters`、0006 迁移回填；`go test -race ./...` 全过，现有 e2e 不改断言全过（AC-SOC-08-13，只给 X-5 路由遍历测试补了新路由的样例） |
+| BE-101（存储基座） | ✅ 2026-11-03 | 按字节序锁用户、每事务每用户只分配一个 ver；加锁顺序断言用测试注入的回调实现（`onLockOrderViolation`，等价于 `locktrace` 构建标签，不需要单独构建），`TestSocialLockOrder` 跑全部社交写操作并含变异测试。Postgres 的 `lock_timeout` / `store_deadlock_total` 随 B6（BE-070）实现 |
+| BE-100 第 3 条（测试模式启动时抽样校验计数器） | ✅ 2026-11-03 | `CounterDrift`：每种计数器随机抽 100 行，不一致记 ERROR 日志并提示 `repair counters` |
+| BE-104（双节点测试环境） | ✅ 2026-11-03 | 测试模式的 `cache.HTTPLoopback`（`IM_TEST_PEERS` / `App.SetTestPeers`、`/admin/test/invalidate`、`IM_TEST_INVALIDATION=off`，勘误 E-27）；e2e 两个进程共享一个 SQLite 文件：广播 1 秒内生效、关闭广播时 59 秒仍旧 / 61 秒后新（AC-SOC-01-5） |
+| BE-116（e2e 与 CI 矩阵） | ✅ 2026-11-03 | CI 增加好友制一轮：`IM_E2E_SOCIAL_MODE=friends` 以 `mode=friends` 启动并给登录过的用户预置好友关系，现有 e2e 不改代码全过（社交用例自己设置模式，这一轮跳过） |
+| BE-117（Postgres 并发测试代码，B6 前置） | ✅ 2026-11-03（SQLite） | `store/storetest` 并发组 7 项：`FriendMutualApplyRace`、`FriendLimitRace`、`FriendMutualAcceptNoDeadlock`、`StrangerLimitRace`、`MemberCountRace`、`AdminImportVsApplyNoDeadlock`、`SocialVerConcurrent`；BE-070 接入 Postgres 时这 7 项必须通过 |
+| BE-118（5.4 节逐行、social.json） | ✅ 2026-11-03 | `TestTCSOC0614VerPerOperation` 24 行（5.4 节 19 行全覆盖）：谁的 ver 变化、同一操作的行共享一个 ver、谁收到事件、谁零帧；`protocol/vectors/social.json` 11 个用例 + 16 条"命令 + 错误码"文案，期望由参考客户端生成并校验 |
+| BE-119（同步模型测试） | ✅ 2026-11-03 | `server/e2e/socialmodel` 参考客户端（10.2 节规则）+ 随机生成器（两人各两端，14 种操作含重连 / 刷新 / 丢事件 / 推进时钟 / 清理，limit 随机），失败时贪心收缩成最小序列并输出种子；CI 单独一步跑 1000 个序列（约 10 秒），普通 e2e 和 race 跑 100 个；变异测试确认能发现缺陷。搜索耗时对比 `TestTCSOC0910SearchTiming`（AC-SOC-09-9） |
+| BE-120（防枚举、日志扫描） | ✅ 2026-11-03 | `social_enum_test.go`：11.2 节逐路径同构比较、每日确认上限 100 + 100、四个特征串扫描服务端日志和审计全部字段（含变异测试）；零帧断言在 BE-118 逐行表里 |
+| BE-121（性能） | ✅ 2026-11-03 | `im-loadtest` 新场景 `social-full`、`c2c-friends`；默认配置下 TC-PERF-00-01～07 重跑，报告 [perf-social-2026-11-03.md](../reports/perf-social-2026-11-03.md) |
+| BE-122（M3，解散群） | ✅ 2026-11-03 | `Store.DissolveGroup`（删除全部成员、写 `dissolved_at`、消息保留）、`DELETE /admin/groups/{groupId}`（scope `group.dissolve`，审计）、`convRemoved.reason`（管理接口移出 `removed`、解散 `dissolved`）；规则 3 的查询全部按"不存在"处理，群 ID 不复用（4090）；契约测试 `GroupDissolveNoReuse`、e2e（AC-SOC-26-2、26-4、26-5、26-6） |
 | BE-130 ～ BE-138（M4） | ⬜ 未开始 | 开工条件：M3 后端全部完成 |
 | BE-113 第 3 条（`member_count`） | ✅ 提前完成 | 2026-11-03 为 H5 群标题提前做：迁移 0005、加 / 减成员同事务维护、`convs` 群会话和 `GET /admin/groups/{id}` 带 `memberCount`（契约测试 `MemberCountMaintained`、e2e）。第 1、2 条（`users` 可见范围、`myGroups`）仍待社交关系表 |
 

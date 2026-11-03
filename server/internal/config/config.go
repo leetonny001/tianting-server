@@ -83,6 +83,20 @@ func Load(getenv func(string) string) (cfg Server, warnings []string, err error)
 	a.DBPath = cmp.Or(getenv("IM_DB"), "im.db")
 	a.AutoMigrate = boolEnv(getenv, "IM_AUTO_MIGRATE", !prod, bad) // 生产默认由发布流程执行 migrate up
 	a.TestMode = boolEnv(getenv, "IM_TEST_MODE", false, bad)
+	if raw := getenv("IM_TEST_PEERS"); raw != "" { // 双节点测试环境（PRD-social 5.6 节），只在测试模式生效
+		for _, p := range strings.Split(raw, ",") {
+			if p = strings.TrimSpace(p); p != "" {
+				a.TestPeers = append(a.TestPeers, strings.TrimRight(p, "/"))
+			}
+		}
+	}
+	switch v := getenv("IM_TEST_INVALIDATION"); v {
+	case "", "on":
+	case "off":
+		a.TestInvalidationOff = true
+	default:
+		bad("IM_TEST_INVALIDATION must be on or off, got %q", v)
+	}
 	a.DemoLogin = boolEnv(getenv, "IM_DEMO_LOGIN", false, bad)
 
 	// 签名密钥：IM_JWT_KEYS（轮换用，"k1:secret1,k2:secret2"）优先于 IM_JWT_SECRET。

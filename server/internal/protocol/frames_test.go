@@ -35,11 +35,12 @@ func TestOutFramesMatchSchema(t *testing.T) {
 			MsgID: "m2", ClientMsgID: "cid-00000002", ConvID: GroupConvID("g1"), Seq: 2, From: "u1", Type: MsgCustom,
 			Body: MsgBody{Data: json.RawMessage(`{"k":1}`)}, TS: 1,
 		}},
-		"kicked":       Event(KickedEvent{Type: EventKicked, Reason: KickTokenInvalid}),
-		"conv added":   Event(ConvAddedEvent{Type: EventConvAdded, Conv: emptyGroup}),
-		"conv removed": Event(ConvRemovedEvent{Type: EventConvRemoved, ConvID: "group:g1"}),
-		"read updated": Event(ReadUpdatedEvent{Type: EventReadUpdated, ConvID: "group:g1", ReadSeq: 3}),
-		"pong":         {Cmd: CmdPong},
+		"kicked":         Event(KickedEvent{Type: EventKicked, Reason: KickTokenInvalid}),
+		"conv added":     Event(ConvAddedEvent{Type: EventConvAdded, Conv: emptyGroup}),
+		"conv removed":   Event(ConvRemovedEvent{Type: EventConvRemoved, ConvID: "group:g1"}),
+		"conv dissolved": Event(ConvRemovedEvent{Type: EventConvRemoved, ConvID: "group:g1", Reason: RemovedDissolved}),
+		"read updated":   Event(ReadUpdatedEvent{Type: EventReadUpdated, ConvID: "group:g1", ReadSeq: 3}),
+		"pong":           {Cmd: CmdPong},
 		// PRD-social M3
 		"friendApply ack": AckOK("s1", SocialChangeAck{Status: "pending", Ver: 3, Changed: true, Items: SocialItems{
 			Friends: []FriendItem{}, Blocks: []BlockItem{},

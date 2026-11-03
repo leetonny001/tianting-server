@@ -846,7 +846,7 @@ func (s *Service) SocialMaxFriends(ctx context.Context) (int, *protocol.Error) {
 }
 
 // SeedSocial 是测试接口 /admin/test/social/seed：写入后给 ver 变化的用户发 socialChanged。
-func (s *Service) SeedSocial(ctx context.Context, sd store.SocialSeed) error {
+func (s *Service) SeedSocial(ctx context.Context, sd store.SocialSeed, silent bool) error {
 	if sd.UpdatedAt == 0 {
 		sd.UpdatedAt = s.nowMs()
 	}
@@ -854,6 +854,8 @@ func (s *Service) SeedSocial(ctx context.Context, sd store.SocialSeed) error {
 	if err != nil {
 		return err
 	}
-	s.NotifySocialChanged(bumped, "", "")
+	if !silent {
+		s.NotifySocialChanged(bumped, "", "")
+	}
 	return nil
 }

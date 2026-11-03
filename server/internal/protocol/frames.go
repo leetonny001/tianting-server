@@ -291,7 +291,15 @@ type ConvAddedEvent struct {
 type ConvRemovedEvent struct {
 	Type   string `json:"type"`
 	ConvID string `json:"convId"`
+	// Reason：被移出 removed / 群被解散 dissolved（PRD-social 9.2 节；M4 增加 left）。老客户端忽略未知字段。
+	Reason string `json:"reason,omitempty"`
 }
+
+// convRemoved 的原因。
+const (
+	RemovedByAdmin   = "removed"
+	RemovedDissolved = "dissolved"
+)
 
 type ReadUpdatedEvent struct {
 	Type    string `json:"type"`

@@ -2,8 +2,10 @@ package admin
 
 import (
 	"net/http"
+
 	"strings"
 	"testing"
+	"tianting/server/internal/adminauth"
 )
 
 // AC-KEY-02-3：没有声明 scope 的管理路由在注册阶段 panic。
@@ -25,16 +27,20 @@ func TestRegisteredRoutesHaveScopes(t *testing.T) {
 	a.Register(mux)
 	a.RegisterTestRoutes(mux, nil, nil)
 	routes := a.Routes()
-	legacy := 0
+	tests := 0
 	for _, r := range routes {
 		if r.Scope == "" {
 			t.Errorf("%s %s has no scope", r.Method, r.Pattern)
 		}
-		if r.Legacy {
-			legacy++
+		isTest := r.Scope == adminauth.ScopeTest
+		if isTest {
+			tests++
+		}
+		if want := legacyRoutes[r.Method+" "+r.Pattern] || isTest; r.Legacy != want {
+			t.Errorf("%s %s: legacy = %v, want %v", r.Method, r.Pattern, r.Legacy, want)
 		}
 	}
-	if legacy != len(legacyRoutes)+4 {
-		t.Errorf("legacy routes = %d, want %d (v1.2 routes + 4 test routes)", legacy, len(legacyRoutes)+4)
+	if tests < 5 {
+		t.Errorf("only %d test routes registered", tests)
 	}
 }

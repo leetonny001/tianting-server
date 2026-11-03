@@ -32,7 +32,9 @@ func TestPatch(t *testing.T) {
 
 type fakeStore struct{ v string }
 
-func (f *fakeStore) SocialSettingsJSON(context.Context) (string, bool, error) { return f.v, f.v != "", nil }
+func (f *fakeStore) SocialSettingsJSON(context.Context) (string, bool, error) {
+	return f.v, f.v != "", nil
+}
 
 // F-SOC-01 规则 3：失效通知立即生效；漏掉通知时 60 秒 TTL 兜底。
 func TestCacheInvalidationAndTTL(t *testing.T) {

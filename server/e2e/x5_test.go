@@ -213,6 +213,7 @@ var adminSamples = map[string]adminSample{
 	"POST /admin/test/clock":                  {nil, "POST", "/admin/test/clock", map[string]any{"nowMs": nil}, 200},
 	"POST /admin/test/faults":                 {nil, "POST", "/admin/test/faults", map[string]any{"adminAuditWrite": ""}, 200},
 	"GET /admin/audit":                        {nil, "GET", "/admin/audit?from=0&to=1000", nil, 200},
+	"DELETE /admin/groups/{groupId}":          {func(e *env) { e.createGroup("g1") }, "DELETE", "/admin/groups/g1", nil, 200},
 	// PRD-social M3（BE-114、BE-115、5.6 节测试设施）
 	"GET /admin/settings/social":          {nil, "GET", "/admin/settings/social", nil, 200},
 	"PATCH /admin/settings/social":        {nil, "PATCH", "/admin/settings/social", map[string]any{"mode": "open"}, 200},
@@ -223,6 +224,7 @@ var adminSamples = map[string]adminSample{
 	"POST /admin/test/social/drop-events": {nil, "POST", "/admin/test/social/drop-events", map[string]any{"userId": "alice", "type": "socialChanged", "count": 1}, 200},
 	"POST /admin/test/social/purge":       {nil, "POST", "/admin/test/social/purge", map[string]any{}, 200},
 	"POST /admin/test/social/seed":        {nil, "POST", "/admin/test/social/seed", map[string]any{"friends": []any{map[string]any{"owner": "alice", "peer": "bob"}}}, 200},
+	"POST /admin/test/invalidate":         {nil, "POST", "/admin/test/invalidate", map[string]any{"topic": "socialSettings", "key": ""}, 200},
 	"POST /admin/test/limits/reset":       {nil, "POST", "/admin/test/limits/reset", map[string]any{"userId": "alice"}, 200},
 }
 

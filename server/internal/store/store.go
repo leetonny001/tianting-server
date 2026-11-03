@@ -119,7 +119,11 @@ type Store interface {
 	AddGroupMembers(ctx context.Context, groupID string, members []string, maxTotal int, joinedAt int64) (added []string, err error)
 	// RemoveGroupMembers 移除成员，返回实际被移除的（不是成员的忽略，C-36）。群不存在返回 ErrNotFound。
 	RemoveGroupMembers(ctx context.Context, groupID string, members []string) (removed []string, err error)
-	// GetGroup 不存在时返回 ErrNotFound。
+	// DissolveGroup 解散群（PRD-social F-SOC-26 规则 2～4）：一个事务里删除全部成员行、写 dissolved_at、member_count=0，
+	// 消息保留；返回被移出的成员。群不存在或已解散返回 ErrNotFound。客户端解散、最后一人退群（M4）共用这个方法。
+	// 解散之后：GroupExists / GetGroup / 加减成员 / 改设置都按"不存在"处理，CreateGroup 同一个 ID 返回 ErrExists（不复用）。
+	DissolveGroup(ctx context.Context, groupID string, now int64) (members []string, err error)
+	// GetGroup 不存在（或已解散）时返回 ErrNotFound。
 	GetGroup(ctx context.Context, groupID string) (Group, error)
 	// UpdateGroup 修改群设置。不存在时返回 ErrNotFound。
 	UpdateGroup(ctx context.Context, groupID string, u GroupUpdate) error

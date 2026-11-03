@@ -51,11 +51,14 @@ type Config struct {
 	Gateway           gateway.Config
 	// SocialDefaults 是 IM_SOCIAL_DEFAULTS（JSON，字段同 PRD-social 5.1 节）：只在库里没有配置行时写入一次。
 	SocialDefaults string
-	TestMode       bool // 开启故障注入、时钟注入、短有效期 token（PRD 6.1 节），生产必须关闭
-	DemoLogin      bool // 开启演示登录 /demo/login（PRD F-AUTH-04），生产必须关闭
-	SendRate       int  // 每个用户每秒可发消息数，0 表示默认值 20（PRD F-MSG-07）
-	Version        string
-	Logger         *slog.Logger
+	// TestPeers / TestInvalidationOff：测试模式的双节点环境（IM_TEST_PEERS、IM_TEST_INVALIDATION=off，PRD-social 5.6 节）。
+	TestPeers           []string
+	TestInvalidationOff bool
+	TestMode            bool // 开启故障注入、时钟注入、短有效期 token（PRD 6.1 节），生产必须关闭
+	DemoLogin           bool // 开启演示登录 /demo/login（PRD F-AUTH-04），生产必须关闭
+	SendRate            int  // 每个用户每秒可发消息数，0 表示默认值 20（PRD F-MSG-07）
+	Version             string
+	Logger              *slog.Logger
 }
 
 const defaultSendRate = 20
@@ -71,6 +74,14 @@ type App struct {
 	metrics     *metrics.Metrics
 	draining    atomic.Bool
 	stop        chan struct{} // 关闭后台任务（社交清理）
+	loopback    *cache.HTTPLoopback
+}
+
+// SetTestPeers 设置双节点测试环境的广播目标（只在测试模式下有效；TestInvalidationOff 时忽略）。
+func (a *App) SetTestPeers(peers []string) {
+	if a.loopback != nil {
+		a.loopback.SetPeers(peers)
+	}
 }
 
 func New(cfg Config) (*App, error) {
@@ -103,7 +114,12 @@ func New(cfg Config) (*App, error) {
 		sendRate = defaultSendRate
 	}
 	m := metrics.New()
-	inv := cache.NewLocal() // 单节点：失效通知直接在本机回调；集群时换成经消息总线广播的实现
+	var inv cache.Invalidator = cache.NewLocal() // 单节点：失效通知直接在本机回调；集群时换成经消息总线广播的实现
+	var loopback *cache.HTTPLoopback
+	if cfg.TestMode { // 测试模式：可以组成双节点环境（没有 peers 时与 Local 相同）
+		loopback = cache.NewHTTPLoopback(cfg.TestPeers, cfg.AdminKey, cfg.TestInvalidationOff)
+		inv = loopback
+	}
 	svc := logic.New(st, h, clk, faults, ratelimit.New(sendRate, sendRate, clk), inv, m, cfg.Logger)
 	if cfg.SocialDefaults != "" {
 		if err := initSocialDefaults(st, cfg.SocialDefaults, clk.Now().UnixMilli()); err != nil {
@@ -112,7 +128,13 @@ func New(cfg Config) (*App, error) {
 		}
 	}
 
-	a := &App{store: st, hub: h, metrics: m, stop: make(chan struct{})}
+	if cfg.TestMode { // 测试模式启动时抽样校验计数器，不一致记 ERROR（PRD-social 8.5 节，BE-100）
+		if n, err := st.CounterDrift(context.Background(), 100); err != nil || n > 0 {
+			cfg.Logger.Error("social counters drifted; run `im-server repair counters`", "rows", n, "err", err)
+		}
+	}
+
+	a := &App{store: st, hub: h, metrics: m, stop: make(chan struct{}), loopback: loopback}
 	go svc.RunSocialPurge(a.stop)
 	info := api.Info{Version: cfg.Version, StartedAt: time.Now(), Ready: a.ready}
 	if cfg.ReportLegacyAdmin {
