@@ -7,6 +7,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"log/slog"
 	"net/http"
 	"strings"
@@ -274,4 +275,8 @@ func TestLogsDoNotLeakSecrets(t *testing.T) {
 			t.Errorf("%s leaked into logs", name)
 		}
 	}
+}
+
+func newTextLogger(w io.Writer) *slog.Logger {
+	return slog.New(slog.NewTextHandler(w, &slog.HandlerOptions{Level: slog.LevelDebug}))
 }

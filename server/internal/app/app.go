@@ -20,6 +20,7 @@ import (
 	"im-mvp/server/internal/gateway"
 	"im-mvp/server/internal/hub"
 	"im-mvp/server/internal/logic"
+	"im-mvp/server/internal/metrics"
 	"im-mvp/server/internal/protocol"
 	"im-mvp/server/internal/ratelimit"
 	"im-mvp/server/internal/store"
@@ -48,6 +49,7 @@ type App struct {
 	handler  http.Handler
 	store    *store.SQLite
 	hub      *hub.Hub
+	metrics  *metrics.Metrics
 	draining atomic.Bool
 }
 
@@ -80,16 +82,17 @@ func New(cfg Config) (*App, error) {
 	if sendRate <= 0 {
 		sendRate = defaultSendRate
 	}
+	m := metrics.New()
 	inv := cache.NewLocal() // 单节点：失效通知直接在本机回调；集群时换成经消息总线广播的实现
-	svc := logic.New(st, h, clk, faults, ratelimit.New(sendRate, sendRate, clk), inv, cfg.Logger)
+	svc := logic.New(st, h, clk, faults, ratelimit.New(sendRate, sendRate, clk), inv, m, cfg.Logger)
 
-	a := &App{store: st, hub: h}
+	a := &App{store: st, hub: h, metrics: m}
 	mux := api.NewRouter(api.Info{Version: cfg.Version, StartedAt: time.Now(), Ready: a.ready})
 	gw := cfg.Gateway
 	if gw.NodeID == "" {
 		gw.NodeID = randomNodeID()
 	}
-	mux.Handle("GET /ws", gateway.New(gw, signer, st, clk, h, svc, cfg.Logger))
+	mux.Handle("GET /ws", gateway.New(gw, signer, st, clk, h, svc, m, cfg.Logger))
 	adm := admin.New(cfg.AdminKey, signer, st, h, inv, svc, clk, cfg.TestMode, cfg.Logger)
 	adm.Register(mux)
 	if cfg.TestMode {
@@ -104,6 +107,9 @@ func New(cfg Config) (*App, error) {
 }
 
 func (a *App) Handler() http.Handler { return a.handler }
+
+// MetricsHandler 是 /metrics。由 main 挂在单独的内网地址上（IM_METRICS_ADDR），不和对外端口共用。
+func (a *App) MetricsHandler() http.Handler { return a.metrics.Handler() }
 
 func (a *App) ready(ctx context.Context) error {
 	if a.draining.Load() {

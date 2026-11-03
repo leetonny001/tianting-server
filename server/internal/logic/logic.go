@@ -14,6 +14,7 @@ import (
 	"im-mvp/server/internal/cache"
 	"im-mvp/server/internal/clock"
 	"im-mvp/server/internal/delivery"
+	"im-mvp/server/internal/metrics"
 	"im-mvp/server/internal/protocol"
 	"im-mvp/server/internal/ratelimit"
 	"im-mvp/server/internal/store"
@@ -28,12 +29,13 @@ type Service struct {
 	faults  *Faults // 仅测试模式非 nil
 	limiter ratelimit.Limiter
 	members *memberCache
+	metrics *metrics.Metrics
 	newID   func() string
 }
 
 // New 创建 Service。limiter 按用户限制发送速率（所有连接合计，PRD F-MSG-07）。
 // inv 用于订阅群成员缓存的失效通知（TopicGroupMembers）。
-func New(st store.Store, router delivery.Router, clk clock.Clock, faults *Faults, limiter ratelimit.Limiter, inv cache.Invalidator, log *slog.Logger) *Service {
+func New(st store.Store, router delivery.Router, clk clock.Clock, faults *Faults, limiter ratelimit.Limiter, inv cache.Invalidator, m *metrics.Metrics, log *slog.Logger) *Service {
 	return &Service{
 		store:   st,
 		router:  router,
@@ -42,6 +44,7 @@ func New(st store.Store, router delivery.Router, clk clock.Clock, faults *Faults
 		faults:  faults,
 		limiter: limiter,
 		members: newMemberCache(st, clk, inv),
+		metrics: m,
 		// UUIDv7 按时间递增，作为主键插入时对 B 树更友好。
 		newID: func() string { return uuid.Must(uuid.NewV7()).String() },
 	}
@@ -160,6 +163,9 @@ func (s *Service) send(ctx context.Context, c delivery.Session, raw json.RawMess
 		return nil, false, protocol.Errorf(protocol.CodeClientMsgIDConflict, "clientMsgId already used in another conversation")
 	}
 	// 重发的消息第一次已经投递过，不再投递；没收到的端会靠 sync 补齐。
+	if !dup {
+		s.metrics.Messages.WithLabelValues(req.ConvType).Inc()
+	}
 	if !dup && !s.faults.takeSkipDelivery(req.ClientMsgID) {
 		s.fanout(saved, recipients, c.ConnID())
 		// 发言即已读：存储层已经把发送者的已读位置推进到这条消息，通知发送者的其他端（BE-042）。

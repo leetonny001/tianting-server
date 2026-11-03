@@ -95,7 +95,8 @@ func startServer(t *testing.T, bin, db string, extraEnv ...string) *serverProc {
 	t.Helper()
 	addr := freeAddr(t)
 	cmd := exec.Command(bin)
-	cmd.Env = append(os.Environ(), "IM_ADDR="+addr, "IM_DB="+db, "IM_ADMIN_KEY="+adminKey, "IM_JWT_SECRET=e2e-secret-0123456789")
+	// IM_METRICS_ADDR=off：默认的 127.0.0.1:9090 会和本机正在运行的其他实例冲突。
+	cmd.Env = append(os.Environ(), "IM_ADDR="+addr, "IM_DB="+db, "IM_ADMIN_KEY="+adminKey, "IM_JWT_SECRET=e2e-secret-0123456789", "IM_METRICS_ADDR=off")
 	cmd.Env = append(cmd.Env, extraEnv...)
 	cmd.Stdout, cmd.Stderr = io.Discard, io.Discard
 	if err := cmd.Start(); err != nil {

@@ -19,6 +19,9 @@
 //	IM_MAX_CONNS_PER_USER 每个用户的连接上限，默认 10
 //	IM_IDLE_TIMEOUT       空闲超时（如 90s），默认 90s
 //	IM_NODE_ID            节点标识（集群部署时设置），默认随机
+//	IM_METRICS_ADDR       Prometheus 指标的监听地址（只给内网），默认 127.0.0.1:9090；off 关闭
+//	IM_HANDSHAKE_RATE / IM_HANDSHAKE_BURST  每个 IP 的握手速率 / 突发上限，默认 20 / 50（压测时调高）
+//	IM_TRUSTED_PROXIES    可信反向代理（逗号分隔的 IP 或 CIDR），只信任它们传来的 X-Forwarded-For
 //	IM_DRAIN_DELAY        下线时先摘流量再踢连接的等待时间，默认 0（production 建议 5s）
 //	IM_TEST_MODE          设为 1 开启测试模式（production 禁止）
 //	IM_DEMO_LOGIN         设为 1 开启演示登录（production 禁止）
@@ -105,6 +108,20 @@ func serve(logger *slog.Logger) error {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 	errc := make(chan error, 1)
+
+	// /metrics 单独监听内网地址（BE-051）。
+	var metricsSrv *http.Server
+	if cfg.MetricsAddr != "" {
+		mux := http.NewServeMux()
+		mux.Handle("GET /metrics", a.MetricsHandler())
+		metricsSrv = &http.Server{Addr: cfg.MetricsAddr, Handler: mux, ReadHeaderTimeout: 5 * time.Second}
+		go func() {
+			logger.Info("metrics listening", "addr", cfg.MetricsAddr)
+			if err := metricsSrv.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
+				errc <- fmt.Errorf("metrics: %w", err)
+			}
+		}()
+	}
 	go func() {
 		logger.Info("im-server listening", "addr", cfg.Addr, "env", cfg.Env, "version", version)
 		if err := srv.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
@@ -124,6 +141,9 @@ func serve(logger *slog.Logger) error {
 	logger.Info("kicked connections for shutdown", "count", a.KickAll())
 	shutdownCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
+	if metricsSrv != nil {
+		_ = metricsSrv.Shutdown(shutdownCtx)
+	}
 	return srv.Shutdown(shutdownCtx)
 }
 

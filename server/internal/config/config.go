@@ -37,7 +37,10 @@ const MinProductionSecretLen = 32
 type Server struct {
 	Env  string
 	Addr string
-	App  app.Config
+	// MetricsAddr 是 /metrics 的监听地址（BE-051），默认只监听本机；为空表示不开启。
+	// 不和 Addr 共用端口：指标是内部运行数据，不能暴露到公网。
+	MetricsAddr string
+	App         app.Config
 }
 
 // Load 读取并校验配置。getenv 通常是 os.Getenv，测试时可以传入假实现。
@@ -53,6 +56,13 @@ func Load(getenv func(string) string) (cfg Server, warnings []string, err error)
 	prod := cfg.Env == EnvProduction
 
 	cfg.Addr = cmp.Or(getenv("IM_ADDR"), ":8080")
+	switch v := getenv("IM_METRICS_ADDR"); v {
+	case "":
+		cfg.MetricsAddr = "127.0.0.1:9090"
+	case "off":
+	default:
+		cfg.MetricsAddr = v
+	}
 	a := &cfg.App
 	a.DBPath = cmp.Or(getenv("IM_DB"), "im.db")
 	a.AutoMigrate = boolEnv(getenv, "IM_AUTO_MIGRATE", !prod, bad) // 生产默认由发布流程执行 migrate up
@@ -115,6 +125,17 @@ func Load(getenv func(string) string) (cfg Server, warnings []string, err error)
 				continue
 			}
 			gw.Guard.TrustedProxies = append(gw.Guard.TrustedProxies, p)
+		}
+	}
+	// 握手限流（ARCH S7）。压测时所有连接来自同一个 IP，需要调高。
+	for key, dst := range map[string]*int{"IM_HANDSHAKE_RATE": &gw.Guard.HandshakeRate, "IM_HANDSHAKE_BURST": &gw.Guard.HandshakeBurst} {
+		if v := getenv(key); v != "" {
+			n, perr := strconv.Atoi(v)
+			if perr != nil || n < 1 {
+				bad("%s: must be a positive integer, got %q", key, v)
+				continue
+			}
+			*dst = n
 		}
 	}
 	gw.NodeID = getenv("IM_NODE_ID")

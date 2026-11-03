@@ -100,6 +100,7 @@ func TestInvalidValues(t *testing.T) {
 		"keys format": {"IM_JWT_KEYS": "nocolon"},
 		"active kid":  {"IM_JWT_KEYS": "k1:" + strongJWT + ",k2:" + strongJWT},
 		"proxies":     {"IM_TRUSTED_PROXIES": "10.0.0.0/8,not-an-ip"},
+		"hs rate":     {"IM_HANDSHAKE_RATE": "0"},
 	} {
 		if _, _, err := Load(envOf(env)); err == nil {
 			t.Errorf("%s: expected error", name)
@@ -126,5 +127,21 @@ func TestTrustedProxies(t *testing.T) {
 	got := cfg.App.Gateway.Guard.TrustedProxies
 	if len(got) != 3 || got[0].String() != "10.0.0.0/8" || got[1].String() != "192.168.1.10/32" || got[2].String() != "::1/128" {
 		t.Errorf("trusted proxies = %v", got)
+	}
+}
+
+func TestMetricsAddr(t *testing.T) {
+	for env, want := range map[string]string{"": "127.0.0.1:9090", "off": "", "10.0.0.5:9100": "10.0.0.5:9100"} {
+		cfg, _, err := Load(envOf(map[string]string{"IM_METRICS_ADDR": env}))
+		if err != nil || cfg.MetricsAddr != want {
+			t.Errorf("IM_METRICS_ADDR=%q: got %q, want %q (%v)", env, cfg.MetricsAddr, want, err)
+		}
+	}
+}
+
+func TestHandshakeLimits(t *testing.T) {
+	cfg, _, err := Load(envOf(map[string]string{"IM_HANDSHAKE_RATE": "2000", "IM_HANDSHAKE_BURST": "5000"}))
+	if err != nil || cfg.App.Gateway.Guard.HandshakeRate != 2000 || cfg.App.Gateway.Guard.HandshakeBurst != 5000 {
+		t.Errorf("guard = %+v, %v", cfg.App.Gateway.Guard, err)
 	}
 }

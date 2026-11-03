@@ -1,0 +1,110 @@
+// Package metrics 定义服务端的 Prometheus 指标（BE-051）。
+//
+// 指标端点只在单独的内网地址上暴露（IM_METRICS_ADDR，默认 127.0.0.1:9090），不和对外的 WebSocket / 管理接口共用端口：
+// 指标里有在线人数、错误分布等内部运行数据，不应该被公网访问。
+//
+// 标签只用取值有限的字段（平台、命令名、错误码、关闭码、原因），不放 userId、convId 等：
+// 否则标签组合无限增长，会把 Prometheus 和服务端内存一起拖垮。客户端传来的未知命令统一记为 "unknown"。
+package metrics
+
+import (
+	"net/http"
+	"strconv"
+
+	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/collectors"
+	"github.com/prometheus/client_golang/prometheus/promhttp"
+)
+
+// 握手结果（im_handshakes_total 的 result 标签）。
+const (
+	HandshakeOK           = "ok"
+	HandshakeRateLimited  = "rate_limited"
+	HandshakeBadPlatform  = "bad_platform"
+	HandshakeAuthRequired = "auth_required"
+	HandshakeTokenInvalid = "token_invalid"
+	HandshakeTokenRevoked = "token_revoked"
+	HandshakeTokenExpired = "token_expired"
+	HandshakeError        = "error"
+)
+
+// Metrics 是全部指标。每个 App 一份，测试之间互不影响。
+type Metrics struct {
+	registry *prometheus.Registry
+
+	Connections     *prometheus.GaugeVec     // 当前在线连接数，按平台
+	Handshakes      *prometheus.CounterVec   // 握手结果
+	Disconnects     *prometheus.CounterVec   // 连接关闭，按关闭码和关闭方（client / server）
+	Kicks           *prometheus.CounterVec   // 被踢原因
+	Commands        *prometheus.CounterVec   // 上行命令数，按命令和结果码（0 表示成功）
+	CommandDuration *prometheus.HistogramVec // 命令处理耗时（收到请求到产生 ack），按命令
+	Messages        *prometheus.CounterVec   // 新保存的消息数（不含去重命中的重发），按会话类型
+	SlowConsumers   prometheus.Counter       // 因下行积压被断开的连接数
+}
+
+// New 创建并注册全部指标，另外带上 Go 运行时和进程指标。
+func New() *Metrics {
+	r := prometheus.NewRegistry()
+	f := func(c prometheus.Collector) { r.MustRegister(c) }
+	m := &Metrics{
+		registry: r,
+		Connections: prometheus.NewGaugeVec(prometheus.GaugeOpts{
+			Name: "im_connections", Help: "Current authenticated WebSocket connections on this node.",
+		}, []string{"platform"}),
+		Handshakes: prometheus.NewCounterVec(prometheus.CounterOpts{
+			Name: "im_handshakes_total", Help: "WebSocket handshakes by result.",
+		}, []string{"result"}),
+		Disconnects: prometheus.NewCounterVec(prometheus.CounterOpts{
+			Name: "im_disconnects_total", Help: "Closed connections by close code and which side closed.",
+		}, []string{"code", "by"}),
+		Kicks: prometheus.NewCounterVec(prometheus.CounterOpts{
+			Name: "im_kicks_total", Help: "Kicked connections by reason.",
+		}, []string{"reason"}),
+		Commands: prometheus.NewCounterVec(prometheus.CounterOpts{
+			Name: "im_commands_total", Help: "Client commands by command and result code (0 = ok).",
+		}, []string{"cmd", "code"}),
+		CommandDuration: prometheus.NewHistogramVec(prometheus.HistogramOpts{
+			Name:    "im_command_duration_seconds",
+			Help:    "Time from receiving a command to producing its ack.",
+			Buckets: []float64{.0005, .001, .0025, .005, .01, .025, .05, .1, .25, .5, 1, 2.5},
+		}, []string{"cmd"}),
+		Messages: prometheus.NewCounterVec(prometheus.CounterOpts{
+			Name: "im_messages_total", Help: "Newly stored messages by conversation type.",
+		}, []string{"conv_type"}),
+		SlowConsumers: prometheus.NewCounter(prometheus.CounterOpts{
+			Name: "im_slow_consumers_total", Help: "Connections closed because their send queue was full.",
+		}),
+	}
+	f(m.Connections)
+	f(m.Handshakes)
+	f(m.Disconnects)
+	f(m.Kicks)
+	f(m.Commands)
+	f(m.CommandDuration)
+	f(m.Messages)
+	f(m.SlowConsumers)
+	f(collectors.NewGoCollector())
+	f(collectors.NewProcessCollector(collectors.ProcessCollectorOpts{}))
+	return m
+}
+
+// Handler 返回 /metrics 的 http.Handler。
+func (m *Metrics) Handler() http.Handler {
+	return promhttp.HandlerFor(m.registry, promhttp.HandlerOpts{})
+}
+
+// knownCmds 是允许作为标签值的命令名。
+var knownCmds = map[string]bool{
+	"send": true, "sync": true, "convs": true, "read": true, "joinRoom": true, "leaveRoom": true, "auth": true,
+}
+
+// CmdLabel 把客户端传来的命令名规整成有限的标签值。
+func CmdLabel(cmd string) string {
+	if knownCmds[cmd] {
+		return cmd
+	}
+	return "unknown"
+}
+
+// Code 把错误码 / 关闭码转成标签值。
+func Code(code int) string { return strconv.Itoa(code) }

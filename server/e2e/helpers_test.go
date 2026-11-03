@@ -31,6 +31,7 @@ const (
 type env struct {
 	t   *testing.T
 	srv *httptest.Server
+	app *app.App
 }
 
 // newEnv 启动测试模式的服务（PRD 6.1 节：故障注入、时钟注入、短有效期 token 可用）。
@@ -67,7 +68,7 @@ func newEnvCfg(t *testing.T, mutate func(*app.Config)) *env {
 		srv.Close()
 		a.Close()
 	})
-	return &env{t: t, srv: srv}
+	return &env{t: t, srv: srv, app: a}
 }
 
 // adminPost 调用管理接口，返回状态码和响应体。

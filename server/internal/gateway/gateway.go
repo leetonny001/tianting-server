@@ -20,6 +20,7 @@ import (
 	"im-mvp/server/internal/clock"
 	"im-mvp/server/internal/delivery"
 	"im-mvp/server/internal/hub"
+	"im-mvp/server/internal/metrics"
 	"im-mvp/server/internal/protocol"
 )
 
@@ -81,12 +82,13 @@ type Gateway struct {
 	hub        *hub.Hub
 	handler    Handler
 	log        *slog.Logger
+	metrics    *metrics.Metrics
 	guard      *guard
 	nextID     atomic.Uint64
 }
 
-func New(cfg Config, verifier TokenVerifier, revocation RevocationChecker, clk clock.Clock, h *hub.Hub, handler Handler, log *slog.Logger) *Gateway {
-	return &Gateway{cfg: cfg, verifier: verifier, revocation: revocation, clock: clk, hub: h, handler: handler, log: log, guard: newGuard(cfg.Guard, clk)}
+func New(cfg Config, verifier TokenVerifier, revocation RevocationChecker, clk clock.Clock, h *hub.Hub, handler Handler, m *metrics.Metrics, log *slog.Logger) *Gateway {
+	return &Gateway{cfg: cfg, verifier: verifier, revocation: revocation, clock: clk, hub: h, handler: handler, metrics: m, log: log, guard: newGuard(cfg.Guard, clk)}
 }
 
 // ServeHTTP 处理一条新连接：
@@ -100,6 +102,7 @@ func (g *Gateway) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	// 在升级之前拒绝：被限流的 IP 不占用 WebSocket 连接和 goroutine。
 	ip := g.guard.clientIP(r)
 	if !g.guard.allowHandshake(ip) {
+		g.handshake(metrics.HandshakeRateLimited)
 		http.Error(w, "too many connection attempts", http.StatusTooManyRequests)
 		g.log.Info("conn rejected", "reason", "handshake rate limited", "ip", ip)
 		return
@@ -113,6 +116,7 @@ func (g *Gateway) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 	platform := r.URL.Query().Get("platform")
 	if !platforms[platform] {
+		g.handshake(metrics.HandshakeBadPlatform)
 		ws.Close(protocol.CloseInvalidPlatform, "invalid platform")
 		g.log.Info("conn rejected", "reason", "invalid platform", "platform", platform)
 		return
@@ -139,13 +143,22 @@ func (g *Gateway) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		old.Kick(protocol.KickTooManyConns)
 		g.log.Info("conn evicted", "conn", old.ConnID(), "uid", uid, "reason", protocol.KickTooManyConns)
 	}
+	g.handshake(metrics.HandshakeOK)
+	g.metrics.Connections.WithLabelValues(platform).Inc()
 	g.log.Info("conn open", "conn", c.id, "uid", uid, "platform", platform)
+	opened := time.Now()
 
-	reason := c.run(context.Background())
+	cr := c.run(context.Background())
 
 	g.hub.Unregister(c)
-	g.log.Info("conn closed", "conn", c.id, "uid", uid, "reason", reason)
+	g.metrics.Connections.WithLabelValues(platform).Dec()
+	g.metrics.Disconnects.WithLabelValues(metrics.Code(cr.code), cr.by).Inc()
+	// 记录关闭码、原因和关闭方，用于排查"为什么掉线"（BE-051、AC-AUTH-05-1）。
+	g.log.Info("conn closed", "conn", c.id, "uid", uid, "platform", platform,
+		"code", cr.code, "reason", cr.reason, "by", cr.by, "duration", time.Since(opened).Round(time.Millisecond))
 }
+
+func (g *Gateway) handshake(result string) { g.metrics.Handshakes.WithLabelValues(result).Inc() }
 
 func (g *Gateway) acceptOptions() *websocket.AcceptOptions {
 	if slices.Contains(g.cfg.AllowedOrigins, "*") {
@@ -162,11 +175,13 @@ func (g *Gateway) authenticate(ctx context.Context, ws *websocket.Conn, ip strin
 	})
 	typ, data, err := ws.Read(ctx)
 	if !timer.Stop() || err != nil {
+		g.handshake(metrics.HandshakeAuthRequired)
 		g.log.Info("conn rejected", "reason", "no auth frame", "err", err)
 		return auth.Claims{}, "", false
 	}
 	var in protocol.InFrame
 	if typ != websocket.MessageText || json.Unmarshal(data, &in) != nil || in.Cmd != protocol.CmdAuth || in.ID == "" {
+		g.handshake(metrics.HandshakeAuthRequired)
 		ws.Close(protocol.CloseAuthRequired, "first frame must be auth")
 		g.log.Info("conn rejected", "reason", "first frame is not auth", "cmd", in.Cmd)
 		return auth.Claims{}, "", false
@@ -180,20 +195,24 @@ func (g *Gateway) authenticate(ctx context.Context, ws *websocket.Conn, ip strin
 		if g.guard.authFailed(ip) {
 			g.log.Warn("ip blocked", "reason", "too many invalid tokens", "ip", ip, "for", g.cfg.Guard.BlockFor)
 		}
+		g.handshake(metrics.HandshakeTokenInvalid)
 		g.kick(ws, protocol.KickTokenInvalid)
 		return auth.Claims{}, "", false
 	}
 	version, err := g.revocation.TokenVersion(ctx, claims.UserID)
 	if err != nil {
 		g.log.Error("check revocation", "err", err, "uid", claims.UserID)
+		g.handshake(metrics.HandshakeError)
 		ws.Close(websocket.StatusInternalError, "internal error")
 		return auth.Claims{}, "", false
 	}
 	if claims.Version < version {
+		g.handshake(metrics.HandshakeTokenRevoked)
 		g.kick(ws, protocol.KickBanned)
 		return auth.Claims{}, "", false
 	}
 	if errors.Is(verr, auth.ErrExpiredToken) {
+		g.handshake(metrics.HandshakeTokenExpired)
 		g.kick(ws, protocol.KickTokenExpired)
 		return auth.Claims{}, "", false
 	}
@@ -203,6 +222,7 @@ func (g *Gateway) authenticate(ctx context.Context, ws *websocket.Conn, ip strin
 // kick 下发 kicked 事件，**写完后**再用对应关闭码关闭连接（PRD F-AUTH-03 规则 3）。
 // 不走异步发送队列：先入队再关闭的话，kicked 帧可能还没发出去连接就断了。
 func (g *Gateway) kick(ws *websocket.Conn, reason string) {
+	g.metrics.Kicks.WithLabelValues(reason).Inc()
 	b, _ := json.Marshal(protocol.Event(protocol.KickedEvent{Type: protocol.EventKicked, Reason: reason}))
 	ctx, cancel := context.WithTimeout(context.Background(), g.cfg.WriteTimeout)
 	defer cancel()
@@ -220,7 +240,21 @@ type conn struct {
 	send      chan []byte
 	done      chan struct{} // 关闭后 Send 一律返回 false
 	kickOnce  sync.Once
+	closed    atomic.Pointer[closeReason] // 服务端主动关闭的原因；为空表示是客户端关的
 	gw        *Gateway
+}
+
+// closeReason 是连接结束的原因（用于日志和指标）。
+type closeReason struct {
+	code   int
+	reason string
+	by     string // "server" 或 "client"
+}
+
+// closeWith 由服务端主动关闭连接，并记下原因（只记第一次）。
+func (c *conn) closeWith(code int, reason string) {
+	c.closed.CompareAndSwap(nil, &closeReason{code: code, reason: reason, by: "server"})
+	c.ws.Close(websocket.StatusCode(code), reason)
 }
 
 func (c *conn) ConnID() string { return c.id }
@@ -228,7 +262,10 @@ func (c *conn) UserID() string { return c.uid }
 
 // Kick 踢下线（异步，不阻塞调用方），只生效一次。
 func (c *conn) Kick(reason string) {
-	c.kickOnce.Do(func() { go c.gw.kick(c.ws, reason) })
+	c.kickOnce.Do(func() {
+		c.closed.CompareAndSwap(nil, &closeReason{code: protocol.KickCloseCode[reason], reason: "kicked: " + reason, by: "server"})
+		go c.gw.kick(c.ws, reason)
+	})
 }
 
 // Send 非阻塞入队。队列满说明客户端读得太慢，直接断开它，由客户端重连后 sync 补齐。
@@ -244,13 +281,14 @@ func (c *conn) Send(frame []byte) bool {
 	case <-c.done:
 		return false
 	default:
-		go c.ws.Close(protocol.CloseSlowConsumer, "slow consumer")
+		c.gw.metrics.SlowConsumers.Inc()
+		go c.closeWith(protocol.CloseSlowConsumer, "slow consumer")
 		return false
 	}
 }
 
-// run 阻塞直到连接结束，返回结束原因（用于日志）。
-func (c *conn) run(parent context.Context) string {
+// run 阻塞直到连接结束，返回结束原因（用于日志和指标）。
+func (c *conn) run(parent context.Context) closeReason {
 	ctx, cancel := context.WithCancel(parent)
 	defer func() {
 		close(c.done)
@@ -262,10 +300,8 @@ func (c *conn) run(parent context.Context) string {
 	// 空闲计时：IdleTimeout 内收不到任何帧（包括 ping）就以 4408 关闭。
 	// 不用 Read 的 ctx 超时：coder/websocket 在 ctx 到期时会直接断开底层连接，
 	// 客户端只能看到异常断开（1006），拿不到 4408。
-	var idleFired atomic.Bool
 	idle := time.AfterFunc(c.gw.cfg.IdleTimeout, func() {
-		idleFired.Store(true)
-		c.ws.Close(protocol.CloseIdleTimeout, "idle timeout")
+		c.closeWith(protocol.CloseIdleTimeout, "idle timeout")
 	})
 	defer idle.Stop()
 
@@ -276,10 +312,14 @@ func (c *conn) run(parent context.Context) string {
 	for {
 		typ, data, err := c.ws.Read(ctx)
 		if err != nil {
-			if idleFired.Load() {
-				return "idle timeout"
+			if cr := c.closed.Load(); cr != nil {
+				return *cr
 			}
-			return websocket.CloseStatus(err).String()
+			code := int(websocket.CloseStatus(err))
+			if code < 0 { // 没有收到关闭帧：断网、进程被杀等
+				return closeReason{code: int(websocket.StatusAbnormalClosure), reason: "abnormal: " + err.Error(), by: "client"}
+			}
+			return closeReason{code: code, reason: code2name(code), by: "client"}
 		}
 		idle.Reset(c.gw.cfg.IdleTimeout)
 		if typ != websocket.MessageText {
@@ -304,7 +344,16 @@ func (c *conn) handle(ctx context.Context, data []byte) {
 		c.write(protocol.AckErr(in.ID, protocol.Errorf(protocol.CodeBadRequest, "already authenticated")))
 		return
 	}
-	if out := c.gw.handler.Handle(ctx, c, in); out != nil {
+	start := time.Now()
+	out := c.gw.handler.Handle(ctx, c, in)
+	cmd := metrics.CmdLabel(in.Cmd)
+	c.gw.metrics.CommandDuration.WithLabelValues(cmd).Observe(time.Since(start).Seconds())
+	result := 0
+	if out != nil && out.Error != nil {
+		result = out.Error.Code
+	}
+	c.gw.metrics.Commands.WithLabelValues(cmd, metrics.Code(result)).Inc()
+	if out != nil {
 		c.write(*out)
 	}
 }
@@ -333,4 +382,9 @@ func (c *conn) writeLoop(ctx context.Context) {
 			}
 		}
 	}
+}
+
+// code2name 返回关闭码的名称（用于日志）；不认识的返回空字符串。
+func code2name(code int) string {
+	return protocol.CloseCodeName(code)
 }

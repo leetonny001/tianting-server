@@ -111,6 +111,9 @@ var closeCodes = map[int]string{
 	CloseIdleTimeout:     "IDLE_TIMEOUT",
 }
 
+// CloseCodeName 返回关闭码的名称（如 4408 → "IDLE_TIMEOUT"）；不认识的返回空字符串。
+func CloseCodeName(code int) string { return closeCodes[code] }
+
 // 被踢原因（event/kicked 的 reason）。
 const (
 	KickTokenInvalid = "tokenInvalid"
