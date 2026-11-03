@@ -1,6 +1,6 @@
 # 统一 SDK 设计说明
 
-> 适用于 `sdk-ts`（H5、PC，已实现）和 `sdk-kmp`（Android、iOS，待实现）。**两套 SDK 必须遵守同样的行为规则**，这份文档就是对照基准（Q7）。
+> 适用于 `sdk-ts`（H5、PC，已实现）、`sdk-kotlin`（Android，待实现）和 `sdk-swift`（iOS，待实现）。**三套 SDK 必须遵守同样的行为规则**，这份文档就是对照基准（Q7）。
 > 依据：[PRD v1.2](../prd/PRD-core-v1.2.md)、[协议](../../protocol/README.md)、[错误码](../../protocol/ERRORS.md)、[前端任务单](../tasks/frontend.md)。
 
 ## 1. 分层
@@ -40,7 +40,7 @@ im.disconnect();                            // 退出登录
 工具：`c2cConvId(a, b)`、`groupConvId(gid)`、`checkText`、`trimText`、`countCodePoints`、`describeError(code)`、`ErrorCode`。
 测试替身：`@im-mvp/sdk/testing` 导出 `FakeTransport`、`FakeClock`，界面的测试也可以用。
 
-## 3. 行为规则（两套 SDK 必须一致）
+## 3. 行为规则（三套 SDK 必须一致）
 
 ### 连接（FE-003）
 
@@ -91,13 +91,13 @@ im.disconnect();                            // 退出登录
 
 ## 4. 共享的测试数据
 
-两套 SDK 和服务端跑同一批数据，保证规则一致：
+三套 SDK 和服务端跑同一批数据，保证规则一致：
 
 | 文件 | 内容 | 服务端 | sdk-ts |
 |---|---|---|---|
 | `protocol/errors.json` | 错误码、关闭码、被踢原因 | 一致性测试 | 生成 `errors.gen.ts` + 一致性测试 |
 | `protocol/vectors/text.json` | 去空白和计数（25 个空白字符、U+200B/U+FEFF、emoji、ZWJ、5000/5001） | `TestTextVectors` | `text.test.ts` |
-| `protocol/vectors/frames.json` | 帧格式的合法 / 非法用例 | Schema 校验 | 待补（sdk-kmp 开始时一起做） |
+| `protocol/vectors/frames.json` | 帧格式的合法 / 非法用例 | Schema 校验 | 待补（sdk-kotlin 开始时一起做） |
 
 ## 5. 测试
 

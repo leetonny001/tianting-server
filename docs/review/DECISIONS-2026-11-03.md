@@ -66,6 +66,10 @@
 | **O-1** | 运维后台怎么建 | A 全自研；B 全用 Grafana；C 混合：图表和告警用 Grafana + Prometheus + Alertmanager，连接排查、配置检查、审计自研 | **C**。评审重估工作量约 **28～40 人日**（原稿 11～13 人日漏了服务端改造、部署和测试） |
 | **O-2** | 备份能不能在后台触发 | ① 只读展示备份记录；② 后台"请求备份"；③ 发布流程在 `migrate up` 之前自动备份 | **① + ③**：评审指出 ② 实际上另开了一条控制通道，而且后台被攻破后能伪造"备份成功"；恢复永远不进后台 |
 
+## 2.5 已拍板
+
+- **2026-11-03 移动端技术栈**：Android 全部 Kotlin（`sdk-kotlin` + Compose），iOS 全部 Swift（`sdk-swift` + SwiftUI），**不用 KMP**。已改 [PLAN](../PLAN.md) 第 1、3、4、6、7 节、[SDK 设计说明](../sdk/README.md)、[QUEUE](../process/QUEUE.md) Q17/Q18。v0.2 修订时同步：PRD-ui 里的 `sdk-kmp` 改为 `sdk-kotlin` + `sdk-swift`；PRD-core v1.3 变更里把"KMP SDK 的错误枚举一致"改为"Kotlin、Swift SDK 各自一致"（C-10 照旧放到 M5 / M6）。
+
 ## 3. 不需要你拍板、在 v0.2 里直接处理的
 
 - **安全细节**：

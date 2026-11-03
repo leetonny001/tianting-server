@@ -20,7 +20,7 @@
 | # | 项 | 状态 | 完成日期 / 提交 |
 |---|---|---|---|
 | Q6 | `sdk-ts`：工程脚手架、传输层、连接管理（首帧 auth）、同步引擎、发送队列、已读、测试替身（FE-001～008） | ✅ | 2026-11-03 `693f738`；`web/` 与 Playwright 推迟到 Q13 |
-| Q7 | SDK 架构文档：网络层 / 数据层的分层与接口，作为 `sdk-kmp` 的对照基准（两套 SDK 跑同一批 `protocol/vectors`） | ✅ | 2026-11-03 `docs/sdk/README.md`；`frames.json` 的 SDK 侧用例随 sdk-kmp 补 |
+| Q7 | SDK 架构文档：网络层 / 数据层的分层与接口，作为移动端 SDK 的对照基准（各套 SDK 跑同一批 `protocol/vectors`） | ✅ | 2026-11-03 `docs/sdk/README.md`；`frames.json` 的 SDK 侧用例随 sdk-kotlin 补 |
 
 ## 阶段三：产品规划（新的需求范围，走完整流程）
 
@@ -40,6 +40,6 @@
 | Q14 | 管理后台、运维后台的服务端接口（Q12 分发的后端任务） | ⬜ | |
 | Q15 | 管理后台 H5、运维后台 H5 页面 | ⬜ | |
 | Q16 | PC（Tauri 壳）——需要安装 Rust，**需授权** | ⬜ | |
-| Q17 | `sdk-kmp` + Android（Compose） | ⬜ | |
-| Q18 | iOS（SwiftUI，接 `sdk-kmp` 导出的 XCFramework） | ⬜ | |
+| Q17 | `sdk-kotlin` + Android（Kotlin + Compose） | ⬜ | |
+| Q18 | `sdk-swift` + iOS（Swift + SwiftUI） | ⬜ | |
 | Q19 | 聊天室与系统推送（二期，替换腾讯 IM 的直播聊天室和站内推送） | ⬜ | |

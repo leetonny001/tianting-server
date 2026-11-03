@@ -16,7 +16,7 @@
 | 1 | **服务端** | IM 服务：长连接、消息、群、会话、聊天室、推送；管理接口、运维接口 | Go 单二进制（可扩展为集群，见 [ARCH-v1](arch/ARCH-v1.md)） | — |
 | 2a | **管理后台 H5** | 业务运营：用户、群、消息查询与删除、禁言、系统推送、敏感词 | React（`consoles/admin`） | 运营 / 客服 |
 | 2b | **运维后台 H5** | 运维：节点与在线连接、消息量与延迟指标、错误码分布、备份记录、配置检查、审计日志 | React（`consoles/ops`） | 运维 / 开发 |
-| 3 | **统一 SDK** | 移动端 + PC + H5 共用的通信网络层和数据层：连接与重连、鉴权、收发、同步、会话、未读、本地缓存 | `sdk-ts`（H5、PC）；`sdk-kmp`（Android、iOS）；两套 SDK 跑同一批协议用例 | 各端 App |
+| 3 | **统一 SDK** | 移动端 + PC + H5 共用的通信网络层和数据层：连接与重连、鉴权、收发、同步、会话、未读、本地缓存 | `sdk-ts`（H5、PC）；`sdk-kotlin`（Android）；`sdk-swift`（iOS）；三套 SDK 跑同一批协议用例 | 各端 App |
 | 4 | **客户端 App** | 接入 SDK 开发页面，UI 和基本功能参考微信：会话列表、聊天页、通讯录、我 | H5（React）→ PC（Tauri 壳）→ Android（Compose）→ iOS（SwiftUI） | 最终用户 |
 
 **顺序**：先把核心业务做扎实——服务端核心（B0～B5）→ SDK → H5 客户端；之后是 PC、移动端，以及两个后台。
@@ -53,7 +53,7 @@
 ```
 ┌──────────── 客户端 ──────────────────────────────────────────────┐
 │ Android (Kotlin+Compose)   iOS (SwiftUI)   PC (Tauri)   H5 (Web) │
-│        └──── KMP SDK（Kotlin 共享）────┘    └─ TS SDK（共享）─┘   │
+│   Kotlin SDK          Swift SDK          └─ TS SDK（共享）─┘   │
 └──────────────────────────┬───────────────────────────────────────┘
                            │ WebSocket（JSON → Protobuf） + HTTPS
 ┌──────────────────────────▼──────────── 服务端（Go）──────────────┐
@@ -105,7 +105,7 @@
 ```
 
 协议唯一真相源：`protocol/` 目录下的 JSON Schema（P1 换成 `.proto`）+ **协议测试用例**（输入帧 → 期望输出），
-服务端和两套 SDK 都必须跑通同一批用例。
+服务端和三套 SDK 都必须跑通同一批用例。
 
 ### 2.3 管理接口（给业务服务端）
 
@@ -128,17 +128,20 @@
 
 | 端 | 技术 | 理由 |
 |---|---|---|
-| SDK（移动） | **Kotlin Multiplatform**：Ktor WebSocket + kotlinx.serialization + SQLDelight | 一份 Kotlin 逻辑同时给 Android 和 iOS 用；连接、重连、同步、本地缓存只写一次 |
+| SDK（Android） | **Kotlin**：OkHttp WebSocket + kotlinx.serialization + 协程 / Flow + Room | 纯 Kotlin，Android 原生 |
+| SDK（iOS） | **Swift**：URLSessionWebSocketTask + Codable + async/await + SQLite（GRDB） | 纯 Swift，无 KMP / XCFramework；接入 ab77 最简单 |
 | Android | Kotlin + Jetpack Compose | 原生体验；顺便学习 Android |
-| iOS | SwiftUI，以 XCFramework 引入 KMP SDK | 原生体验；对接 ab77 最直接 |
+| iOS | Swift + SwiftUI | 原生体验；对接 ab77 最直接 |
 | SDK（Web） | **TypeScript**：原生 WebSocket + IndexedDB（Dexie） | H5 和 PC 共用 |
 | H5 | React + Vite（移动端布局） | 生态最大，AI 生成质量最好 |
 | PC | **Tauri 2** 包装同一套 React 代码（桌面布局） | 包体约 10MB（Electron 约 100MB）；需要装 Rust，但壳代码很少。装不了就退回 Electron |
 
-为什么不做"一个核心给所有端用"（OpenIM 的 Go + gomobile + wasm 方案）：Go 编译成 wasm 体积有 10MB 以上，H5 首屏加载受不了。
-所以选**两套 SDK + 一份协议 + 共享测试用例**，靠协议用例保证两边行为一致。
+> 2026-11-03 Frank 拍板：Android 全部 Kotlin、iOS 全部 Swift（含 SDK），不用 KMP。代价是移动端 SDK 多写一套；三套 SDK 行为一致靠 [SDK 设计说明](sdk/README.md) 和 `protocol/vectors` 共享用例保证。
 
-### 3.2 SDK 统一接口（两套 SDK 语义相同）
+为什么不做"一个核心给所有端用"（OpenIM 的 Go + gomobile + wasm 方案）：Go 编译成 wasm 体积有 10MB 以上，H5 首屏加载受不了。
+所以选**每个平台一套原生 SDK（TS / Kotlin / Swift）+ 一份协议 + 共享测试用例**，靠协议用例保证各端行为一致。
+
+### 3.2 SDK 统一接口（三套 SDK 语义相同；Swift 里 `Flow` 对应 `AsyncStream` / `@Published`）
 
 ```
 IMClient
@@ -173,7 +176,8 @@ im-mvp/
 │   ├── cmd/im-server/
 │   ├── internal/{gateway,logic,api,admin,push,hub,store,auth}/
 │   └── e2e/
-├── sdk-kmp/                 # Kotlin Multiplatform SDK（Android + iOS）
+├── sdk-kotlin/              # Kotlin SDK（Android）
+├── sdk-swift/               # Swift SDK（iOS，Swift Package）
 ├── sdk-ts/                  # TypeScript SDK（H5 + PC）
 ├── android/                 # Compose App
 ├── ios/                     # SwiftUI App
@@ -193,7 +197,7 @@ im-mvp/
 |---|---|
 | 服务端单测 | seq 分配、去重、禁言、路由（`go test`） |
 | 服务端 e2e | 启动真实服务，多个 WS 客户端跑场景：断线重连不丢不重、聊天室进出、推送到达 |
-| 协议一致性 | `protocol/` 用例，服务端 + KMP SDK + TS SDK 三方都跑 |
+| 协议一致性 | `protocol/` 用例，服务端 + TS / Kotlin / Swift 三套 SDK 都跑 |
 | SDK 单测 | 用假服务端测重连、补拉、本地状态机 |
 | UI | Android：Compose 测试；iOS：XCUITest 冒烟；Web：Playwright（H5 + PC 两个尺寸） |
 | 压测 | Go 写压测工具：1 万连接、单房间 5000 人广播的延迟和 CPU |
@@ -210,8 +214,8 @@ im-mvp/
 | **M2 聊天室 + 管理接口** | 聊天室、在线人数、推送、禁言、删消息、Webhook | 脚本推送能实时到达 | 照着腾讯 IM 的现有用法迁移需求 |
 | **M3 Web SDK + H5** | TS SDK + React H5 | 两个浏览器标签页互聊、进聊天室 | 最快出可见效果；用截图驱动改 UI |
 | **M4 PC** | Tauri 壳 + 桌面三栏布局 | macOS 安装包能跑 | 一份代码复用到多端 |
-| **M5 KMP SDK + Android** | KMP SDK、Compose App | 模拟器和 H5 互聊 | 用 AI 学新平台（Android） |
-| **M6 iOS** | KMP 导出 XCFramework + SwiftUI App | 四端同时在一个聊天室 | 多端联调；排查跨端 bug |
+| **M5 Kotlin SDK + Android** | Kotlin SDK、Compose App | 模拟器和 H5 互聊 | 用 AI 学新平台（Android） |
+| **M6 Swift SDK + iOS** | Swift SDK、SwiftUI App | 四端同时在一个聊天室 | 多端联调；排查跨端 bug |
 | **M7 加固** | 压测、Protobuf、离线推送、README、部署脚本 | 压测报告 | 让 AI 分析性能瓶颈 |
 | **M8 分享会** | 整理演示记录、幻灯片、现场演示脚本 | 彩排一次 | 让 AI 帮你做幻灯片 |
 | 后续 | P1 功能、Postgres / Redis / NATS 集群化、接入 fx-sport / ab77 / android | | |
@@ -238,8 +242,7 @@ im-mvp/
 | 风险 | 应对 |
 |---|---|
 | 范围太大，四端做不完 | 严格按里程碑推进，每个阶段都能独立演示；分享会最低要求是 M3（服务端 + H5） |
-| 两套 SDK 行为不一致 | 共享协议测试用例，CI 里三方都要跑 |
-| KMP 接入 iOS 有坑（协程、内存模型、包体） | M6 前先做技术验证（spike）；最坏情况 iOS 单独用 Swift 写 SDK，靠协议用例对齐 |
+| 三套 SDK 行为不一致 | 共享协议测试用例和 SDK 设计说明，CI 里服务端和三套 SDK 都要跑 |
 | 自研 IM 稳定性不如腾讯 | 生产替换前先灰度：业务代码通过 `IMClient` 抽象层，同时保留腾讯实现，可随时切回 |
 | 聊天室广播风暴 | 消息合并下发、限流、超大房间采样 |
 
