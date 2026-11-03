@@ -8,8 +8,8 @@ import (
 	"sync"
 	"time"
 
-	"im-mvp/server/internal/clock"
-	"im-mvp/server/internal/ratelimit"
+	"tianting/server/internal/clock"
+	"tianting/server/internal/ratelimit"
 )
 
 // GuardConfig 是按 IP 的握手防护参数（ARCH S7）。

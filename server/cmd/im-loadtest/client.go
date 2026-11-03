@@ -13,7 +13,7 @@ import (
 
 	"github.com/coder/websocket"
 
-	"im-mvp/server/internal/protocol"
+	"tianting/server/internal/protocol"
 )
 
 // frame 是解析下行帧用的宽松结构。

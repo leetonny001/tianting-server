@@ -4,7 +4,7 @@ import (
 	"testing"
 	"time"
 
-	"im-mvp/server/internal/clock"
+	"tianting/server/internal/clock"
 )
 
 func TestBucket(t *testing.T) {

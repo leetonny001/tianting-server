@@ -6,9 +6,9 @@ import (
 	"testing"
 	"time"
 
-	"im-mvp/server/internal/cache"
-	"im-mvp/server/internal/clock"
-	"im-mvp/server/internal/store"
+	"tianting/server/internal/cache"
+	"tianting/server/internal/clock"
+	"tianting/server/internal/store"
 )
 
 // fakeStore 只实现成员缓存用到的两个方法；其余方法调用到会 panic（嵌入的 nil 接口）。

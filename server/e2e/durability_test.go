@@ -17,7 +17,7 @@ import (
 
 	"github.com/coder/websocket"
 
-	"im-mvp/server/internal/protocol"
+	"tianting/server/internal/protocol"
 )
 
 // TC-MSG-04-*（AC-MSG-04-6）：服务端返回 ack 后被 kill -9，重启后消息仍然能 sync 到。

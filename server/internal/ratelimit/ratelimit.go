@@ -5,7 +5,7 @@ import (
 	"sync"
 	"time"
 
-	"im-mvp/server/internal/clock"
+	"tianting/server/internal/clock"
 )
 
 // idleTTL：桶已满且超过这么久没用，就从表里删掉，避免长期占用内存。

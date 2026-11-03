@@ -10,8 +10,8 @@ import (
 // 业务代码只能通过 delivery.Router 投递，不能直接接触本节点的在线表；
 // 否则换成集群实现后，这些调用只能送达本节点的连接。
 func TestBusinessCodeDoesNotDependOnHub(t *testing.T) {
-	const hub = "im-mvp/server/internal/hub"
-	for _, pkg := range []string{"im-mvp/server/internal/logic", "im-mvp/server/internal/admin"} {
+	const hub = "tianting/server/internal/hub"
+	for _, pkg := range []string{"tianting/server/internal/logic", "tianting/server/internal/admin"} {
 		out, err := exec.Command("go", "list", "-deps", "-f", "{{.ImportPath}}", pkg).CombinedOutput()
 		if err != nil {
 			t.Fatalf("go list %s: %v\n%s", pkg, err, out)

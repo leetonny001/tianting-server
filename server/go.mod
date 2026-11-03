@@ -1,4 +1,4 @@
-module im-mvp/server
+module tianting/server
 
 go 1.27.3
 

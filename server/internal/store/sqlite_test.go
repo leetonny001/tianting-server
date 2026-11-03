@@ -4,8 +4,8 @@ import (
 	"path/filepath"
 	"testing"
 
-	"im-mvp/server/internal/store"
-	"im-mvp/server/internal/store/storetest"
+	"tianting/server/internal/store"
+	"tianting/server/internal/store/storetest"
 )
 
 // SQLite 实现必须通过全部契约用例（BE-061）。

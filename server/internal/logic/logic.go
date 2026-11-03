@@ -11,13 +11,13 @@ import (
 
 	"github.com/google/uuid"
 
-	"im-mvp/server/internal/cache"
-	"im-mvp/server/internal/clock"
-	"im-mvp/server/internal/delivery"
-	"im-mvp/server/internal/metrics"
-	"im-mvp/server/internal/protocol"
-	"im-mvp/server/internal/ratelimit"
-	"im-mvp/server/internal/store"
+	"tianting/server/internal/cache"
+	"tianting/server/internal/clock"
+	"tianting/server/internal/delivery"
+	"tianting/server/internal/metrics"
+	"tianting/server/internal/protocol"
+	"tianting/server/internal/ratelimit"
+	"tianting/server/internal/store"
 )
 
 // Service 实现 gateway.Handler。

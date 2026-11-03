@@ -12,8 +12,8 @@ import (
 	"sync/atomic"
 	"time"
 
-	"im-mvp/server/internal/protocol"
-	"im-mvp/server/internal/store"
+	"tianting/server/internal/protocol"
+	"tianting/server/internal/store"
 )
 
 type config struct {

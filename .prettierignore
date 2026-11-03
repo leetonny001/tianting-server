@@ -1,8 +1,0 @@
-node_modules
-dist
-server
-docs
-protocol
-*.md
-package-lock.json
-sdk-ts/src/errors.gen.ts

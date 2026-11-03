@@ -11,7 +11,7 @@ import (
 	"testing"
 	"time"
 
-	"im-mvp/server/internal/protocol"
+	"tianting/server/internal/protocol"
 )
 
 type groupInfo struct {

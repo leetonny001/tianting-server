@@ -17,8 +17,8 @@ import (
 
 	"github.com/coder/websocket"
 
-	"im-mvp/server/internal/app"
-	"im-mvp/server/internal/protocol"
+	"tianting/server/internal/app"
+	"tianting/server/internal/protocol"
 )
 
 func (e *env) platformURL(platform string) string {

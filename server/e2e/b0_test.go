@@ -10,9 +10,9 @@ import (
 	"testing"
 	"time"
 
-	"im-mvp/server/internal/app"
-	"im-mvp/server/internal/gateway"
-	"im-mvp/server/internal/protocol"
+	"tianting/server/internal/app"
+	"tianting/server/internal/gateway"
+	"tianting/server/internal/protocol"
 )
 
 // BE-003：故障注入和时钟接口只在测试模式下存在。

@@ -9,8 +9,8 @@ import (
 	"testing"
 	"time"
 
-	"im-mvp/server/internal/app"
-	"im-mvp/server/internal/protocol"
+	"tianting/server/internal/app"
+	"tianting/server/internal/protocol"
 )
 
 func convsOf(t *testing.T, c *client) protocol.ConvsAck {

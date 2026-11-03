@@ -18,9 +18,9 @@ import (
 
 	"github.com/coder/websocket"
 
-	"im-mvp/server/internal/app"
-	"im-mvp/server/internal/gateway"
-	"im-mvp/server/internal/protocol"
+	"tianting/server/internal/app"
+	"tianting/server/internal/gateway"
+	"tianting/server/internal/protocol"
 )
 
 const (

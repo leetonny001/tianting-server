@@ -14,8 +14,8 @@ import (
 
 	"github.com/coder/websocket"
 
-	"im-mvp/server/internal/app"
-	"im-mvp/server/internal/protocol"
+	"tianting/server/internal/app"
+	"tianting/server/internal/protocol"
 )
 
 // metric 返回 /metrics 里某一行（名称 + 标签完全匹配）的值；没有这一行返回 ""。

@@ -4,9 +4,9 @@ import (
 	"errors"
 	"net/http"
 
-	"im-mvp/server/internal/logic"
-	"im-mvp/server/internal/protocol"
-	"im-mvp/server/internal/store"
+	"tianting/server/internal/logic"
+	"tianting/server/internal/protocol"
+	"tianting/server/internal/store"
 )
 
 // 群管理接口（PRD F-GRP-01）。

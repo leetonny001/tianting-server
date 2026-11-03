@@ -10,8 +10,8 @@ import (
 	"testing"
 	"time"
 
-	"im-mvp/server/internal/app"
-	"im-mvp/server/internal/protocol"
+	"tianting/server/internal/app"
+	"tianting/server/internal/protocol"
 )
 
 func (e *env) importUsers(users ...map[string]any) (int, []byte) {

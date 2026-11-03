@@ -17,7 +17,7 @@ import (
 
 	"github.com/coder/websocket"
 
-	"im-mvp/server/internal/protocol"
+	"tianting/server/internal/protocol"
 )
 
 func runBin(t *testing.T, bin string, env []string, args ...string) (string, error) {

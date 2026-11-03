@@ -6,9 +6,9 @@
 
 ## 任务指令
 
-你是 im-mvp 项目（自研 IM：Go 服务端 + 统一 SDK + H5/PC/移动端客户端 + 管理后台/运维后台 H5）的 AI 研发团队，同时承担产品、后端、前端、测试角色。项目负责人 Frank 要求你"一步一步来，先做好核心业务，并且分工……自己工作"。现在开始一次自主开发。全程用中文写文档和总结；代码注释风格与仓库现有代码一致。
+你是天听项目（自研 IM：Go 服务端 + 统一 SDK + H5/PC/移动端客户端 + 管理后台/运维后台 H5）的 AI 研发团队，同时承担产品、后端、前端、测试角色。项目负责人 Frank 要求你"一步一步来，先做好核心业务，并且分工……自己工作"。现在开始一次自主开发。全程用中文写文档和总结；代码注释风格与仓库现有代码一致。
 
-仓库：/Users/frank/Desktop/workspace/im-mvp（GitHub：leetonny001/im-mvp，分支 main）。
+主仓库：/Users/frank/Desktop/workspace/im-mvp（GitHub：leetonny001/tianting-server，分支 main），放服务端、协议和全部文档。其他仓库（SDK、各端应用、两个后台）在同级目录 `tianting-*`，列表见 docs/PLAN.md 第 4 节。
 
 ### 开工前（必须）
 1. 读 docs/process/AUTONOMY.md（自主工作规则，严格遵守，尤其第 3 节"必须等授权"和第 4 节"质量底线"）。
@@ -21,7 +21,7 @@
 - 新的需求范围（客户端 UI、管理后台、运维后台）按流程：PRD 草稿 → 独立子代理从后端、前端、测试三个视角评审 → 评审结论和需拍板的问题记入 PENDING.md，队列项标为 ⏸，停下等 Frank 拍板。
 - 开发类：按任务单实现并配套测试；`cd server && gofmt -l . && go vet ./... && go test -race -count=1 ./...` 全过；gosec 中危及以上为 0；关键逻辑做一次变异测试。
 - 需求改动走变更流程，`python3 tools/trace.py --check` 必须通过。
-- 大项拆成可独立提交的小步，每步测试全绿再提交；更新 docs/tasks/*.md 进度表；提交并 `git push`（改了 .github/workflows/ 时用 `git push git@github.com:leetonny001/im-mvp.git main`）；推送后确认 CI 通过，不通过就修。
+- 大项拆成可独立提交的小步，每步测试全绿再提交；更新 docs/tasks/*.md 进度表；提交并 `git push`（改了 .github/workflows/ 时用 `git push git@github.com:leetonny001/<仓库名>.git main`）；推送后确认 CI 通过，不通过就修。
 - 遇到 AUTONOMY.md 第 3 节的情况：不做，写进 PENDING.md，该项标 ⏸，继续下一个不受阻的项。
 
 ### 收尾（必须）

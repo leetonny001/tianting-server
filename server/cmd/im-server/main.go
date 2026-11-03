@@ -42,9 +42,9 @@ import (
 	"syscall"
 	"time"
 
-	"im-mvp/server/internal/app"
-	"im-mvp/server/internal/config"
-	"im-mvp/server/internal/store"
+	"tianting/server/internal/app"
+	"tianting/server/internal/config"
+	"tianting/server/internal/store"
 )
 
 // version 构建时用 -ldflags "-X main.version=x.y.z" 注入。

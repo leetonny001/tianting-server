@@ -16,12 +16,12 @@ import (
 
 	"github.com/coder/websocket"
 
-	"im-mvp/server/internal/auth"
-	"im-mvp/server/internal/clock"
-	"im-mvp/server/internal/delivery"
-	"im-mvp/server/internal/hub"
-	"im-mvp/server/internal/metrics"
-	"im-mvp/server/internal/protocol"
+	"tianting/server/internal/auth"
+	"tianting/server/internal/clock"
+	"tianting/server/internal/delivery"
+	"tianting/server/internal/hub"
+	"tianting/server/internal/metrics"
+	"tianting/server/internal/protocol"
 )
 
 // Handler 处理一条已解析的上行帧（ping 除外），返回要回给客户端的 ack；nil 表示不回复。

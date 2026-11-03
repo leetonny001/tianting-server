@@ -16,7 +16,7 @@
 | 1 | **服务端** | IM 服务：长连接、消息、群、会话、聊天室、推送；管理接口、运维接口 | Go 单二进制（可扩展为集群，见 [ARCH-v1](arch/ARCH-v1.md)） | — |
 | 2a | **管理后台 H5** | 业务运营：用户、群、消息查询与删除、禁言、系统推送、敏感词 | React（`consoles/admin`） | 运营 / 客服 |
 | 2b | **运维后台 H5** | 运维：节点与在线连接、消息量与延迟指标、错误码分布、备份记录、配置检查、审计日志 | React（`consoles/ops`） | 运维 / 开发 |
-| 3 | **统一 SDK** | 移动端 + PC + H5 共用的通信网络层和数据层：连接与重连、鉴权、收发、同步、会话、未读、本地缓存 | `sdk-ts`（H5、PC）；`sdk-kotlin`（Android）；`sdk-swift`（iOS）；三套 SDK 跑同一批协议用例 | 各端 App |
+| 3 | **统一 SDK** | 移动端 + PC + H5 共用的通信网络层和数据层：连接与重连、鉴权、收发、同步、会话、未读、本地缓存 | `tianting-sdk-ts`（H5、PC）；`tianting-sdk-kotlin`（Android）；`tianting-sdk-swift`（iOS）；三套 SDK 跑同一批协议用例 | 各端 App |
 | 4 | **客户端 App** | 接入 SDK 开发页面，UI 和基本功能参考微信：会话列表、聊天页、通讯录、我 | H5（React）→ PC（Tauri 壳）→ Android（Compose）→ iOS（SwiftUI） | 最终用户 |
 
 **顺序**：先把核心业务做扎实——服务端核心（B0～B5）→ SDK → H5 客户端；之后是 PC、移动端，以及两个后台。
@@ -166,28 +166,24 @@ PC 用三栏布局（导航 / 会话列表 / 聊天），H5 和移动端用单�
 
 ---
 
-## 4. 仓库结构（monorepo）
+## 4. 仓库结构（多仓库）
 
-```
-im-mvp/
-├── docs/                    # 方案、ADR、分享会演示记录
-├── protocol/                # JSON Schema / proto + 协议测试用例（共享）
-├── server/                  # Go
-│   ├── cmd/im-server/
-│   ├── internal/{gateway,logic,api,admin,push,hub,store,auth}/
-│   └── e2e/
-├── sdk-kotlin/              # Kotlin SDK（Android）
-├── sdk-swift/               # Swift SDK（iOS，Swift Package）
-├── sdk-ts/                  # TypeScript SDK（H5 + PC）
-├── android/                 # Compose App
-├── ios/                     # SwiftUI App
-├── web/                     # React：H5 + PC 共用（UI 参考微信）
-├── desktop/                 # Tauri 壳，加载 web/
-├── consoles/
-│   ├── admin/               # 管理后台 H5（业务运营）
-│   └── ops/                 # 运维后台 H5
-└── tools/                   # 压测、模拟业务服务端（发推送脚本）
-```
+> 2026-11-03 Frank：产品和平台名定为**天听**；各端 SDK、各端应用、管理后台、运维后台各自建仓库，全部推到 GitHub。原来的 im-mvp 仓库改名为 tianting-server。
+
+| 仓库 | 内容 | 本地目录（同级） |
+|---|---|---|
+| [tianting-server](https://github.com/leetonny001/tianting-server) | Go 服务端、`protocol/`（协议唯一真相源）、需求 / 架构 / 测试 / 流程文档、压测与追溯工具 | `im-mvp/`（本仓库，本地目录沿用旧名） |
+| [tianting-sdk-ts](https://github.com/leetonny001/tianting-sdk-ts) | SDK（TypeScript）：H5、PC | `tianting-sdk-ts/` |
+| [tianting-sdk-kotlin](https://github.com/leetonny001/tianting-sdk-kotlin) | SDK（Kotlin）：Android | `tianting-sdk-kotlin/` |
+| [tianting-sdk-swift](https://github.com/leetonny001/tianting-sdk-swift) | SDK（Swift Package）：iOS | `tianting-sdk-swift/` |
+| [tianting-web](https://github.com/leetonny001/tianting-web) | H5 客户端（React），也是 PC 的界面 | `tianting-web/` |
+| [tianting-desktop](https://github.com/leetonny001/tianting-desktop) | PC 客户端（Tauri 壳，加载 tianting-web） | `tianting-desktop/` |
+| [tianting-android](https://github.com/leetonny001/tianting-android) | Android 客户端（Kotlin + Compose） | `tianting-android/` |
+| [tianting-ios](https://github.com/leetonny001/tianting-ios) | iOS 客户端（Swift + SwiftUI） | `tianting-ios/` |
+| [tianting-admin](https://github.com/leetonny001/tianting-admin) | 管理后台 H5（业务运营） | `tianting-admin/` |
+| [tianting-ops](https://github.com/leetonny001/tianting-ops) | 运维后台 H5 | `tianting-ops/` |
+
+全部私有。各 SDK 仓库里的 `protocol/` 是本仓库 `protocol/` 的副本，用各自的 `scripts/sync-protocol.sh` 同步，不在副本里改。后台服务（`console-server`，X-1）拍板后再建仓库。
 
 ---
 

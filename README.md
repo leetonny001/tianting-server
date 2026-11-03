@@ -1,6 +1,22 @@
-# im-mvp
+# 天听（tianting-server）
 
-自研 IM：Go 服务端 + 统一 SDK + 移动端（Android / iOS）+ PC + H5 + 管理后台 / 运维后台。
+**天听**是自研 IM 平台：Go 服务端 + 统一 SDK + 移动端（Android / iOS）+ PC + H5 + 管理后台 / 运维后台，替换腾讯 IM。
+本仓库是服务端，同时存放协议和全部需求 / 架构 / 测试 / 流程文档；其他部分各自一个仓库：
+
+| 仓库 | 内容 | 本地目录（同级） |
+|---|---|---|
+| [tianting-server](https://github.com/leetonny001/tianting-server) | Go 服务端、`protocol/`（协议唯一真相源）、需求 / 架构 / 测试 / 流程文档、压测与追溯工具 | `im-mvp/`（本仓库，本地目录沿用旧名） |
+| [tianting-sdk-ts](https://github.com/leetonny001/tianting-sdk-ts) | SDK（TypeScript）：H5、PC | `tianting-sdk-ts/` |
+| [tianting-sdk-kotlin](https://github.com/leetonny001/tianting-sdk-kotlin) | SDK（Kotlin）：Android | `tianting-sdk-kotlin/` |
+| [tianting-sdk-swift](https://github.com/leetonny001/tianting-sdk-swift) | SDK（Swift Package）：iOS | `tianting-sdk-swift/` |
+| [tianting-web](https://github.com/leetonny001/tianting-web) | H5 客户端（React），也是 PC 的界面 | `tianting-web/` |
+| [tianting-desktop](https://github.com/leetonny001/tianting-desktop) | PC 客户端（Tauri 壳，加载 tianting-web） | `tianting-desktop/` |
+| [tianting-android](https://github.com/leetonny001/tianting-android) | Android 客户端（Kotlin + Compose） | `tianting-android/` |
+| [tianting-ios](https://github.com/leetonny001/tianting-ios) | iOS 客户端（Swift + SwiftUI） | `tianting-ios/` |
+| [tianting-admin](https://github.com/leetonny001/tianting-admin) | 管理后台 H5（业务运营） | `tianting-admin/` |
+| [tianting-ops](https://github.com/leetonny001/tianting-ops) | 运维后台 H5 | `tianting-ops/` |
+
+全部私有。各 SDK 仓库里的 `protocol/` 是本仓库 `protocol/` 的副本，用各自的 `scripts/sync-protocol.sh` 同步，不在副本里改。后台服务（`console-server`，X-1）拍板后再建仓库。
 整体方案见 [docs/PLAN.md](docs/PLAN.md)（第 0 节是整体布局），协议见 [protocol/README.md](protocol/README.md)，管理接口见 [protocol/ADMIN.md](protocol/ADMIN.md)。
 
 ## 当前进度
@@ -9,7 +25,7 @@
 
 - [x] 需求：PRD v1.2（128 条验收标准）、评审、任务单、310 个测试用例，追溯 128/128
 - [x] 服务端核心（B0～B5）：鉴权、WebSocket 网关、单聊 / 群、会话列表、未读已读、多端同步；架构与安全基座；可观测；压测（7 条性能用例全部通过）
-- [x] 统一 SDK（TypeScript）：连接管理、同步引擎、发送队列、已读；82 个单元测试 + 对真实服务端的集成测试
+- [x] 统一 SDK（TypeScript，[tianting-sdk-ts](https://github.com/leetonny001/tianting-sdk-ts)）：连接管理、同步引擎、发送队列、已读；82 个单元测试 + 对真实服务端的集成测试
 - [ ] H5 客户端（UI 参考微信）、PC、Android、iOS
 - [ ] 管理后台 H5、运维后台 H5
 - [ ] 聊天室与系统推送（替换腾讯 IM）
@@ -75,13 +91,6 @@ server/
 └── e2e/                起完整服务，多客户端跑真实场景
 ```
 
-## SDK（TypeScript）
+## SDK 和客户端
 
-需要 Node 22.12+。设计说明见 [docs/sdk/README.md](docs/sdk/README.md)。
-
-```bash
-npm install
-npm test                               # 单元测试（假传输层 + 假时钟）
-npm run test:integration -w sdk-ts     # 集成测试：自动编译并启动真实 im-server（需要 Go）
-npm run lint && npm run typecheck && npm run format:check
-```
+在各自的仓库里，见上表。TypeScript SDK 的集成测试会编译并启动本仓库的服务端（默认找同级目录，或设置 `TIANTING_SERVER_DIR`）。

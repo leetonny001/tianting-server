@@ -5,7 +5,7 @@ package hub
 import (
 	"sync"
 
-	"im-mvp/server/internal/delivery"
+	"tianting/server/internal/delivery"
 )
 
 // Client 是一个在线连接。Send、Kick 都不能阻塞。

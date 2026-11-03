@@ -8,7 +8,7 @@ import (
 
 	"github.com/golang-jwt/jwt/v5"
 
-	"im-mvp/server/internal/clock"
+	"tianting/server/internal/clock"
 )
 
 const issuer = "im-server"

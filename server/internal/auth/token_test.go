@@ -7,7 +7,7 @@ import (
 	"testing"
 	"time"
 
-	"im-mvp/server/internal/clock"
+	"tianting/server/internal/clock"
 )
 
 func newSigner(t *testing.T, secret string, clk clock.Clock) *Signer {

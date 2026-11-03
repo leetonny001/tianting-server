@@ -7,7 +7,7 @@ import (
 	"testing"
 	"time"
 
-	"im-mvp/server/internal/protocol"
+	"tianting/server/internal/protocol"
 )
 
 // AC-MSG-01-8、AC-CONV-03-3（服务端部分）：给不存在的用户发消息返回 4042，不保存。

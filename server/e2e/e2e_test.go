@@ -11,8 +11,8 @@ import (
 
 	"github.com/coder/websocket"
 
-	"im-mvp/server/internal/gateway"
-	"im-mvp/server/internal/protocol"
+	"tianting/server/internal/gateway"
+	"tianting/server/internal/protocol"
 )
 
 // AC-AUTH-02-2：token 无效 / 缺失时，先升级，再下发 kicked/tokenInvalid，以 4010 关闭

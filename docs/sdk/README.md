@@ -1,6 +1,6 @@
 # 统一 SDK 设计说明
 
-> 适用于 `sdk-ts`（H5、PC，已实现）、`sdk-kotlin`（Android，待实现）和 `sdk-swift`（iOS，待实现）。**三套 SDK 必须遵守同样的行为规则**，这份文档就是对照基准（Q7）。
+> 适用于 [tianting-sdk-ts](https://github.com/leetonny001/tianting-sdk-ts)（H5、PC，已实现）、[tianting-sdk-kotlin](https://github.com/leetonny001/tianting-sdk-kotlin)（Android，待实现）和 [tianting-sdk-swift](https://github.com/leetonny001/tianting-sdk-swift)（iOS，待实现），各自一个仓库。**三套 SDK 必须遵守同样的行为规则**，这份文档就是对照基准（Q7）。
 > 依据：[PRD v1.2](../prd/PRD-core-v1.2.md)、[协议](../../protocol/README.md)、[错误码](../../protocol/ERRORS.md)、[前端任务单](../tasks/frontend.md)。
 
 ## 1. 分层
@@ -38,7 +38,7 @@ im.disconnect();                            // 退出登录
 ```
 
 工具：`c2cConvId(a, b)`、`groupConvId(gid)`、`checkText`、`trimText`、`countCodePoints`、`describeError(code)`、`ErrorCode`。
-测试替身：`@im-mvp/sdk/testing` 导出 `FakeTransport`、`FakeClock`，界面的测试也可以用。
+测试替身：`@tianting/sdk/testing` 导出 `FakeTransport`、`FakeClock`，界面的测试也可以用。
 
 ## 3. 行为规则（三套 SDK 必须一致）
 
@@ -102,4 +102,4 @@ im.disconnect();                            // 退出登录
 ## 5. 测试
 
 - 单元测试（`npm test`）：只用 `FakeTransport` + `FakeClock`，82 个用例，毫秒级、结果确定；覆盖 FE-002～008 的 AC。
-- 集成测试（`npm run test:integration -w sdk-ts`）：编译并启动真实的 im-server（测试模式），用标准 WebSocket 验证收发、未读已读、丢 ack 后重发、convAdded、强制下线、被服务端断开后的重连补拉。
+- 集成测试（tianting-sdk-ts 仓库的 `npm run test:integration`）：编译并启动真实的 im-server（测试模式），用标准 WebSocket 验证收发、未读已读、丢 ack 后重发、convAdded、强制下线、被服务端断开后的重连补拉。

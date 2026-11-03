@@ -13,9 +13,9 @@ import (
 	"strings"
 	"time"
 
-	"im-mvp/server/internal/app"
-	"im-mvp/server/internal/auth"
-	"im-mvp/server/internal/gateway"
+	"tianting/server/internal/app"
+	"tianting/server/internal/auth"
+	"tianting/server/internal/gateway"
 )
 
 // 运行环境。

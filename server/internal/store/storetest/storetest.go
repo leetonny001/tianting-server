@@ -10,8 +10,8 @@ import (
 	"testing"
 	"time"
 
-	"im-mvp/server/internal/protocol"
-	"im-mvp/server/internal/store"
+	"tianting/server/internal/protocol"
+	"tianting/server/internal/store"
 )
 
 // Opener 为每个用例打开一个全新的、空的、已迁移的存储，并负责在用例结束时关闭。

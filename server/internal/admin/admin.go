@@ -10,13 +10,13 @@ import (
 	"net/http"
 	"time"
 
-	"im-mvp/server/internal/auth"
-	"im-mvp/server/internal/cache"
-	"im-mvp/server/internal/clock"
-	"im-mvp/server/internal/delivery"
-	"im-mvp/server/internal/logic"
-	"im-mvp/server/internal/protocol"
-	"im-mvp/server/internal/store"
+	"tianting/server/internal/auth"
+	"tianting/server/internal/cache"
+	"tianting/server/internal/clock"
+	"tianting/server/internal/delivery"
+	"tianting/server/internal/logic"
+	"tianting/server/internal/protocol"
+	"tianting/server/internal/store"
 )
 
 const (

@@ -5,9 +5,9 @@ import (
 	"sync"
 	"time"
 
-	"im-mvp/server/internal/cache"
-	"im-mvp/server/internal/clock"
-	"im-mvp/server/internal/store"
+	"tianting/server/internal/cache"
+	"tianting/server/internal/clock"
+	"tianting/server/internal/store"
 )
 
 // TopicGroupMembers 是群成员缓存的失效主题，key 为 groupId。
