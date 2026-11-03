@@ -7,7 +7,6 @@
 
 | # | 日期 | 事项 | 为什么需要你 | 不处理的影响 | 建议 |
 |---|---|---|---|---|---|
-| P-8 | 2026-11-03 | 给 tianting-web 的 CI 配两把只读部署密钥（读 tianting-sdk-ts 构建依赖、读 tianting-server 跑端到端） | 凭证要你本人创建 | 无阻塞：CI 跳过，本地 `npm test` / `npm run e2e` 照常跑 | 在终端运行 `bash ~/Desktop/workspace/tianting-web/scripts/setup-ci-deploy-keys.sh` |
 | P-5 | 2026-11-03 | 在本机安装 Postgres（`brew install postgresql@17`），供后台服务 console-server 使用（X-3） | 安装系统软件需要授权 | 到 Q14（后台服务）时才阻塞；之前不影响 | 开始 Q14 前我会再问一次 |
 | P-6 | 2026-11-03 | 法务确认后台能否查看单聊消息正文（X-7），以及宿主 App 隐私政策是否要更新 | 法律问题 | 在确认前后台不开放单聊正文查看（默认 ①），不阻塞其他工作 | 找法务确认后回复结论 |
 | P-7 | 2026-11-03 | 三个不阻塞的确认项：① F-1 告警发给谁、是否 7×24、严重告警是否买电话 / 短信（PRD-ops；默认先发给 Frank：办公 IM 机器人 + 邮件）；② Q-1 群消息查看用单独的 `console-msgread` 凭证、主凭证永远不能读正文（PRD-admin；第二批开工前确认）；③ D-1 ws 错误里"哪个用户"统一用 `details.userId`，不单独加 `userId` 字段（PRD-core v1.3 12.3 节；M4 前确认） | 产品 / 安全口径 | 都有默认方案，不确认就按默认做 | 回复"按默认"或逐项改 |
@@ -18,6 +17,7 @@
 
 | # | 日期 | 事项 | 结论 |
 |---|---|---|---|
+| P-8 | 2026-11-03 | tianting-web 的 CI 读取私有 SDK / 服务端 | 2026-11-03 Frank 运行 setup-ci-deploy-keys.sh；CI 检出两个仓库、构建 SDK、检查、单元测试、构建、端到端测试全部通过 |
 | P-4 | 2026-11-03 | tianting-sdk-ts 的 CI 读取私有 tianting-server | 2026-11-03 Frank 运行 setup-ci-deploy-key.sh：只读部署密钥 + Actions secret；CI 集成测试已实际执行并通过。仓库保持私有 |
 | P-3 | 2026-11-03 | 产品规划拍板（A～D 14 项 + 社交 6 项） | 2026-11-03 全部按建议通过，产品名天听；X-3 安装 Postgres 转为 P-5，X-7 法务确认转为 P-6 |
 | — | 2026-11-02 | ARCH-v1 决策 A1～A4 | 按建议通过（Postgres、首帧 auth、B2.5 排在 B3 前、NATS + Redis） |
