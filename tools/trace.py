@@ -15,7 +15,7 @@ from collections import defaultdict
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
-PRD = ROOT / "docs/prd/PRD-core-v1.2.md"
+PRD = ROOT / "docs/prd/PRD-core-v1.3.md"
 TASKS = {"BE": ROOT / "docs/tasks/backend.md", "FE": ROOT / "docs/tasks/frontend.md"}
 TC_DIR = ROOT / "docs/testcases"
 OUT = TC_DIR / "traceability.md"
