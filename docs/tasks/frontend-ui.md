@@ -15,8 +15,10 @@
 
 | 任务 | 状态 | 说明 |
 |---|---|---|
-| FE-203～FE-210（其余 sdk-ts 缺口，M3） | ⬜ 未开始 | — |
-| FE-223、FE-225～FE-228、FE-234、FE-238～FE-248（tianting-web 其余 M3） | ⬜ 未开始 | 社交页面依赖 PRD-social 服务端 |
+| FE-203～FE-206、FE-210 | ✅ 完成 | tianting-sdk-ts `0561001`、`6ced393`：快照引用稳定、`memberCount` + `refreshConversations`（30 秒节流）+ `truncated()`、被移出快照（`reason`、重连推断、截断不推断）、打开未知会话向服务端确认、`avatarColorIndex` / `avatarInitial` 跑 `avatar.json` |
+| FE-207～FE-209 | ⬜ 未开始 | — |
+| FE-223、FE-226、FE-228、FE-234、FE-245～FE-247 | ✅ 完成（Web） | tianting-web `ee5c73d`：昵称登录、截断提示、"群名（N）"与聊天信息页、被移出 / 解散 / 未知会话、axe 扫描零违规、CSP + `uiPrefs`、500 会话 4 倍降速中位数约 376ms。手工项（VoiceOver、iOS Safari）未做 |
+| FE-238～FE-244、FE-248 | ⬜ 未开始 | 社交页面依赖 PRD-social 服务端 |
 | FE-300～FE-313（M4：宽屏、深色、群管理、Tauri） | ⬜ 未开始 | — |
 | FE-350～FE-354（第二批 / P1） | ⬜ 未开始 | 依赖 PRD-admin 第二批服务端与协议 |
 | FE-380～FE-387（原生端总任务） | ⬜ 未开始 | M5 / M6 |
