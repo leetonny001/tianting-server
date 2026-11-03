@@ -2,15 +2,15 @@
 
 | 项 | 内容 |
 |---|---|
-| 版本 | **v0.2（修订稿，待复审）** |
+| 版本 | **v0.2（修订稿，已按 v0.2 复审意见修订；作者自查后冻结为 v1.0）** |
 | 作者 | 产品（AI） |
 | 拍板人 | Frank |
 | 日期 | 2026-11-03 |
 | 状态 | 按 [评审记录](../review/REVIEW-ui-v0.1.md)（阻塞 4 / 重要 24 / 建议 13）和 [拍板清单](../review/DECISIONS-2026-11-03.md) 修订。复审确认阻塞项关闭后冻结为 v1.0；对 PRD-core 的改动见第 14 节，随 PRD-social 一起合入 **PRD-core v1.3** |
 | 取代 | [PRD-ui-v0.1](PRD-ui-v0.1.md) |
 | 依据（全部已拍板） | DECISIONS A～D 节 14 项按建议通过（2026-11-03），其中与本 PRD 有关的：**U-1** 产品名**天听**、品牌色靛蓝 `#4C5FD5`；**U-2** 作废（被 S-1～S-3 取代）；**U-3 ②** M3 只做窄屏 + 浅色；**U-4** 做批量查用户资料 + 会话带成员数；**U-5 ③** 一期只支持演示登录；**X-6 ②** 禁言、删消息、解散群、封禁、系统通知分到第二批。2.5 节：Android 全 Kotlin、iOS 全 Swift（含 SDK）；S-1～S-3。E 节：S-4 ①、S-7 ②、S-8 ②、S-9 ②、S-10、S-11 ② |
-| 背景文档 | [PRD-core v1.2](PRD-core-v1.2.md)（冻结）；[PRD-social v0.2](PRD-social-v0.2.md)（已复审可冻结，**通讯录、好友、新的朋友、黑名单、私聊权限、群设置的数据和规则以它为准**，本 PRD 只写界面）；[PRD-admin v0.1](PRD-admin-v0.1.md)（第二批的客户端行为）；[PLAN](../PLAN.md) 第 4 节（H5 在 tianting-web，PC 在 tianting-desktop）、第 6 节里程碑；[SDK 设计说明](../sdk/README.md)；[协议](../../protocol/README.md)、[错误码](../../protocol/ERRORS.md) |
-| 修订记录 | 第 13 节（每条评审意见 → 已改 / 部分 / 不采纳）；对 PRD-core v1.3 的变更条目见第 14 节 |
+| 背景文档 | [PRD-core v1.2](PRD-core-v1.2.md)（冻结）；[PRD-social v0.2](PRD-social-v0.2.md)（已复审可冻结，**通讯录、好友、新的朋友、黑名单、私聊权限、群设置的数据和规则以它为准**，本 PRD 只写界面）；[PRD-admin v0.2](PRD-admin-v0.2.md)（第一批的解散群提示、第二批的客户端行为；对 PRD-core v1.3 的变更见其 11.2 节 VA-01～15）；[PLAN](../PLAN.md) 第 4 节（H5 在 tianting-web，PC 在 tianting-desktop）、第 6 节里程碑；[SDK 设计说明](../sdk/README.md)；[协议](../../protocol/README.md)、[错误码](../../protocol/ERRORS.md) |
+| 修订记录 | 第 13 节（每条评审意见 → 已改 / 部分 / 不采纳；v0.2 复审后的修订见 13.7 节，一致性复审后的修订见 13.8 节）；对 PRD-core v1.3 的变更条目见第 14 节 |
 
 ---
 
@@ -22,7 +22,7 @@
 | M3 做到什么程度（U-3） | **M3 = 窄屏 + 浅色**。桌面浏览器中页面居中显示为手机宽度（最大 480px）。宽屏三栏、深色模式、PC（Tauri）放 M4。路由和组件按三栏结构设计，M4 不改路由 |
 | 通讯录（U-2 作废，S-1～S-3） | 通讯录 = **好友列表 + 群聊 + 新的朋友**（PRD-social F-SOC-11），M3 做。"从单聊会话派生联系人"删除 |
 | 社交在 M3 做多少（S-7 ②） | M3：好友（搜索、申请、新的朋友、备注、删除）+ 拉黑 + 通讯录 + 私聊权限提示 + 隐私设置。M4：发起群聊、群设置（按角色）、群公告、群成员列表、邀请、群提示消息 |
-| 第二批（X-6 ②） | 禁言、消息被删除、封禁、系统通知的客户端提示，作为第二批页面需求（4.4 节）。"群聊已解散"按 S-10 随 M4 的解散群提前（F-UI-33） |
+| 第二批（X-6 ②） | 禁言、消息被删除、封禁、系统通知的客户端提示，作为第二批页面需求（4.4 节）。"群聊已解散"随 **M3**（管理接口解散群与 PRD-admin 第一批同一次交付，F-UI-33 规则 4；客户端解散命令在 M4，一致性复审 D-02） |
 | 昵称、头像、成员数（U-4） | M3 用 `users`（访问范围按 PRD-social F-SOC-10）和会话的 `memberCount`；单聊会话名直接用 `conv.name`（服务端已带昵称） |
 | 登录（U-5 ③） | 一期只有演示登录页；正式接入时 token 怎么交给 H5 / PC 到接入 fx-sport 时再定。生产构建关闭演示登录时，登录页只显示"请从业务方入口进入天听" |
 | 深色配色（R-UI-02） | 重新取值，全部"文字 / 背景"组合按 WCAG 2.1 公式计算并列在 6.2 节：正文 ≥ 4.5:1、大字和图形 ≥ 3:1，浅色、深色两套都满足；CI 自动复核 |
@@ -110,7 +110,7 @@ PRD-core 定义了一期核心业务和 H5 的页面清单（第 5 节），PRD-
 | F-UI-30 | 隐私设置（可被搜索） | M3 | 细化 | PRD-social F-SOC-09 |
 | F-UI-31 | 私聊权限提示（4035 / 4036 / 4137 / 4292） | M3 | 细化 | PRD-social F-SOC-08 |
 | F-UI-32 | 群聊列表 | M3 | 细化 | PRD-social F-SOC-11 |
-| F-UI-33 | 未知会话、被移出 / 退出 / 解散的会话 | M3（按 `reason` 区分 M4） | 新增 + 变更 | F-GRP-03、C-37；V-UI-13；PRD-social V-11 |
+| F-UI-33 | 未知会话、被移出 / 退出 / 解散的会话 | M3（`reason = left` 为 M4） | 新增 + 变更 | F-GRP-03、C-37；V-UI-13、V-UI-14；G-UI-03、G-UI-21、G-UI-26；PRD-social V-11 |
 | F-UI-34 | PC 客户端（Tauri）专项 | M4 | 新增 | PLAN 第 4 节 |
 | F-UI-35 | 发起群聊 | M4 | 细化 | PRD-social F-SOC-21 |
 | F-UI-36 | 群设置（按角色显示操作） | M4 | 细化 | PRD-social F-SOC-20、23～27 |
@@ -118,7 +118,7 @@ PRD-core 定义了一期核心业务和 H5 的页面清单（第 5 节），PRD-
 | F-UI-38 | 群成员列表 | M4 | 细化 | PRD-social F-SOC-24、25、28 |
 | F-UI-39 | 邀请成员 | M4 | 细化 | PRD-social F-SOC-22 |
 | F-UI-40 | 群提示消息 | M4 | 细化 | PRD-social F-SOC-29 |
-| F-UI-41 | 禁言提示 | 第二批 | 细化 | PRD-admin F-ADM-40～42 |
+| F-UI-41 | 禁言提示 | 第二批（全群禁言 P1） | 细化 | PRD-admin F-ADM-40、41；F-ADM-42（P1） |
 | F-UI-42 | 消息被删除 | 第二批 | 细化 | PRD-admin F-ADM-31 |
 | F-UI-43 | 封禁提示（4034） | 第二批 | 细化 | PRD-admin F-ADM-13 |
 | F-UI-44 | 系统通知 | 第二批（最后） | 细化 | PRD-admin F-ADM-50；二期 `push` 协议 |
@@ -590,7 +590,7 @@ PRD-core 定义了一期核心业务和 H5 的页面清单（第 5 节），PRD-
 - AC-UI-14-7【前端】【M3】：对 `relation = none` 的 carol：开放模式下显示"添加到通讯录"和"发消息"；好友制下只显示"添加到通讯录"。
 - AC-UI-14-8【前端】【M3】：对我拉黑了的非好友 eve，资料卡不出现"添加到通讯录"，显示"已加入黑名单"。
 - AC-UI-14-9【M3】：dave 给我发了申请，在 dave 的资料卡点"通过验证"，2 秒内按钮变为"发消息"，通讯录中出现 dave。
-- AC-UI-14-10【前端】【M3】：直接打开 `/user/frank`（frank 与我没有任何关系，`users` 不返回），页面显示"frank"、占位头像和"添加到通讯录"，不显示"用户不存在"。
+- AC-UI-14-10【前端】【M3】：直接打开 `/user/frank`（frank 与我没有任何关系，`users` 不返回），页面显示"frank"、占位头像和"添加到通讯录"，不显示"用户不存在"；与打开 `/user/nobody`（不存在的用户）的页面相比，除用户 ID 文字和 `data-*` 属性外 DOM 结构相同（写法同 AC-UI-26-2）。
 - AC-UI-14-11【前端】【M3】：从群 g1 的聊天页点 carol 头像进入资料卡、再点"添加到通讯录"发送申请，发出的 `friendApply` 中 `source = group`、`sourceRef = g1`。
 - （引用）AC-SOC-13-7。
 
@@ -648,7 +648,10 @@ PRD-core 定义了一期核心业务和 H5 的页面清单（第 5 节），PRD-
 | 4010 / `tokenInvalid` | 登录已失效，请重新登录 |
 | 4011 / `tokenExpired` | 登录已过期，请重新登录 |
 | 4012 / `banned` | 账号已被下线 |
+| 4012 / `suspended`（第二批，PRD-admin F-ADM-13） | 有 `until` 时"账号已被封禁，解封时间：{YYYY-MM-DD HH:mm}"；`until = null` 时"账号已被封禁" |
 | 4429 / `tooManyConnections` | 登录设备过多，当前设备已下线 |
+
+`until` 为毫秒时间戳，按本机时区格式化。`kicked.reason` 不认识（或没收到 `kicked` 只收到关闭码）时按关闭码取文案，4012 显示"账号已被下线"。
 
 `serverShutdown`（1001）不弹窗，按断线处理（C-55）。
 
@@ -668,7 +671,7 @@ PRD-core 定义了一期核心业务和 H5 的页面清单（第 5 节），PRD-
 | 码 / 场景 | 文案 | 来源 |
 |---|---|---|
 | 4001 | 当前版本过低，请刷新页面 | R-UI-27；ERRORS.md 同步修改（V-UI-10） |
-| 4000、4002、4003、4007、4008 | 请求出错（只写日志，不展示细节） | R-UI-27：4008 是 SDK 缺陷（同一 clientMsgId 跨会话），ERRORS.md 改为"记录日志"（V-UI-10） |
+| 4000、4002、4003、4007、4008 | 请求出错（只写日志，不展示细节） | R-UI-27：4008 是 SDK 缺陷（同一 clientMsgId 跨会话）；ERRORS.md 中 4002、4003、4007、4008 的客户端处理统一改为"记录日志，提示'请求出错'"（V-UI-10；4000 原文已是提示"请求出错"） |
 | 4005 | 不能发送空白消息 | ERRORS.md |
 | 4030 | 无权限 | ERRORS.md |
 | 4040 | 内容不存在 | ERRORS.md |
@@ -949,31 +952,33 @@ PRD-core 定义了一期核心业务和 H5 的页面清单（第 5 节），PRD-
 - AC-UI-32-3【前端】【M3】：用 `routeWebSocket` 让 `myGroups` 返回 5000，显示"加载失败，点击重试"；点击后重新请求成功并显示列表。
 - AC-UI-32-4【M3】：点击一个不在 `convs` 前 500 个里的群，进入该群聊天页，能加载历史并发送消息。
 
-### F-UI-33 未知会话、被移出 / 退出 / 解散的会话（M3；按 `reason` 区分 M4）
+### F-UI-33 未知会话、被移出 / 退出 / 解散的会话（M3；`reason = left` 为 M4）
 
 **背景**（R-UI-03）：sdk-ts 收到 `convRemoved` 时直接删除会话，C-37 规定 `convs` 不再返回被移出的群；直接打开一个不在会话列表里的 `convId` 时，界面行为过去没有定义。
 
 **规则**
-1. 路由中的 `convId` 按 SDK `parseConvId`（G-UI-03 导出）解析：
+1. 路由中的 `convId` 用 SDK 的严格解析函数 `parseConvIdStrict(convId, self)`（G-UI-03）解析；**不得用现有的 `parseConvId` 判断路由**（它不校验格式、不判断参与者）：
    | 情况 | 处理 |
    |---|---|
-   | 格式非法 | 跳转到 `/chats`，轻提示"会话不存在" |
-   | 单聊且当前用户不是参与者 | 同上（本地判断，不发请求） |
-   | 单聊、参与者含我、不在会话列表 | 临时会话（F-CONV-03）：标题用对方显示名（资料缓存，没有时 `userId`），可以发送 |
+   | 格式非法（抛出 `invalid`） | 跳转到 `/chats`，轻提示"会话不存在" |
+   | 单聊且当前用户不是参与者（抛出 `notParticipant`） | 同上（本地判断，不发请求） |
+   | 单聊、参与者含我、不在会话列表 | 临时会话（F-CONV-03）：标题用对方显示名（资料缓存，没有时 `userId`），可以发送；同时 `loadHistory` 按 G-UI-26 请求最新一页，有历史消息时显示并补进会话列表；返回 4032（正常情况下已被本地拦截）时按"格式非法"处理 |
    | 群聊、在会话列表 | 正常 |
    | 群聊、本次登录期间被移出（SDK 会话快照 `removed: true`，G-UI-21） | 标题保留快照中的群名（不带成员数）；列表底部提示 + 输入区禁用条（规则 2） |
-   | 群聊、不在会话列表、没有快照 | 先 `loadHistory`：成功则正常显示（SDK 随后补会话）；返回 4033 → 标题"群聊"，显示规则 2 的"你已不在该群"；返回 4043 → 标题"群聊"，列表居中显示"群聊不存在或已解散"，输入区禁用条"群聊不存在或已解散" |
-2. 被移出时的提示（M3，`reason` 缺失或为 `removed`）：列表底部插入居中提示"你已不在该群"（与 AC-GRP-03-3 一致）；输入区替换为禁用条"你已不在该群，无法发送消息"（AC-GRP-02-5）；顶栏"更多"仍可进入聊天信息页（F-UI-12 规则 4）。
+   | 群聊、不在会话列表、没有快照 | 先 `loadHistory`：SDK 向服务端发 `sync` 请求最新一页（G-UI-26，不在本地提前返回），**`sync` 返回前显示加载状态（F-UI-20），不显示输入框、也不显示任何"不在该群"类提示**；成功则正常显示（SDK 把会话补进列表）；返回 4033 → 标题"群聊"，显示规则 2 的"你已不在该群"；返回 4043 → 标题"群聊"，列表居中显示"群聊不存在或已解散"，输入区禁用条"群聊不存在或已解散" |
+2. 被移出时的提示（M3，`reason` 缺失、为 `removed` 或为不认识的值；`dissolved` 按规则 4 在 M3 就显示"群聊已解散"）：列表底部插入居中提示"你已不在该群"（与 AC-GRP-03-3 一致）；输入区替换为禁用条"你已不在该群，无法发送消息"（AC-GRP-02-5）；顶栏"更多"仍可进入聊天信息页（F-UI-12 规则 4）。重连比对生成的快照没有 `reason`（规则 3），所以离线期间被解散的群在本次登录内也显示"你已不在该群"；刷新后再打开时 `sync` 返回 4043，按规则 1 显示"群聊不存在或已解散"。
 3. **SDK 会话快照**（G-UI-21，DECISIONS 第 3 节"SDK 收到被移出群时保留会话的展示信息"）：收到 `convRemoved` 时，SDK 从会话列表移除该会话（会话列表行为不变），但保留 `{convId, name, type, removed: true, reason?}` 快照，**保留到本次登录结束**（退出登录、被踢、刷新页面后清除）；已加载的消息保留在内存中可以继续查看。
-4. **M4 按 `reason` 区分**（PRD-social V-11）：
+   - **重连或刷新会话列表时也生成快照**：`convs` 应答会整体覆盖会话列表（重连后的首次拉取、`refreshConversations`、SDK 内部补拉），服务端不为离线期间的移出补发 `convRemoved`。因此 SDK 用新列表与旧列表比对：原来在列表里、新列表里没有的**群会话**同样生成快照（`removed: true`，`reason` 缺失），并发出 `convRemoved` 事件，界面按规则 2 处理；单聊不处理；新列表带 `truncated: true`（C-03）时不做此推断（会话可能只是被挤出前 500 个）。
+   - **重新被拉进群时清除快照**：收到同一群的 `convAdded` 时清除该群快照，会话按正常会话显示，停在该群聊天页时输入区恢复。
+4. **按 `reason` 区分**（PRD-social V-11；批次按一致性复审 D-02）：
 
    | `reason` | 列表底部提示 | 输入区禁用条 |
    |---|---|---|
-   | `removed` | 你已不在该群 | 你已不在该群，无法发送消息 |
-   | `left`（本人在其他端退群） | 你已退出该群聊 | 你已退出该群聊 |
-   | `dissolved` | 群聊已解散 | 群聊已解散 |
+   | 缺失 / `removed` / 不认识的值【M3】 | 你已不在该群 | 你已不在该群，无法发送消息 |
+   | `dissolved`【M3】 | 群聊已解散 | 群聊已解散 |
+   | `left`（本人在其他端退群）【M4】 | 你已退出该群聊 | 你已退出该群聊 |
 
-   "群聊已解散"随 M4 的客户端解散群（PRD-social F-SOC-26）和管理接口解散（PRD-admin F-ADM-24）共用；S-10 已把解散群提前，因此列在 M4 而不是第二批。
+   "群聊已解散"在 M3 随管理接口解散（PRD-admin F-ADM-24 第一批、PRD-social F-SOC-26 的 M3 部分：`DELETE /admin/groups/{id}`、群 ID 不复用、`convRemoved.reason`）交付，M4 起客户端解散（`groupDissolve`、最后一人退群自动解散）同样适用。M3 不会产生 `left`；M3 构建若收到 `left`，按"不认识的值"显示。
 5. 都不显示成员数，都不能发送；已在本页的输入内容不保留。
 
 **验收标准**
@@ -985,6 +990,12 @@ PRD-core 定义了一期核心业务和 H5 的页面清单（第 5 节），PRD-
 - AC-UI-33-6【M3】：打开 `/chat/group%3Anotexist`（群不存在），标题"群聊"，显示"群聊不存在或已解散"，没有输入框。
 - AC-UI-33-7【M4】：群主解散自建群时，停在该群聊天页的成员 3 秒内看到"群聊已解散"，输入框消失。
 - AC-UI-33-8【M4】：alice 在 pc 标签页退出群 g2，停在 web 标签页 g2 聊天页的 alice 3 秒内看到"你已退出该群聊"。
+- AC-UI-33-9【M3】：alice 停在 g1 聊天页时断网，期间被管理接口移出 g1；恢复网络重连后 3 秒内列表底部出现"你已不在该群"，输入框消失（显示"你已不在该群，无法发送消息"），标题仍为 g1 的群名；会话列表中没有 g1。
+- AC-UI-33-10【前端】【M3】：刷新页面后打开 `/chat/group%3Ag1`（alice 已被移出 g1，本地没有该会话也没有快照）：`FakeTransport` 记录到发出了 `sync {convId: "group:g1", beforeSeq: 9007199254740991, …}`；4033 应答返回之前页面没有"你已不在该群"、也没有输入框；收到 4033 后才显示"你已不在该群"（证明 G-UI-26 生效）。
+- AC-UI-33-11【M3】：接 AC-UI-33-4，管理接口把 alice 重新拉进 g1：3 秒内会话列表重新出现 g1，停在 g1 聊天页的 alice 输入框恢复、禁用条消失，可以发送消息。
+- AC-UI-33-12【前端】【M3】：`FakeTransport` 依次推送 `convRemoved {convId: "group:g1", reason: "dissolved"}`、`convRemoved {convId: "group:g2", reason: "xyz"}`、`convRemoved {convId: "group:g3"}`（无 `reason`）：g1 聊天页列表底部和禁用条都显示"群聊已解散"；g2、g3 聊天页都显示"你已不在该群"和"你已不在该群，无法发送消息"。
+- AC-UI-33-13【前端】【M3】：`parseConvIdStrict` 单元测试（以 alice 为 `self`）：`c2c:alice:bob` 返回 `{convType: "c2c", to: "bob"}`，`group:g1` 返回 `{convType: "group", to: "g1"}`；`c2c:bob:carol` 抛出 `notParticipant`；`abc`、`c2c:abc`、`c2c:bob:alice`（顺序颠倒）、`c2c:alice:alice`、`c2c:alice:bob:x`、`c2c:alice:b.b`、`group:`、`group:g1:x`、`room:r1` 都抛出 `invalid`。三套 SDK 共用同一组用例。
+- AC-UI-33-14【M3】：alice 停在托管群 g1 的聊天页时，业务方调用 `DELETE /admin/groups/g1`：3 秒内列表底部出现"群聊已解散"，输入框消失并显示"群聊已解散"；会话列表中 g1 消失。
 - （引用）AC-GRP-03-3、AC-GRP-02-5、AC-ADM-24-1。
 
 ### 4.3 PC 与客户端群管理（M4，S-7 ②）
@@ -1138,12 +1149,12 @@ PRD-core 定义了一期核心业务和 H5 的页面清单（第 5 节），PRD-
 
 > 与 PRD-admin 第二批的服务端、协议（PRD-core v1.3 第二批条目）、三套 SDK 一起交付。错误码、事件名、字段名以 PRD-admin v0.2 与 errors.json 定稿为准；定稿编号与下文不同时，AC 随之改号、文案不变。
 
-### F-UI-41 禁言提示（第二批，细化 PRD-admin F-ADM-40～42）
+### F-UI-41 禁言提示（第二批，细化 PRD-admin F-ADM-40、41；全群禁言随 F-ADM-42 为 P1）
 
 **规则**
 1. 触发：SDK 收到 `muted {scope, mutedUntil, groupId?}` 事件，或 `send` 返回 4031（带 `mutedUntil`、`scope`、`groupId`）。
-2. 影响范围：`scope = user` → 全部会话；`scope = group` → 该群；`scope = groupAll` → 该群（全群禁言，M4 之后群主 / 管理员是否可以发言以服务端为准，客户端只按收到的事件和错误处理）。
-3. 输入区替换为禁用条：有 `mutedUntil` 时"你已被禁言，解除时间：{MM-DD HH:mm}"；永久（`mutedUntil = null`）时"你已被禁言"；全群禁言时"群主已开启全员禁言"。
+2. 影响范围：`scope = user` → 全部会话；`scope = group` → 该群。**P1**（随 PRD-admin F-ADM-42 全群禁言，不在第二批）：`scope = groupAll` → 该群（群主 / 管理员是否可以发言以服务端为准，客户端只按收到的事件和错误处理）。
+3. 输入区替换为禁用条：有 `mutedUntil` 时"你已被禁言，解除时间：{MM-DD HH:mm}"；永久（`mutedUntil = null`）时"你已被禁言"。**P1**（随 F-ADM-42）：全群禁言时"群主已开启全员禁言"。
 4. 解除：收到 `unmuted` 事件，或按服务端时间到达 `mutedUntil` 时恢复输入框（本地定时恢复只是体验；之后若 `send` 仍返回 4031，重新显示禁用条）。
 5. `send` 返回 4031 的消息标记失败，不弹轻提示（禁用条已经说明）；4031 不自动重发。
 
@@ -1152,7 +1163,8 @@ PRD-core 定义了一期核心业务和 H5 的页面清单（第 5 节），PRD-
 - AC-UI-41-2【第二批】：u1 只在 g1 被禁言时，g1 显示禁用条，g2 和单聊正常可发。
 - AC-UI-41-3【第二批】：手动解除禁言后，u1 的输入框 3 秒内恢复。
 - AC-UI-41-4【前端】【第二批】：用测试时钟推进到 `mutedUntil` 之后，输入框恢复（没有收到 `unmuted`）。
-- AC-UI-41-5【前端】【第二批】：永久禁言时禁用条为"你已被禁言"；开启全群禁言时为"群主已开启全员禁言"。
+- AC-UI-41-5【前端】【第二批】：永久禁言（`mutedUntil = null`）时禁用条为"你已被禁言"。
+- AC-UI-41-6【前端】【P1】：开启全群禁言（`scope = groupAll`，随 PRD-admin F-ADM-42）时禁用条为"群主已开启全员禁言"。不属于第二批交付，F-ADM-42 排期后执行。
 - （引用）AC-ADM-40-5。
 
 ### F-UI-42 消息被删除（第二批，细化 PRD-admin F-ADM-31）
@@ -1172,14 +1184,15 @@ PRD-core 定义了一期核心业务和 H5 的页面清单（第 5 节），PRD-
 ### F-UI-43 封禁提示（4034，第二批，细化 PRD-admin F-ADM-13）
 
 **规则**
-1. 演示登录（F-UI-03）时 `/demo/login` 返回 4034（带 `bannedUntil`）：登录页提示"账号已被封禁，解封时间：{YYYY-MM-DD HH:mm}"；永久封禁（`bannedUntil = null`）提示"账号已被封禁"；停留在登录页。
-2. 在线时被封禁：服务端强制下线（`kicked`，原因按 PRD-admin 定稿），按 F-UI-18 弹窗；PRD-admin 定稿的被踢原因若新增 `banned` 以外的枚举，F-UI-18 文案表同步补一行。
+1. 演示登录（F-UI-03）时 `/demo/login` 返回 HTTP 403 / 4034 USER_BANNED（响应格式与管理接口相同，解封时间在 `details.bannedUntil`，毫秒，永久为 `null`；PRD-admin F-ADM-13 规则 3、10.1 节）：登录页提示"账号已被封禁，解封时间：{YYYY-MM-DD HH:mm}"；永久封禁（`details.bannedUntil = null`）提示"账号已被封禁"；停留在登录页。4034 在 errors.json 中 `scope` 为 `admin`、不是 ws 码，AC-UI-19-3 的 ws 码遍历覆盖不到，它的文案放在登录页的 HTTP 错误映射里维护，由 AC-UI-43-1、AC-UI-43-2 覆盖；sdk-ts 的错误码枚举含 4034（SDK 生成器只跳过 `scope: console`），可以读到 `details.bannedUntil`（一致性复审 E-08）。
+2. 在线时被封禁：服务端下发 `kicked {reason: "suspended", until}` 并以 4012 关闭（PRD-admin F-ADM-13 规则 2），按 F-UI-18 弹窗，文案见 F-UI-18 表 `suspended` 行；不自动重连。
 3. 被封禁的用户在搜索中返回 `null`（PRD-social F-SOC-09 规则 7），界面按 F-UI-26 规则 3 处理，不需要额外设计。
 
 **验收标准**
 - AC-UI-43-1【第二批】：u1 被封禁 1 天后在登录页以 u1 登录，提示"账号已被封禁，解封时间：{封禁时间 + 1 天}"，停留在登录页。
-- AC-UI-43-2【前端】【第二批】：用 `page.route` 让 `/demo/login` 返回 4034、`bannedUntil = null`，提示"账号已被封禁"。
-- AC-UI-43-3【第二批】：u1 在线时被封禁，3 秒内弹出被踢弹窗；点"确定"后回到登录页。
+- AC-UI-43-2【前端】【第二批】：用 `page.route` 让 `/demo/login` 返回 HTTP 403 `{code: 4034, details: {bannedUntil: null}}`，提示"账号已被封禁"。
+- AC-UI-43-3【第二批】：u1 在线时被封禁 1 天，3 秒内弹出"账号已被封禁，解封时间：{封禁时间 + 1 天}"；点"确定"后回到登录页，不自动重连。
+- AC-UI-43-4【前端】【第二批】：`FakeTransport` 下发 `kicked {reason: "suspended", until: null}` 后以 4012 关闭，弹窗为"账号已被封禁"；下发 `kicked {reason: "xyz"}` 后以 4012 关闭，弹窗为"账号已被下线"。
 
 ### F-UI-44 系统通知（第二批最后，细化 PRD-admin F-ADM-50）
 
@@ -1251,8 +1264,8 @@ v0.2 修改的值加粗，"v0.1"列为原值。M3 只使用"浅色"列；"深色
 | `color.text.secondary` | `#5C6370` | `#A3A9B7` | 同 | 摘要、发送者名、未选中导航项 |
 | `color.text.tertiary` | **`#636977`** | **`#9298A8`** | `#737985` / `#8A90A0` | 时间、提示条、状态文字、占位文字、转圈图标 |
 | `color.divider` | `#E4E6EB` | `#2C313B` | 同 | 分隔线（装饰性，不承担识别功能，见 6.2 节说明） |
-| `color.border.input` | **`#8A90A0`** | **`#737A8A`** | 新增 | 输入框、复选框边框（需要识别的控件边界，≥ 3:1） |
-| `color.danger` | `#D92D20` | `#F2685D` | 同 | 失败图标、退出登录、超字提示、危险按钮文字 |
+| `color.border.input` | **`#7E8496`** | **`#737A8A`** | 新增 | 输入框、复选框边框（需要识别的控件边界，≥ 3:1）；放在 `surface`、`bg` 上都达标（L23 / L25、D23 / D25） |
+| `color.danger` | **`#C8281C`** | `#F2685D` | `#D92D20` / 同 | 失败图标、退出登录、超字提示、危险按钮文字；作为文字放在 `surface`、`bg` 上都 ≥ 4.5（L19 / L26、D19 / D26）。未读角标用 `color.badge.bg`，不随之改变 |
 | `color.badge.bg` | `#D92D20` | **`#D92D20`** | `#D92D20` / `#E5484D` | 未读角标、红点 |
 | `color.on.badge` | `#FFFFFF` | `#FFFFFF` | 新增（v0.1 隐含白字） | 角标文字 |
 | `color.warning.bg` / `.text` | `#FFF4E5` / `#8A4B00` | `#3A2A12` / `#FFC870` | 同 | 连接状态条 |
@@ -1261,7 +1274,7 @@ v0.2 修改的值加粗，"v0.1"列为原值。M3 只使用"浅色"列；"深色
 
 ### 6.2 对比度复核表（R-UI-02）
 
-计算方法：WCAG 2.1 相对亮度 `L = 0.2126 R + 0.7152 G + 0.0722 B`（各通道先做 sRGB 线性化：`c ≤ 0.04045 ? c/12.92 : ((c+0.055)/1.055)^2.4`），对比度 = `(L1 + 0.05) / (L2 + 0.05)`。下表由脚本计算，保留两位小数（向下取整不改变结论）。
+计算方法：WCAG 2.1 相对亮度 `L = 0.2126 R + 0.7152 G + 0.0722 B`（各通道先做 sRGB 线性化：`c ≤ 0.04045 ? c/12.92 : ((c+0.055)/1.055)^2.4`），对比度 = `(L1 + 0.05) / (L2 + 0.05)`。下表由脚本计算，保留两位小数（四舍五入；各值与所标要求的差距都大于 0.005，取舍不改变结论）。
 
 **v0.1 不达标的组合（评审复算属实）**
 
@@ -1296,12 +1309,14 @@ v0.2 修改的值加粗，"v0.1"列为原值。M3 只使用"浅色"列；"深色
 | L16 | `bubble.self.text` / `bubble.self.bg` | `#FFFFFF` / `#4C5FD5` | 5.38 | 4.5 ✅ |
 | L17 | `bubble.other.text` / `bubble.other.bg` | `#1A1D24` / `#FFFFFF` | 16.87 | 4.5 ✅ |
 | L18 | `text.secondary` / `bubble.other.bg`（"[暂不支持的消息]"） | `#5C6370` / `#FFFFFF` | 6.05 | 4.5 ✅ |
-| L19 | `danger` / `surface`（退出登录、超字提示） | `#D92D20` / `#FFFFFF` | 4.83 | 4.5 ✅ |
-| L20 | `danger` / `chat.bg`（失败"!"图标） | `#D92D20` / `#EEF0FA` | 4.25 | 3 ✅ |
+| L19 | `danger` / `surface`（退出登录、超字提示） | `#C8281C` / `#FFFFFF` | 5.56 | 4.5 ✅ |
+| L20 | `danger` / `chat.bg`（失败"!"图标） | `#C8281C` / `#EEF0FA` | 4.89 | 3 ✅ |
 | L21 | `on.badge` / `badge.bg` | `#FFFFFF` / `#D92D20` | 4.83 | 4.5 ✅ |
 | L22 | `warning.text` / `warning.bg` | `#8A4B00` / `#FFF4E5` | 6.26 | 4.5 ✅ |
-| L23 | `border.input` / `surface` | `#8A90A0` / `#FFFFFF` | 3.19 | 3 ✅ |
+| L23 | `border.input` / `surface` | `#7E8496` / `#FFFFFF` | 3.73 | 3 ✅ |
 | L24 | `text.tertiary` / `chat.bg`（转圈图标） | `#636977` / `#EEF0FA` | 4.84 | 3 ✅ |
+| L25 | `border.input` / `bg`（输入框直接放在页面背景上） | `#7E8496` / `#F2F3F7` | 3.37 | 3 ✅ |
+| L26 | `danger` / `bg`（页面背景上的超字提示、错误文字） | `#C8281C` / `#F2F3F7` | 5.02 | 4.5 ✅ |
 
 **深色（M4 启用，M3 就纳入 CI 检查）**
 
@@ -1331,6 +1346,8 @@ v0.2 修改的值加粗，"v0.1"列为原值。M3 只使用"浅色"列；"深色
 | D22 | `warning.text` / `warning.bg` | `#FFC870` / `#3A2A12` | 9.05 | 4.5 ✅ |
 | D23 | `border.input` / `surface` | `#737A8A` / `#1B1E25` | 3.88 | 3 ✅ |
 | D24 | `text.tertiary` / `chat.bg`（转圈图标） | `#9298A8` / `#0D0F13` | 6.65 | 3 ✅ |
+| D25 | `border.input` / `bg` | `#737A8A` / `#111318` | 4.32 | 3 ✅ |
+| D26 | `danger` / `bg` | `#F2685D` / `#111318` | 6.12 | 4.5 ✅ |
 
 **头像调色板**（6.4 节，白字，浅色深色通用）：`#4C5FD5` 5.38、`#7C3AED` 5.70、`#BE185D` 6.04、`#B91C1C` 6.47、`#C2410C` 5.18、`#A16207` 4.92、`#0F766E` 5.47、`#0369A1` 5.93，均 ≥ 4.5 ✅。
 
@@ -1404,7 +1421,7 @@ v0.2 修改的值加粗，"v0.1"列为原值。M3 只使用"浅色"列；"深色
 |---|---|---|---|---|
 | G-UI-01 | 批量查用户资料 `users` + SDK 缓存 | 群消息发送者名、头像图片、"我"的昵称、资料卡 | **M3**（U-4） | PRD-social F-SOC-10：访问范围、限流、缓存 10 分钟、带资料的应答覆盖缓存、`convs` 刷新不清空 |
 | G-UI-02 | 群成员数 `memberCount`；成员列表 `groupMembers` | 顶栏"群名（N）"、群聊列表、群设置 | `memberCount` **M3**（U-4）；`groupMembers` **M4** | PRD-social F-SOC-11、F-SOC-28；服务端维护 `chat_groups.member_count`（与 PRD-admin 群列表共用，X-05） |
-| G-UI-03 | 导出已有的 `parseConvId`；新增 `peerId(conv)` | F-UI-33、资料卡、头像哈希 | **M3** | sdk-ts 导出；sdk-kotlin / sdk-swift 同名实现。不改协议 |
+| G-UI-03 | 新增严格解析 `parseConvIdStrict(convId, self)`；新增 `peerId(conv)` | F-UI-33 规则 1、资料卡、头像哈希 | **M3**（P0） | 规则：按 `:` 分段。`c2c` 必须恰好三段，两个 ID 都符合 userId 格式（字母、数字、`_`、`-`，长度 1～64，PRD-core 3.1 节），且第一个按 ASCII 字节序**严格小于**第二个（规范顺序，与 `c2cConvId` 一致），格式不符抛出 `invalid`；格式正确但两个 ID 都不是 `self` 抛出 `notParticipant`；成功返回 `{convType: "c2c", to: 对方}`。`group` 必须恰好两段且 ID 符合 groupId 格式，否则 `invalid`。`room` 一期视为 `invalid`；其他前缀 `invalid`。错误类型 `ConvIdError`（`kind = "invalid" \| "notParticipant"`）。**现状**：sdk-ts 现有 `parseConvId`（`protocol.ts` 第 90～95 行）不校验格式、不判断参与者——以 alice 解析 `c2c:bob:carol` 得到 `to = bob`，`c2c:abc`、`group:` 都不抛错；它保留给 SDK 内部发消息用，界面不得用它判断路由。sdk-ts 导出；sdk-kotlin / sdk-swift 同名实现；用例见 AC-UI-33-13。不改协议 |
 | G-UI-04 | 好友、申请、黑名单、搜索、隐私 | 通讯录与社交页面 | **M3** | PRD-social F-SOC-02～09 |
 | G-UI-05 | 客户端修改自己的昵称 / 头像 | — | 不做 | 资料归业务方；演示模式见 G-UI-23 |
 | G-UI-06 | 头像上传（文件存储） | — | 不做 | 随二期图片消息的存储一起设计 |
@@ -1422,11 +1439,12 @@ v0.2 修改的值加粗，"v0.1"列为原值。M3 只使用"浅色"列；"深色
 | G-UI-18 | 浏览器 / 系统通知 | — | 后续 | — |
 | G-UI-19 | SDK **会话快照引用稳定**：未变化的会话对象在两次 `conversations` 回调之间保持同一引用（或按会话推送变化） | NF-UI-3、F-UI-04 规则 10 | **M3**（P0） | sdk-ts 去掉每次 `map` 生成新对象；原生 SDK 用不可变数据 + `equals` |
 | G-UI-20 | SDK `pendingCount()`：跨会话统计 `queued` / `sending` / `failed` 条数，并在变化时发事件 | F-UI-16 规则 2、FE-017 `beforeunload`、AC-UI-09-5 | **M3**（P0） | 三套 SDK |
-| G-UI-21 | SDK 被移出群时**保留会话快照** `{convId, name, type, removed: true, reason?}`，保留到本次登录结束 | F-UI-33、F-UI-12 规则 4 | **M3**（P0；`reason` M4） | DECISIONS 第 3 节"服务端补两项"之二；V-UI-13 |
+| G-UI-21 | SDK 被移出群时**保留会话快照** `{convId, name, type, removed: true, reason?}`，保留到本次登录结束；① **重连或刷新会话列表时**，原来在列表里、新列表里没有的**群会话**同样生成快照（`reason` 缺失）并发出 `convRemoved` 事件（单聊不处理；新列表 `truncated: true` 时不推断）；② 收到同一群的 `convAdded` 时清除快照 | F-UI-33 规则 3、F-UI-12 规则 4 | **M3**（P0；`reason` 的 `removed` / `dissolved` M3，`left` M4） | DECISIONS 第 3 节"服务端补两项"之二；V-UI-13。**现状**：重连时 `onConnected` 用 `setConversations` 整体覆盖会话列表（`client.ts` 第 279～281 行），服务端不补发 `convRemoved`，离线期间被移出不会触发快照；AC-UI-33-9、AC-UI-33-11 |
 | G-UI-22 | SDK 事件 `sendFailed(convId, clientMsgId, error)`：每次失败恰好一次 | F-UI-08 规则 3、F-UI-31 | **M3**（P0） | 三套 SDK |
 | G-UI-23 | 演示登录接受可选 `nickname`（1～32 码点，F-USER-01 校验），登录时由演示服务调导入接口写入 | F-UI-03 规则 4 | **M3** | 只改演示登录服务（ADMIN.md `/demo/login`），不改 IM 协议；非法昵称返回 400 / 4000 |
 | G-UI-24 | SDK `refreshConversations()`：重新拉 `convs`，SDK 内 30 秒节流 | F-UI-06 规则 3（M3 成员数新鲜度） | **M3**；M4 由 `groupChanged` + `groupInfo` 取代 | 三套 SDK |
-| G-UI-25 | 第二批事件与错误：`muted` / `unmuted`、4031 的 `mutedUntil` / `scope`、`msgDeleted` 与 `deleted` 标记（SDK 清除原文）、4034 的 `bannedUntil`、`push` | F-UI-41～44 | **第二批** | PRD-admin G-ADM-08、14、15、16；随 PRD-core v1.3 第二批条目 |
+| G-UI-25 | 第二批事件与错误：`muted` / `unmuted`、4031 的 `mutedUntil` / `scope`、`msgDeleted` 与 `deleted` 标记（SDK 清除原文）、`/demo/login` 4034 的 `details.bannedUntil`、`kicked {reason: "suspended", until}`、`push` | F-UI-18、F-UI-41～44 | **第二批** | PRD-admin G-ADM-08、14、15、16；随 PRD-core v1.3 第二批条目 |
+| G-UI-26 | SDK 打开**本地没有的会话**时向服务端请求最新一页：会话不在列表里、也没有已加载的消息时，`loadHistory` 必须发 `sync {convId, beforeSeq: 9007199254740991, limit}`（`beforeSeq` 取 2^53−1，即 `Number.MAX_SAFE_INTEGER`；`SyncReq.beforeSeq` 没有上限），不按本地 `minSeq` / `maxSeq` 提前返回；4032 / 4033 / 4043 原样作为错误（带 `code`）交给界面，不吞掉、不重试；成功时把会话补进会话列表（同 `refreshConversationsSoon`；单聊没有消息时仍是本地临时会话） | F-UI-33 规则 1；AC-UI-33-5、AC-UI-33-6、AC-UI-33-10 | **M3**（P0） | 不用 `afterSeq: 0`（返回的是最早的一页，不是最新一页）。**现状**：sdk-ts `loadHistory` 在会话不存在时不发请求（`client.ts` 第 222～226 行：`before = 1`、`minSeq` 默认 1，直接置 `hasMoreHistory = false` 返回），收不到 4033 / 4043，界面会显示成可以输入的空聊天页。三套 SDK 一致；不改协议 |
 
 ---
 
@@ -1434,7 +1452,7 @@ v0.2 修改的值加粗，"v0.1"列为原值。M3 只使用"浅色"列；"深色
 
 ### 8.1 引用关系与受影响的测试用例（R-UI-21）
 
-本 PRD 不重新定义下列规则，界面实现以原文为准：PRD-core 的 F-SYS-01、F-AUTH-02～05、F-CONN-01～02、F-MSG-01～07、F-GRP-02～03、F-CONV-01～03、F-USER-02、F-SYNC-01～02、F-DEMO-01 及第 9 节 C-01～C-55；PRD-social 的 F-SOC-01～13（M3）、F-SOC-20～30（M4）；PRD-admin 的 F-ADM-13、24、31、40～42、50（第二批）。第 4 节各功能点末尾的"（引用）"列出了对应 AC。
+本 PRD 不重新定义下列规则，界面实现以原文为准：PRD-core 的 F-SYS-01、F-AUTH-02～05、F-CONN-01～02、F-MSG-01～07、F-GRP-02～03、F-CONV-01～03、F-USER-02、F-SYNC-01～02、F-DEMO-01 及第 9 节 C-01～C-55；PRD-social 的 F-SOC-01～13（M3）、F-SOC-20～30（M4）；PRD-admin v0.2 的 F-ADM-13、31、40、41、50（第二批）、F-ADM-24（第一批，解散群）、F-ADM-42（P1，全群禁言）。第 4 节各功能点末尾的"（引用）"列出了对应 AC。
 
 **AC 复用，但以下已有 TC 的操作步骤要随本 PRD 更新**（测试任务单增加"TC 步骤随 PRD-ui 修订"一项）：
 
@@ -1453,11 +1471,12 @@ v0.2 修改的值加粗，"v0.1"列为原值。M3 只使用"浅色"列；"深色
 |---|---|---|---|
 | `Conversation` 增加可选 `memberCount`（修改 `frame.schema.json` 的 `Conversation`——`additionalProperties: false`——和 `vectors/frames.json`） | G-UI-02、PRD-social V-07 | 协议 + 服务端 + SDK | M3 |
 | `users`、`myGroups`、社交命令与事件 | PRD-social 9.1、9.2 节 | 协议 + 服务端 + SDK | M3 |
-| `group*` 命令、`groupChanged`、`convRemoved.reason`、`tip` 消息 | PRD-social 9.1、9.2 节 | 协议 + 服务端 + SDK | M4 |
+| `convRemoved.reason`（`removed` / `dissolved`）；管理接口解散群 `DELETE /admin/groups/{id}`（群 ID 不复用）；sdk-ts / H5 "群聊已解散" | PRD-admin F-ADM-24、G-ADM-11；一致性复审 D-02 | 协议 + 服务端 + SDK + H5 | M3 |
+| `group*` 命令（含 `groupDissolve`）、`groupChanged`、`convRemoved.reason = left`、`tip` 消息 | PRD-social 9.1、9.2 节 | 协议 + 服务端 + SDK | M4 |
 | 演示登录 `nickname` | G-UI-23 | 演示登录服务 + ADMIN.md | M3 |
-| SDK：`parseConvId` 导出、`peerId`、`totalUnread`、`pendingCount`、`sendFailed`、`refreshConversations`、会话快照、稳定引用 | G-UI-03、15、19～22、24 | sdk-ts（M3）、sdk-kotlin（M5）、sdk-swift（M6） | M3 |
+| SDK：严格解析 `parseConvIdStrict`、`peerId`、`totalUnread`、`pendingCount`、`sendFailed`、`refreshConversations`、会话快照（含重连 / 刷新列表后比对生成、`convAdded` 时清除）、稳定引用、打开本地没有的会话时 `loadHistory` 向服务端请求最新一页并交出 4032 / 4033 / 4043 | G-UI-03、15、19～22、24、26 | sdk-ts（M3）、sdk-kotlin（M5）、sdk-swift（M6） | M3 |
 | SDK：`removeFailed` | G-UI-14 | 三套 SDK | M4 |
-| ERRORS.md：第 2 节改为按"命令 + 错误码"映射；4001 客户端处理改为"提示'当前版本过低，请刷新页面'"；4008 改为"记录日志" | V-UI-10、PRD-social V-17 | 协议文档 + 三套 SDK 的文案表 | M3 |
+| ERRORS.md：第 2 节改为按"命令 + 错误码"映射；4001 客户端处理改为"提示'当前版本过低，请刷新页面'"；4002、4003、4007、4008 改为"记录日志，提示'请求出错'" | V-UI-10、PRD-social V-17 | 协议文档 + 三套 SDK 的文案表 | M3 |
 | 共享测试数据：`protocol/vectors/avatar.json`（id → 首字、颜色下标）、`protocol/vectors/pinyin-groups.json`（名字 → 分组字母） | F-UI-21、F-UI-13 | 脚本生成；三套 SDK / 三端界面都跑 | M3 |
 | 第二批：`muted` / `unmuted`、4031 字段、`msgDeleted`、4034、`push` | G-UI-25 | 协议 + 服务端 + SDK | 第二批 |
 
@@ -1465,7 +1484,7 @@ v0.2 修改的值加粗，"v0.1"列为原值。M3 只使用"浅色"列；"深色
 
 FE-010（登录页：昵称、生产构建）、FE-011（会话列表："+"菜单、摘要规则）、FE-012（发起单聊：好友制提示）、FE-013（聊天页：`setActiveConversation`、超长以 C-28 为准、输入法）、FE-015（群聊界面：`memberCount`、F-UI-33）、FE-016（文案：命令 + 错误码、4001 / 4008）、FE-017（`beforeunload` 用 `pendingCount`）、FE-019（昵称与头像：`users`、avatar.json）的描述随本 PRD 更新；社交页面（F-UI-13、14、25～32）、M4 页面（F-UI-34～40）、第二批（F-UI-41～44）在需求分发时新建任务。
 
-`tools/trace.py` 目前只读 `PRD-core-v1.2.md`，需求分发时要改为同时读取本 PRD（与 PRD-social 13.5 节的要求一起处理）。本 PRD 的 AC 已用同一正则核对：272 条全部可识别、无重复编号，验证层标记都在编号后 8 个字符内。
+`tools/trace.py` 目前只读 `PRD-core-v1.2.md`，需求分发时要改为同时读取本 PRD（与 PRD-social 13.5 节的要求一起处理）。本 PRD 的 AC 已用同一正则核对：280 条（含 13.7 节新增的 6 条、13.8 节新增的 2 条）全部可识别、无重复编号，验证层标记都在编号后 8 个字符内。
 
 ---
 
@@ -1515,7 +1534,7 @@ FE-010（登录页：昵称、生产构建）、FE-011（会话列表："+"菜�
 
 - AC-UI-90-1【前端】【M3】【Web】：用户 `xss1` 的昵称为 `<img src=x onerror=alert(1)>`，他发来的消息、他所在的群名同样设为该字符串、我给他的备注设为 `<b>x</b>`、他发来的好友申请附言也为该字符串：会话列表（名称和摘要）、聊天页（标题和发送者名）、通讯录、新的朋友、资料卡、`document.title` 中都原样显示文本；不弹窗；页面不发出对 `x` 的任何请求；DOM 中没有 `<img src="x">` 和 `<b>` 元素。
 - AC-UI-90-2【前端】【M3】【Web】：登录、收发消息、发好友申请、设置备注后，`localStorage` 中只存在以 `ui.` 开头的键；`sessionStorage` 中除 token 外没有消息内容；当前 URL 和浏览器历史中搜不到附言和备注的特征串。
-- AC-UI-90-3【前端】【M3】：CI 脚本读取 token 定义文件，按 6.2 节的组合清单（L01～L24、D01～D24、头像调色板）用 WCAG 公式计算对比度，任一组合低于要求即失败；清单中出现 token 文件里不存在的名字也失败。
+- AC-UI-90-3【前端】【M3】：CI 脚本读取 token 定义文件，按 6.2 节的组合清单（L01～L26、D01～D26、头像调色板）用 WCAG 公式计算对比度，任一组合低于要求即失败；清单中出现 token 文件里不存在的名字也失败。
 - AC-UI-90-4【前端】【M3】【Web】：axe-core 扫描登录、会话列表、聊天页、通讯录、新的朋友、资料卡、设置，无 `color-contrast` 和 `button-name` 违规（M3 浅色；M4 起深色再扫一遍）。
 - AC-UI-90-5【前端】【M3】：CI 检查 token 文件中 `color.brand*`、`color.bubble.self*` 的每个值，HSL 色相不在 120°～165° 区间或饱和度 ≤ 40%（B-2）。
 - AC-UI-90-6【前端】【M3】【Web】：NF-UI-1 场景下 `performance.measure('convs-render')` 的 3 次中位数 ≤ 500ms，期间 `longtask` 观察器没有超过 100ms 的任务。
@@ -1548,7 +1567,7 @@ FE-010（登录页：昵称、生产构建）、FE-011（会话列表："+"菜�
 | D-UI-09 | 接入模式下 token 怎么交给 H5 / PC | 一期只支持演示登录，接入 fx-sport 时再定；禁止 URL 参数的原则写入 NF-UI-13 | U-5 ③ |
 | D-UI-10 | PC 的 token 是否持久化 | M4 沿用 D4（每次启动重新登录）；接入业务方时随 U-5 再定 | 评审 3.1 节推荐；产品默认，不需要另行拍板（只影响 M4 演示体验，不改变安全基线） |
 | D-UI-11 | `users` 的访问范围 | 按 PRD-social F-SOC-10（自己、好友、有消息的单聊对象、同群成员、30 天内给我发过申请的人），限流每分钟 30 次 | U-4、S-10 |
-| D-UI-12 | 禁言、删消息、解散群、系统通知的客户端界面何时做 | 禁言、删消息、封禁、系统通知随第二批（4.4 节）；解散群随 S-10 提前到 M4（F-UI-33） | X-6 ②、S-10 |
+| D-UI-12 | 禁言、删消息、解散群、系统通知的客户端界面何时做 | 禁言、删消息、封禁、系统通知随第二批（4.4 节）；解散群拆开交付：管理接口解散与"群聊已解散"界面在 M3，客户端解散命令在 M4（F-UI-33 规则 4；一致性复审 D-02） | X-6 ②、S-10 |
 
 ---
 
@@ -1580,6 +1599,8 @@ FE-010（登录页：昵称、生产构建）、FE-011（会话列表："+"菜�
 |---|---|---|---|
 | v0.1 | 2026-11-03 | 初稿：信息架构、F-UI-01～24、视觉规范、服务端 / SDK 缺口 G-UI-01～G-UI-18、非功能、待拍板 D-UI-01～08 | 产品（AI） |
 | v0.2 | 2026-11-03 | 按评审（41 条）和拍板（U-1～U-5、S-1～S-11、X-6）修订：产品名天听；M3 窄屏 + 浅色、桌面居中；通讯录改为好友 + 群聊 + 新的朋友；新增社交页面 F-UI-25～33（M3）、PC 与群管理 F-UI-34～40（M4）、第二批提示 F-UI-41～44；颜色 token 重算并附对比度表；每条 AC 标注里程碑和端；缺口 G-UI-19～25；PRD-core v1.3 变更条目 V-UI-01～16 | 产品（AI） |
+| v0.2（复审后修订） | 2026-11-03 | 按 v0.2 复审（REVIEW-ui-v0.1 第 7 节）7.4 节 10 条修订，不升版本号：关闭 R-UI-03（G-UI-03 严格解析、新增 G-UI-26、G-UI-21 补重连比对与 `convAdded` 清除、F-UI-33 规则 2 / 3 与 AC-UI-33-9～13）；全群禁言标 P1（AC-UI-41-6）；引用改为 PRD-admin v0.2 11.2 节；V-UI-10 补 4002 / 4003 / 4007；`danger`、`border.input` 浅色调值并补 L25 / L26、D25 / D26；AC-UI-14-10 补 DOM 断言。详见 13.7 节 | 产品（AI） |
+| v0.2（一致性复审后修订） | 2026-11-03 | 按 RECHECK-v0.2-2026-11-03 第 6.4 节 U-1～U-3 及 E-08 修订："群聊已解散"提前到 M3（D-02，AC-UI-33-14）；F-UI-18 / F-UI-43 补 `kicked.reason = suspended` 文案（D-08，AC-UI-43-4）；4034 读 `details.bannedUntil`（E-08）；背景文档措辞（D-09）。详见 13.8 节 | 产品（AI） |
 
 ---
 
@@ -1700,17 +1721,78 @@ FE-010（登录页：昵称、生产构建）、FE-011（会话列表："+"菜�
 | 项 | v0.1 | v0.2 |
 |---|---|---|
 | 功能点 | 24 | 44：M3 主体 31 个（F-UI-01～10、12～23、25～33）；M4 主体 9 个（F-UI-11、24、34～40）；第二批 4 个（F-UI-41～44）。M3 功能点中有 M4 / 第二批规则的单独标注 |
-| AC（`trace.py` 正则可识别） | 约 100（其中 2 条 `AC-UI-NF-n` 不可识别） | **272**：M3 185、M4 72、第二批 15；按验证层：【前端】216、端到端 53、（手工）3；标【Web】54 |
+| AC（`trace.py` 正则可识别） | 约 100（其中 2 条 `AC-UI-NF-n` 不可识别） | **280**（含 13.7 节新增 6 条、13.8 节新增 2 条）：M3 191、M4 72、第二批 16、P1 1；按验证层：【前端】221、端到端 56、（手工）3；标【Web】54 |
 | 评审意见 | — | R-UI 41 条：已改 36、部分 3（R-UI-11、23、28）、不采纳 2（R-UI-33、34）；跨 PRD X-01～10：已改 9、部分 1（X-08） |
-| 缺口 | G-UI-01～18 | G-UI-01～25（新增 19～25） |
+| 缺口 | G-UI-01～18 | G-UI-01～26（新增 19～26；G-UI-26 为复审后新增） |
 | PRD-core v1.3 变更 | 4 条差异（X-1～X-4，未申报） | 16 条（V-UI-01～16） |
 | 新增拍板项 | 8 条待拍板 | 0 |
+
+### 13.7 v0.2 复审后修订（2026-11-03）
+
+依据 [REVIEW-ui-v0.1](../review/REVIEW-ui-v0.1.md) 第 7 节（v0.2 复审）7.4 节"冻结前必须做的修改清单"，10 条（含第 10 条建议）全部照做，直接修改 v0.2，不升版本号。
+
+**逐条处理**
+
+| # | 复审出处 | 处理 | 怎么改的 |
+|---|---|---|---|
+| 1 | R-UI-03 缺口 ②（`parseConvId` 不判断参与者、不校验格式） | 已改 | 第 7 节 G-UI-03 改为新增严格解析 `parseConvIdStrict(convId, self)`：`c2c` 恰好三段、两个 ID 符合 userId 格式且按 ASCII 字节序严格升序（规范顺序）、其中之一是 `self`，否则抛出 `invalid` / `notParticipant`；`group` 恰好两段、ID 符合 groupId 格式；`room` 一期为 `invalid`；新增 `peerId(conv)` 保留。写明现状（`protocol.ts` 第 90～95 行），现有 `parseConvId` 只留给 SDK 内部发消息用。F-UI-33 规则 1 改为引用 `parseConvIdStrict`，表中注明各行对应的抛出类型。新增单元测试 AC-UI-33-13 |
+| 2 | R-UI-03 缺口 ①（`loadHistory` 对不在列表里的会话不发请求） | 已改 | 第 7 节新增 **G-UI-26**（M3，P0）：会话不在列表、也没有已加载消息时，`loadHistory` 必须发 `sync {convId, beforeSeq: 2^53−1, limit}` 请求最新一页（不用 `afterSeq: 0`，它返回最早的一页），4032 / 4033 / 4043 原样交给界面，成功时把会话补进列表（同 `refreshConversationsSoon`）；写明现状（`client.ts` 第 222～226 行）。F-UI-33 规则 1 群聊行改为"SDK 向服务端发 `sync`（G-UI-26）"，并规定 `sync` 返回前只显示加载状态、不显示输入框和提示；单聊临时会话行同样按 G-UI-26 请求，4032 按"格式非法"处理。8.2 节 SDK 行、V-UI-14 同步 |
+| 3 | R-UI-03 缺口 ③ 及"快照清除"小缺口 | 已改 | G-UI-21、F-UI-33 规则 3、V-UI-13 补两条：① 重连或刷新会话列表时，原来在列表里、新列表里没有的**群会话**同样生成 `removed: true` 快照（`reason` 缺失）并发出 `convRemoved`，单聊不处理；② 收到同一群的 `convAdded` 时清除快照。G-UI-21 写明现状（`client.ts` 第 279～281 行 `setConversations` 整体覆盖、服务端不补发 `convRemoved`）。另补一条复审没提到的例外：新列表带 `truncated: true`（C-03）时不做此推断，避免把被挤出前 500 个的群误判为"被移出"。新增 AC-UI-33-11（重新被拉进群后输入区恢复） |
+| 4 | R-UI-03 缺口 ③、① 的验收 | 已改 | F-UI-33 新增 AC-UI-33-9【M3】（离线期间被移出，重连后 3 秒内出现"你已不在该群"、输入框消失、标题仍为群名、列表中没有 g1）和 AC-UI-33-10【前端】【M3】（刷新后打开已被移出的群，断言发出了 `sync` 且收到 4033 后才显示"你已不在该群"） |
+| 5 | R-UI-03"M3 收到带 `reason` 的 `convRemoved`"小缺口 | 已改 | F-UI-33 规则 2 改为"M3 **不区分 `reason`**：缺失或为任何值（含 `dissolved`、`left`、未知值）都按'被移出'显示"；规则 4 仍是 M4 的区分。新增 AC-UI-33-12【前端】【M3】（`reason = dissolved` 和未知值都显示"你已不在该群"）；V-UI-13、V-UI-16 注明 M3 不区分。**已被 13.8 节 C-1 调整**：按一致性复审 D-02，`dissolved` 在 M3 就显示"群聊已解散"，规则 2 只覆盖缺失 / `removed` / 不认识的值，AC-UI-33-12 同号改写 |
+| 6 | N-1（全群禁言是 P1） | 已改 | F-UI-41 标题、规则 2（`scope = groupAll`）、规则 3（"群主已开启全员禁言"）标为 **P1**（随 PRD-admin F-ADM-42）；AC-UI-41-5 同号重写为只测永久禁言【第二批】，全群禁言拆为 AC-UI-41-6【前端】【P1】，不属于第二批交付；V-UI-16 文案按"第二批 / P1 / M4"分批标注；第 2 节功能点表 F-UI-41 行、8.1 节引用同步 |
+| 7 | N-2（PRD-admin 引用过时） | 已改 | 先核对 PRD-admin v0.2：对 PRD-core v1.3 的变更在 11.2 节 VA-01～15，第 7 节"禁言、删消息、系统推送：二期"的改动是 VA-01，第 5 节文案表是 VA-12，F-ADM-42 在 6.7 节为 P1。文首"背景文档"改为 PRD-admin v0.2（注明 11.2 节 VA-01～15）；第 14 节导语改为"PRD-admin v0.2 11.2 节（VA-01～15）"，并注明第 7 节的变更见 VA-01；V-UI-16 改为与 VA-12 合并；8.1 节引用改为 PRD-admin v0.2 并按批次列出（F-ADM-24 第一批、F-ADM-42 P1）。G-UI-25 引用的 G-ADM 编号复审已核对一致，不改 |
+| 8 | N-3（4002 / 4003 / 4007 的处理改动未列入变更表） | 已改（选"列入 V-UI-10"，F-UI-19 行为不变） | V-UI-10 增补"4002、4003、4007：由'记录日志'改为'记录日志，提示请求出错'"；F-UI-19 规则 3 第 2 行来源栏、8.2 节 ERRORS.md 行同步写明这三个码 |
+| 9 | 7.2 节对比度备注 | 已改（选"调整色值后加入清单"） | 6.2 节导语"向下取整"改为"四舍五入"（并说明各值与要求的差距都大于 0.005）。浅色 `color.danger` `#D92D20` → **`#C8281C`**（色相 4°，不变），浅色 `color.border.input` `#8A90A0` → **`#7E8496`**（色相 225°）；深色不变。清单新增 L25 `border.input/bg`、L26 `danger/bg`、D25、D26，AC-UI-90-3 的清单范围改为 L01～L26、D01～D26。选调值而不是只注明"只用在 `surface` 上"，是因为表单页的超字提示（F-UI-27 等）可能直接落在 `bg` 上，用途说明无法被 CI 拦住。未读角标用独立的 `color.badge.bg`（`#D92D20`），不受影响（L21、D21 不变） |
+| 10 | 7.1 节 R-UI-04 建议 | 已改 | AC-UI-14-10 补"与打开 `/user/nobody` 的页面相比，除用户 ID 文字和 `data-*` 属性外 DOM 结构相同"（两页显示的 ID 本身不同，所以比 AC-UI-26-2 多排除一项） |
+
+**改动的颜色与复算结果**（WCAG 2.x 公式，脚本复算；旧值 → 新值）
+
+| # | 组合 | 色值 | 对比度 | 要求 |
+|---|---|---|---|---|
+| L19 | `danger` / `surface` | `#C8281C` / `#FFFFFF` | 4.83 → **5.56** | 4.5 ✅ |
+| L20 | `danger` / `chat.bg`（图标） | `#C8281C` / `#EEF0FA` | 4.25 → **4.89** | 3 ✅ |
+| L23 | `border.input` / `surface` | `#7E8496` / `#FFFFFF` | 3.19 → **3.73** | 3 ✅ |
+| L25（新增） | `border.input` / `bg` | `#7E8496` / `#F2F3F7` | 原 2.88 → **3.37** | 3 ✅ |
+| L26（新增） | `danger` / `bg` | `#C8281C` / `#F2F3F7` | 原 4.36 → **5.02** | 4.5 ✅ |
+| D25（新增） | `border.input` / `bg` | `#737A8A` / `#111318` | **4.32** | 3 ✅ |
+| D26（新增） | `danger` / `bg` | `#F2685D` / `#111318` | **6.12** | 4.5 ✅ |
+
+新色值另在浅色 `surface.selected` 上也达标（`danger` 4.69、`border.input` 3.14）。余量最小的三组仍是 L05、D15、L15（6.2 节说明 1 不变）。
+
+**编号变化**：新增 AC-UI-33-9～13、AC-UI-41-6；AC-UI-41-5 同号重写（只保留永久禁言）；新增缺口 G-UI-26；6.2 节新增 L25、L26、D25、D26。AC 共 278 条，编号均为 `AC-UI-xx-n`，无重复（已用 `trace.py` 正则核对）。
+
+**自查：R-UI-03 是否关闭**
+
+| 复审指出的问题 | 现在的落点 | 受影响 AC 是否可实现 |
+|---|---|---|
+| ① 打开不在列表里的会话时 `loadHistory` 不发请求，收不到 4033 / 4043 | G-UI-26（M3 P0，写明 sdk-ts 现状）；F-UI-33 规则 1 群聊行；8.2 节 SDK 行；V-UI-14 | AC-UI-33-5（刷新后再打开）、AC-UI-33-6 由 `sync` 的 4033 / 4043 驱动；AC-UI-33-10 直接断言请求和顺序 ✅ |
+| ② `parseConvId` 不判断参与者、不校验格式 | G-UI-03 改为 `parseConvIdStrict`（写明规则和 sdk-ts 现状）；F-UI-33 规则 1 引用它 | AC-UI-33-1（`abc` 只有一段 → `invalid`）、AC-UI-33-2（`c2c:bob:carol` → `notParticipant`，本地判断、不发 `sync`）；AC-UI-33-13 覆盖边界 ✅ |
+| ③ 离线期间被移出后上线无提示 | G-UI-21 ①、F-UI-33 规则 3、V-UI-13（重连 / 刷新列表比对生成快照并发 `convRemoved`） | AC-UI-33-9 ✅ |
+| 小缺口：重新被拉进群时清除快照 | G-UI-21 ②、F-UI-33 规则 3 | AC-UI-33-11 ✅ |
+| 小缺口：M3 收到带 `reason` 的 `convRemoved` | F-UI-33 规则 2、规则 4（13.8 节 C-1 后：缺失 / `removed` / 不认识的值 → 被移出；`dissolved` → 群聊已解散） | AC-UI-33-12、AC-UI-33-14 ✅ |
+| 缺口清单没有列出所依赖的 SDK 能力 | 第 7 节 G-UI-03、G-UI-21、G-UI-26 均为 M3 P0，并写明 sdk-ts 的现状和代码位置；8.2 节 SDK 行列出 | — |
+
+结论：复审 7.1 节列出的 3 处 SDK 缺口和 2 处小缺口都已在规则、缺口清单和 AC 中落实，**R-UI-03 关闭**。按复审 7.5 节，作者自查完成后可冻结为 v1.0。
+
+### 13.8 一致性复审后修订（2026-11-03）
+
+依据 [RECHECK-v0.2-2026-11-03](../review/RECHECK-v0.2-2026-11-03.md) 第 6.4 节 U-1～U-3（对应 D-02、D-08、D-09），并按 3.2 节 E-08 检查了 F-UI-43。只改本 PRD；PRD-admin / PRD-ops / PRD-social 的对应修改不在本次范围。
+
+| # | 出处 | 处理 | 怎么改的 |
+|---|---|---|---|
+| C-1 | U-1（D-02 解散群批次：服务端 + 管理接口 + `convRemoved.reason` + H5"群聊已解散"放 M3，客户端解散命令放 M4） | 已改 | F-UI-33 规则 2 改为"`reason` 缺失、为 `removed` 或为不认识的值"按被移出显示，并说明重连比对生成的快照没有 `reason`（离线期间被解散的群本次登录内显示"你已不在该群"，刷新后 `sync` 返回 4043 显示"群聊不存在或已解散"）。规则 4 标题改为"按 `reason` 区分"，表中缺失 / `removed` / 不认识的值、`dissolved` 标【M3】，`left` 标【M4】；表下说明改为"群聊已解散"在 M3 随管理接口解散（PRD-admin F-ADM-24 第一批、PRD-social F-SOC-26 的 M3 部分）交付，M4 起客户端解散同样适用。功能点标题和第 2 节表格改为"`reason = left` 为 M4"。**与 13.7 节的对齐**：13.7 节第 5 条"M3 不区分 `reason`"被本条取代，AC-UI-33-12 同号改写为 `dissolved` → "群聊已解散"、未知值和无 `reason` → "你已不在该群"。U-1 建议的新 AC 编号 AC-UI-33-9 已被 13.7 节占用，改为 **AC-UI-33-14**【M3】（托管群被 `DELETE /admin/groups/g1` 解散后 3 秒内出现"群聊已解散"）；AC-UI-33-7 保持 M4。第 0 节"第二批"行、第 10 节 D-UI-12、V-UI-16（"群聊已解散"改到 M3）、V-UI-13、G-UI-21（`reason` 的 `removed` / `dissolved` 为 M3）、8.2 节（`convRemoved.reason` 和管理接口解散拆成单独的 M3 行，`groupDissolve` 与 `reason = left` 留在 M4）同步 |
+| C-2 | U-2（D-08 封禁后在线被踢） | 已改 | F-UI-18 文案表增加"4012 / `suspended`（第二批）"行：有 `until` 时"账号已被封禁，解封时间：{YYYY-MM-DD HH:mm}"，`until = null` 时"账号已被封禁"；表下补"`until` 为毫秒、按本机时区格式化；`reason` 不认识时按关闭码取文案（4012 → '账号已被下线'），兼容老 SDK"。F-UI-43 规则 2 写死"服务端下发 `kicked {reason: "suspended", until}` 并以 4012 关闭，按 F-UI-18 弹窗，不自动重连"。AC-UI-43-3 改为断言"账号已被封禁，解封时间：{封禁时间 + 1 天}"和点"确定"后回登录页、不自动重连；另新增 **AC-UI-43-4**【前端】【第二批】（`until = null` → "账号已被封禁"；不认识的 `reason` + 4012 → "账号已被下线"）。V-UI-16、G-UI-25 补 `kicked.reason = suspended` |
+| C-3 | U-3（D-09 过期引用） | 已改 | 文首"背景文档"的 PRD-admin 引用改为"[PRD-admin v0.2]（第一批的解散群提示、第二批的客户端行为；对 PRD-core v1.3 的变更见其 11.2 节 VA-01～15）"（v0.1 → v0.2 已在 13.7 节第 7 条改过，本次补上"第一批的解散群提示"）；4.4 节开头"以 PRD-admin v0.2 与 errors.json 定稿为准"保留 |
+| C-4 | E-08（4034 的 scope 只有 `admin`，第二批 `/demo/login` 也返回它） | 已改 | F-UI-43 规则 1 写明 `/demo/login` 返回 HTTP 403 / 4034 USER_BANNED、响应格式与管理接口相同、解封时间在 `details.bannedUntil`（原文写成顶层 `bannedUntil`）；补充说明 4034 不是 ws 码，AC-UI-19-3 的 ws 码遍历覆盖不到，文案放在登录页的 HTTP 错误映射里、由 AC-UI-43-1／2 覆盖，sdk-ts 枚举含 4034（生成器只跳过 `console`）。AC-UI-43-2 的模拟应答改为 `{code: 4034, details: {bannedUntil: null}}`；G-UI-25 同步。errors.json 4034 说明列的修改属于 PRD-admin，不在本文件 |
+
+**编号变化**：新增 AC-UI-33-14、AC-UI-43-4；AC-UI-33-12、AC-UI-43-2、AC-UI-43-3 同号改写。AC 共 280 条（M3 191、M4 72、第二批 16、P1 1），编号均为 `AC-UI-xx-n`，无重复（已用 `trace.py` 正则核对）。R-UI-03 的自查结论不变（13.7 节自查表已按 C-1 更新）。
 
 ---
 
 ## 14. 对 PRD-core v1.3 的变更条目
 
-> 与 PRD-social 13.1 节（V-01～V-24，社交与群管理）、PRD-admin 第 8 节（第二批）一起合入 PRD-core v1.3。下表只列本 PRD 带来的、PRD-social 没有覆盖的改动；与 PRD-social 重叠的条目注明对应编号。
+> 与 PRD-social 13.1 节（V-01～V-24，社交与群管理）、PRD-admin v0.2 11.2 节（VA-01～15，含第二批）一起合入 PRD-core v1.3。PRD-core 第 7 节"禁言、删消息、系统推送：二期"的改动见 PRD-admin VA-01，本表不重复。下表只列本 PRD 带来的、PRD-social 没有覆盖的改动；与 PRD-social 重叠的条目注明对应编号。
 
 | # | 位置（PRD-core v1.2） | 变更 | 对现有 AC / 用例的影响 | 里程碑 |
 |---|---|---|---|---|
@@ -1723,13 +1805,13 @@ FE-010（登录页：昵称、生产构建）、FE-011（会话列表："+"菜�
 | V-UI-07 | AC-MSG-01-3、C-28、FE-013 | 超过 5000 码点时以 C-28 为准：实时显示"已超出 N 字"、发送按钮禁用、不发送。AC-MSG-01-3 改为"5000 个字符可以发送；5001 个字符时显示'已超出 1 字'、发送按钮禁用；5000 个 emoji 可以发送"；"消息过长"只在服务端返回 4006 时提示；FE-013 同步 | TC-MSG-01-03、TC-MSG-01-04 步骤和断言更新 | M3 |
 | V-UI-08 | F-MSG-03 规则 2、AC-MSG-03-3 / 03-4 | 手动重发的操作为"点击失败图标 → 确认框'重发'"（长按菜单中的"重发"不确认） | 结果不变；TC-MSG-03-05、TC-MSG-03-07 步骤更新 | M3 |
 | V-UI-09 | F-USER-02、AC-GRP-02-4 | 显示名 = 本机备注 > 昵称 > userId；单聊会话名用 `conv.name`，群消息发送者用 `users`（PRD-social V-14）。AC-GRP-02-4 的"一期显示 `userId`，有 F-USER-02 后显示昵称"改为"显示发送者昵称，没有昵称时显示 `userId`" | TC-GRP 中断言 `userId` 的用例改为断言显示名 | M3 |
-| V-UI-10 | ERRORS.md 第 3 节（客户端处理列） | 4001：改为"提示'当前版本过低，请刷新页面'"；4008：改为"记录日志，提示'请求出错'"（SDK 缺陷，不自动重新生成） | 无（只改文案约定） | M3 |
+| V-UI-10 | ERRORS.md 第 3 节（客户端处理列） | 4001：改为"提示'当前版本过低，请刷新页面'"；4008：改为"记录日志，提示'请求出错'"（SDK 缺陷，不自动重新生成）；4002、4003、4007：由"记录日志"改为"记录日志，提示'请求出错'"（开发期缺陷类，F-UI-19 规则 3 第 2 行、规则 5） | 无（只改文案约定） | M3 |
 | V-UI-11 | 第 5 节文案表 | 增补 4001、4005、4030、4040、4045、4091、4132～4134、4292、4429、演示登录、复制、截断等文案（F-UI-19 规则 3）；文案按"命令 + 错误码"映射（同 PRD-social V-17） | 现有文案不变 | M3 |
 | V-UI-12 | C-20 | 占位头像颜色算法明确为 `FNV-1a-32(UTF-8(id)) mod 8`，用户用 `userId`、群用 `groupId`；新增共享测试数据 `protocol/vectors/avatar.json` | 无 | M3 |
-| V-UI-13 | F-GRP-03、SDK 设计说明第 3 节 | SDK 收到 `convRemoved` 后从会话列表移除（不变，C-37 不变），但保留会话快照 `{convId, name, type, removed: true, reason?}` 到本次登录结束（DECISIONS 第 3 节）；界面据此显示"你已不在该群"（M4 按 `reason` 区分，PRD-social V-11） | AC-GRP-03-3 不变 | M3 |
-| V-UI-14 | 第 5 节"聊天页 `/chat/:convId`"行 | 补充：`convId` 格式非法或当前用户不是单聊参与者时跳转到会话列表并提示"会话不存在"；群聊不在列表时按 4033 / 4043 显示（F-UI-33） | 无 | M3 |
+| V-UI-13 | F-GRP-03、SDK 设计说明第 3 节 | SDK 收到 `convRemoved` 后从会话列表移除（不变，C-37 不变），但保留会话快照 `{convId, name, type, removed: true, reason?}` 到本次登录结束（DECISIONS 第 3 节）；重连或刷新会话列表后消失的群会话同样生成快照（`reason` 缺失）并发出 `convRemoved`（单聊不处理，列表 `truncated` 时不推断）；收到同一群 `convAdded` 时清除快照（G-UI-21）；界面据此显示"你已不在该群"（`reason` 缺失 / `removed` / 不认识的值）；`dissolved` 在 M3 显示"群聊已解散"，`left` 在 M4 显示"你已退出该群聊"（PRD-social V-11、一致性复审 D-02） | AC-GRP-03-3 不变 | M3 |
+| V-UI-14 | 第 5 节"聊天页 `/chat/:convId`"行 | 补充：`convId` 按 `parseConvIdStrict` 严格解析（G-UI-03），格式非法或当前用户不是单聊参与者时跳转到会话列表并提示"会话不存在"；打开本地没有的会话时 SDK 向服务端请求最新一页（G-UI-26），群聊按返回的 4033 / 4043 显示（F-UI-33） | 无 | M3 |
 | V-UI-15 | F-AUTH-04 | 演示登录接受可选 `nickname`（1～32 码点），登录时写入；只影响演示模式（G-UI-23） | AC-AUTH-04-* 不变 | M3 |
-| V-UI-16 | 第 5 节文案表（第二批，与 PRD-admin 第 8 节"PRD-core 升 v1.3"条目合并） | 增补："你已被禁言，解除时间：{时间}" / "你已被禁言" / "群主已开启全员禁言"（4031、`muted`）；"该消息已被删除"（`msgDeleted`）；"账号已被封禁，解封时间：{时间}" / "账号已被封禁"（4034）；"群聊已解散"（`convRemoved.reason = dissolved`，随 S-10 在 M4）；"你已退出该群聊"（`reason = left`，M4） | 无（新增） | 第二批 / M4 |
+| V-UI-16 | 第 5 节文案表（与 PRD-admin v0.2 11.2 节 VA-12 合并） | 增补，按批次：**第二批**——"你已被禁言，解除时间：{时间}" / "你已被禁言"（4031、`muted`）；"该消息已被删除"（`msgDeleted`）；"账号已被封禁，解封时间：{时间}" / "账号已被封禁"（4034、`kicked.reason = suspended`）。**P1**（随 PRD-admin F-ADM-42 全群禁言）——"群主已开启全员禁言"。**M3**——"群聊已解散"（`convRemoved.reason = dissolved`，随管理接口解散群，PRD-admin F-ADM-24 第一批，一致性复审 D-02）。**M4**——"你已退出该群聊"（`reason = left`）。`reason` 缺失、为 `removed` 或不认识的值显示"你已不在该群"（F-UI-33 规则 2） | 无（新增） | M3 / 第二批 / P1 / M4 |
 
 另：PRD-core F-SYS-01 规则 4、C-10 中"KMP SDK"改为"Kotlin、Swift SDK 各自一致"已由 PRD-social V-16 列出，本 PRD 不重复。
 

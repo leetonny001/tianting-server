@@ -2,7 +2,7 @@
 
 | 项 | 内容 |
 |---|---|
-| 版本 | **v0.2（修订稿，待复审）** |
+| 版本 | **v0.2（修订稿，已按一致性复审修订，待核对 diff 后冻结）** |
 | 作者 | 产品（AI） |
 | 拍板人 | Frank |
 | 日期 | 2026-11-03 |
@@ -10,7 +10,7 @@
 | 取代 | [PRD-admin-v0.1](PRD-admin-v0.1.md) |
 | 产品名 | 天听（DECISIONS U-1） |
 | 依据（已拍板） | X-1 ②（独立 `console-server`）、X-2 ②（共用登录服务、运维账号独立空间、自建账号 + 强制 TOTP、预留 SSO）、X-3 ②（Postgres）、X-4 ②（审计 P0、哈希链、写失败则操作失败、在线 1 年 + 加密归档 3 年）、X-5 ②（管理接口独立内网端口、分密钥、限定权限、请求签名）、X-6 ②（分两批；因 S-3，第一批含社交管理与解散群）、X-7（法务确认前单聊正文不可查看；群消息按 ②）、X-8 ②、X-9 ②；S-3、S-9、S-10、S-11 ②；2.5 节（Android Kotlin / iOS Swift，不用 KMP） |
-| 背景材料 | [PRD-core v1.2](PRD-core-v1.2.md)（冻结）、[PRD-social v0.2](PRD-social-v0.2.md)、[PRD-ops v0.1](PRD-ops-v0.1.md) 与 [REVIEW-ops](../review/REVIEW-ops-v0.1.md)（运维 PRD 正在并行修订到 v0.2）、[ARCH-v1](../arch/ARCH-v1.md)、[ADMIN.md](../../protocol/ADMIN.md)、[ERRORS.md](../../protocol/ERRORS.md)、[errors.json](../../protocol/errors.json)、`server/internal/admin`、`server/internal/app/app.go` |
+| 背景材料 | [PRD-core v1.2](PRD-core-v1.2.md)（冻结）、[PRD-social v0.2](PRD-social-v0.2.md)、[PRD-ops v0.2](PRD-ops-v0.2.md) 与 [REVIEW-ops](../review/REVIEW-ops-v0.1.md)、[一致性复审](../review/RECHECK-v0.2-2026-11-03.md)、[ARCH-v1](../arch/ARCH-v1.md)、[ADMIN.md](../../protocol/ADMIN.md)、[ERRORS.md](../../protocol/ERRORS.md)、[errors.json](../../protocol/errors.json)、`server/internal/admin`、`server/internal/app/app.go` |
 | 被引用 | **第 4 节"console-server 公共基座"是管理后台和运维后台的唯一规格**，PRD-ops v0.2 引用它，只写运维空间的角色和差异 |
 | 修订记录 | 第 17 节（每条评审意见 → 已改 / 部分 / 不采纳 + 理由） |
 
@@ -147,7 +147,8 @@ X-5（F-KEY-01～05，im-server，约 4.5 人日）
 | 搜索 | userId / groupId：精确或前缀匹配，**区分大小写**（C-18）；昵称 / 群名：前缀匹配，ASCII 字母**不区分大小写**，其他字符按码点精确比较；关键字去首尾空白后 1～64 字符；`%`、`_`、`\` 在服务端转义后再做 `LIKE`（`_` 是合法 userId 字符） |
 | 敏感查询的参数 | 带理由的查询（在线设备、单聊元数据、正文）一律 `POST` + JSON 请求体，userId、会话 ID、理由**不出现在 URL** 里（不进浏览器历史和访问日志） |
 | 时间 | 服务端毫秒时间戳；页面按浏览器时区显示到秒 |
-| 理由（`reason`） | 去首尾空白后 4～200 字符，且不能由同一个字符重复组成（两个后台统一，替代 v0.1 的 2～200）；写入审计 |
+| 理由（`reason`） | 去首尾空白后 4～200 个字符（按 Unicode 码点计数），且不能由同一个字符重复组成（两个后台统一，替代 v0.1 的 2～200）；写入审计。运维后台排查接口的说明字段同样叫 `reason`、规则相同 |
+| 每日上限 | "每天"按 Asia/Shanghai 自然日计算；超出返回 429 / 4292（不可自动重试，两个后台统一） |
 | 工单号（`ticket`） | 格式由 `CON_TICKET_PATTERN` 配置（默认 `^[A-Za-z0-9_-]{3,32}$`）；正文查看必填，其他操作选填 |
 | 错误 | 响应体 `{code, msg, reason?, details?}`；HTTP 状态取 errors.json 的 `http`；前端按 `code`（必要时加 `reason`）显示文案，不直接展示 `msg`。console-server 把 im-server 返回的错误码**原样透传**（4042、4043、4090 等） |
 | 前端对错误码的处理 | 4014 → 登录页；4016 → 首次设置页；4038 → TOTP 弹框，通过后自动重放原请求一次；4039 → "填工单号与理由 + TOTP"弹框；4037 → 重新 `GET /console/api/session` 取令牌后重放一次，仍失败则提示刷新；5031 → "审计服务不可用，操作未执行"；5040 → "操作结果未知，请刷新确认，不要重复提交"；其他按码显示文案 |
@@ -176,7 +177,7 @@ X-5（F-KEY-01～05，im-server，约 4.5 人日）
 1. 新增配置 `IM_ADMIN_ADDR`（默认 `127.0.0.1:8081`，`off` 表示不开）。`/admin/*` 全部路由（包括测试接口 `/admin/test/*`）**只注册在这个地址上**；对外端口（`IM_ADDR`）只保留 `/ws`、`/healthz`、`/readyz`，以及测试 / 演示环境的 `/demo/login`。
 2. 生产环境（`IM_ENV=production`）下 `IM_ADMIN_ADDR` 必须启用 TLS（`IM_ADMIN_TLS_CERT` / `IM_ADMIN_TLS_KEY`）；只有绑定回环地址（`127.0.0.1` / `::1`）时允许明文（同机部署的业务服务端）。不满足时拒绝启动。
 3. 可选 `IM_ADMIN_ALLOWED_CIDRS`：来源 IP 不在列表内直接关闭连接前返回 403 / 4030；只看 TCP 对端地址，**不解析 `X-Forwarded-For`**（管理端口前面不放反向代理）。
-4. `IM_ADMIN_ADDR` 与 `IM_METRICS_ADDR` 不能相同（指标端口免鉴权）；相同时拒绝启动。
+4. `IM_ADMIN_ADDR`、`IM_OPS_ADDR`、`IM_METRICS_ADDR`、`IM_PPROF_ADDR` 中已启用的地址两两不能相同（指标端口免鉴权；运维端口见 PRD-ops F-OPS-16）；相同时拒绝启动。
 5. 集群下每个节点都开管理地址，业务方经内网负载均衡访问；签名的 nonce 去重需要共享存储（F-KEY-03 规则 5）。
 
 **验收标准**
@@ -184,7 +185,7 @@ X-5（F-KEY-01～05，im-server，约 4.5 人日）
 - AC-KEY-01-2【后端】：输入 `IM_ENV=production`、`IM_ADMIN_ADDR=10.0.0.5:8081`、未配置 TLS 证书；操作 启动 im-server；预期 进程以非 0 退出，日志指出缺少管理端口 TLS；错误码 —。
 - AC-KEY-01-3【后端】：输入 `IM_ENV=production`、`IM_ADMIN_ADDR=127.0.0.1:8081`、无 TLS；操作 启动；预期 启动成功（回环例外）；错误码 —。
 - AC-KEY-01-4【后端】：输入 `IM_ADMIN_ALLOWED_CIDRS=10.0.0.0/8`；操作 从 `192.168.1.10` 发正确签名的请求，并带 `X-Forwarded-For: 10.0.0.1`；预期 HTTP 403，业务未执行；错误码 4030。
-- AC-KEY-01-5【后端】：输入 `IM_ADMIN_ADDR` 与 `IM_METRICS_ADDR` 都设为 `127.0.0.1:9090`；操作 启动；预期 非 0 退出；错误码 —。
+- AC-KEY-01-5【后端】：输入 两组配置分别启动：① `IM_ADMIN_ADDR` 与 `IM_METRICS_ADDR` 都设为 `127.0.0.1:9090`；② `IM_ADMIN_ADDR` 与 `IM_OPS_ADDR` 都设为 `127.0.0.1:8081`；操作 启动；预期 两组都非 0 退出，日志指出冲突的两个地址；错误码 —。
 - AC-KEY-01-6【后端】：输入 `IM_TEST_MODE=1`；操作 在对外端口请求 `POST /admin/test/clock`；预期 404；在管理地址上请求成功；错误码 —。
 
 ### F-KEY-02 调用方密钥与权限范围（第一批前置，P0）
@@ -233,8 +234,8 @@ X-5（F-KEY-01～05，im-server，约 4.5 人日）
 ### F-KEY-03 请求签名与防重放（第一批前置，P0）
 
 **规则**
-1. 请求头：`X-IM-Caller`（调用方 id）、`X-IM-Timestamp`（毫秒）、`X-IM-Nonce`（16～64 个 base64url 字符）、`X-IM-Signature`（base64url）；可选 `X-IM-Operator`（后台操作人，格式 `{space}:{accountId}`，如 `admin:a_01J…`）、`X-Request-Id`（≤ 64 字符）。
-2. 待签名串（UTF-8，`\n` 分隔）：`METHOD`、`PATH`（含按键名排序、RFC 3986 编码的查询串）、`TIMESTAMP`、`NONCE`、`hex(SHA-256(body))`（无 body 用空串的哈希）、`X-IM-Operator`（没有则空串）、`X-Request-Id`（没有则空串）。HMAC：`HMAC-SHA256(secret, 串)`；Ed25519：私钥对串签名，im-server 只保存公钥。**操作人和请求 ID 在签名范围内**，中间人不能改。
+1. 请求头：`X-IM-Caller`（调用方 id）、`X-IM-Timestamp`（毫秒）、`X-IM-Nonce`（16～64 个 base64url 字符）、`X-IM-Signature`（base64url）；可选 `X-IM-Operator`（后台操作人，格式 `{space}:{accountId}`，如 `admin:a_01J…`）、`X-Request-Id`（≤ 64 字符）、`X-IM-Target-Node`（目标节点 ID）。
+2. 待签名串（UTF-8，`\n` 分隔）：`METHOD`、`PATH`（含按键名排序、RFC 3986 编码的查询串）、`TIMESTAMP`、`NONCE`、`hex(SHA-256(body))`（无 body 用空串的哈希）、`X-IM-Operator`（没有则空串）、`X-Request-Id`（没有则空串）、`X-IM-Target-Node`（没有则空串，共 8 行）。HMAC：`HMAC-SHA256(secret, 串)`；Ed25519：私钥对串签名，im-server 只保存公钥。**操作人和请求 ID 在签名范围内**，中间人不能改。节点运维接口（PRD-ops F-OPS-16）复用本规则：调用方 `console-ops`、Ed25519、每节点一把独立私钥（节点只存公钥），`X-IM-Target-Node` 必填且必须等于本节点 `IM_NODE_ID`，失败同样 401 / 4017。
 3. 时间窗口：`|服务端时间 − X-IM-Timestamp| ≤ 300 秒`（[IM 钟]），超出拒绝。
 4. nonce：同一调用方 10 分钟内重复的 nonce 拒绝；只有签名校验通过的请求才登记 nonce（防止用垃圾请求挤占）。
 5. nonce 存储：单节点在内存（容量上限 100 万条，满时拒绝新请求并返回 503 / 5030，打告警日志）；集群（B6）存 Redis（`SET NX EX 600`）。重启后内存清空：重启后 5 分钟内的重放窗口靠时间戳窗口兜底，记为已接受风险（第 13.2 节）。
@@ -292,7 +293,7 @@ X-5（F-KEY-01～05，im-server，约 4.5 人日）
 |---|---|
 | console-server | 后台服务（独立仓库，待建）。托管两个后台的前端静态资源和 `/console/api/*`，以调用方身份调用 im-server 管理接口和节点运维接口 |
 | 账号空间（space） | `admin`（管理后台）或 `ops`（运维后台）。一个账号只属于一个空间；角色、会话、审计记录都带空间；**一个空间的任何账号或角色都不能读取、创建、修改另一个空间的账号** |
-| 空间超管 | 每个空间里拥有账号管理权限的角色：`admin` 空间为 `super_admin`；`ops` 空间为运维超管（角色名由 PRD-ops 定义，v0.1 为 `ops-admin`） |
+| 空间超管 | 每个空间里拥有账号管理权限的角色：`admin` 空间为 `super_admin`；`ops` 空间为 `ops_superadmin`（PRD-ops F-OPS-02） |
 | 会话 | 服务端会话，浏览器只持有随机会话 ID；分两种状态：`setup`（首次设置中，只能调用设置接口）和 `full` |
 | step-up | 重新验证：在已登录的会话里再次输入当前 TOTP |
 | 审计 intent / result | 操作前写的记录 / 操作后写的结果记录，用同一个 `requestId` 关联 |
@@ -303,12 +304,12 @@ X-5（F-KEY-01～05，im-server，约 4.5 人日）
 1. **一个二进制、两个监听地址**：`CON_ADMIN_ADDR`（管理后台）、`CON_OPS_ADDR`（运维后台），各自绑定一个空间和一个对外域名（`CON_ADMIN_ORIGIN`、`CON_OPS_ORIGIN`，如 `https://admin.console.example.internal`）。`CON_SPACES=admin,ops`（默认两个都开）；可以只开一个，从而把两个空间部署成两组实例（同一份代码），部署上的隔离不需要改需求。
 2. 在一个监听地址上收到的会话 Cookie，只认属于该空间的会话；空间不符按无会话处理（401 / 4014）。
 3. **只在内网 / VPN 后可达**：每个空间各自配置 `CON_ADMIN_ALLOWED_CIDRS` / `CON_OPS_ALLOWED_CIDRS`，不在范围内的请求（包括登录页和静态资源）返回 403 / 4030。来源 IP 只在 TCP 对端属于 `CON_TRUSTED_PROXIES` 时才从 `X-Forwarded-For` 取（从右往左取第一个不可信地址），否则用 TCP 对端地址。
-4. 生产环境只允许 HTTPS（console-server 自己终止 TLS，或由可信代理终止），响应带 `Strict-Transport-Security: max-age=31536000`。
+4. 生产环境只允许 HTTPS（console-server 自己终止 TLS，或由可信代理终止），响应带 `Strict-Transport-Security: max-age=31536000`。由可信代理终止 TLS 时，请求必须带 `X-Forwarded-Proto: https`，否则 403 / 4030。
 5. 存储：Postgres 数据库 `console`，schema `auth`（账号、角色、会话、失败计数、激活码、通知）、`audit`（审计记录、链头、锚定记录）、`biz`（导入任务、推送草稿与发送记录、正文授权）。数据库角色：`console_owner`（只用于 `console-server migrate up`，运行时不用）、`console_app`（运行时：`auth`、`biz` 读写；`audit` 只有 INSERT + SELECT，链头表 `audit.chain_head` 只有 SELECT + UPDATE）、`console_archiver`（只给归档任务：`audit` 的 SELECT 和对**已归档分区**的 DROP，见 F-CON-09）。
 6. 备份：`console` 库纳入 ARCH 3.4 的备份体系（每日全量 + WAL 连续归档，备份文件加密，ARCH S10）；恢复演练每季度一次。
 7. 多实例：console-server 无状态（会话、计数、授权都在库里），可以 ≥ 2 个实例。
-8. 调用 im-server：主调用方 `console`（F-KEY-02 规则 4），Ed25519 私钥 `CON_IM_SIGNING_KEY`；第二批再配 `console-msgread` 私钥 `CON_IM_MSGREAD_KEY`。运维节点接口的凭证和签名方式由 PRD-ops 引用 F-KEY-03（每节点独立公钥）。
-9. **生产启动保护**（`CON_ENV=production`，任一不满足拒绝启动）：`CON_TEST_MODE` 未开启；已开启的空间配置了 `*_ALLOWED_CIDRS` 且不含 `0.0.0.0/0`、`::/0`；`*_ORIGIN` 为 `https://`；`CON_DATA_KEYS` 合格（F-CON-11）；`CON_IM_SIGNING_KEY` 已配置；`CON_AUDIT_ANCHOR` 已配置（F-CON-08）；数据库连接使用 `console_app` 且实际权限检查通过（启动时尝试对一张审计探针表执行 `UPDATE`，**必须失败**）。
+8. 调用 im-server：主调用方 `console`（F-KEY-02 规则 4），Ed25519 私钥 `CON_IM_SIGNING_KEY`；第二批再配 `console-msgread` 私钥 `CON_IM_MSGREAD_KEY`。运维节点接口按 F-KEY-03 签名（Ed25519，每节点一把独立私钥，节点只存公钥），见 PRD-ops F-OPS-16。
+9. **生产启动保护**（`CON_ENV=production`，任一不满足拒绝启动）：`CON_TEST_MODE` 未开启；已开启的空间配置了 `*_ALLOWED_CIDRS` 且不含 `0.0.0.0/0`、`::/0`；`*_ORIGIN` 为 `https://`；`CON_DATA_KEYS` 合格（F-CON-11）；`CON_IM_SIGNING_KEY` 已配置；`CON_AUDIT_ANCHOR` 已配置（F-CON-08）；数据库连接使用 `console_app` 且实际权限检查通过（启动时尝试对一张审计探针表执行 `UPDATE`，**必须失败**）。各空间 PRD 追加的生产检查（PRD-ops B-OPS-15）一并执行；不满足时**一次列出全部问题**后退出。
 10. 测试模式（`CON_TEST_MODE=1`）注册 `/console/test/clock`、`/console/test/faults`（第 2.4 节）。
 
 **验收标准**
@@ -323,12 +324,12 @@ X-5（F-KEY-01～05，im-server，约 4.5 人日）
 
 **规则**
 1. 账号名：小写字母、数字、`.`、`_`、`-`，3～32 位，**在空间内唯一**（重复返回 409 / 4092）；一个账号对应一个真人，禁止共用。账号表预留 `idp_subject`、`idp_issuer`（SSO，P1）。
-2. **引导**：每个空间的第一个空间超管只能用命令行 `console-server account bootstrap --space admin|ops --username <u>` 创建；该空间已有任何启用的空间超管时命令拒绝执行（非 0 退出）。命令写一条审计（`actor=cli:{操作系统用户}`），输出一次性激活码。网页上没有注册入口。
+2. **引导**：每个空间的第一个空间超管只能用命令行 `console-server account bootstrap --space admin|ops --username <u>` 创建；该空间已有任何启用的空间超管时命令拒绝执行（非 0 退出）。命令写一条审计（`actor=cli:{操作系统用户}@{主机名}`，`action=account.bootstrap`），输出一次性激活码。网页上没有注册入口。
 3. **创建**：空间超管在**本空间**内创建账号（账号名、显示名、角色），系统不生成初始密码，而是生成**一次性激活码**（20 位 base32，24 小时有效，只显示一次，库里只存哈希）。超管通过线下渠道交给本人。
 4. **激活**：本人用"账号名 + 激活码 + 新密码"激活（`POST /console/api/auth/activate`），成功后得到 `setup` 会话，扫码绑定 TOTP 并提交一次正确的动态码后，发放 10 个恢复码（只显示一次）并把会话升为 `full`。激活码错误按登录失败计数（F-CON-04）。激活、绑定的 IP 和 UA 写审计；**每次激活或重置后的首次绑定，给本空间全部空间超管和审计员发安全通知**（F-CON-12），便于发现"超管截留激活码冒充他人"。
 5. **停用 / 启用**：停用后该账号全部会话立即失效，登录按"账号或密码错误"处理（不暴露停用状态）。账号**不能删除**（保证审计中的操作人可查）。
 6. **重置**：空间超管可以对本空间账号"重置密码与二次验证"（一并重置，不单独重置一项）：账号回到"待激活"，旧密码、TOTP、恢复码、全部会话立即作废，生成新激活码。
-7. **跨空间隔离**：`admin` 空间的超管看不到也操作不了 `ops` 空间的账号；反之亦然。运维账号只能由运维超管创建和重置（X-2 ②）。
+7. **跨空间隔离**：`admin` 空间的超管看不到也操作不了 `ops` 空间的账号；反之亦然。运维账号只能由运维超管创建和重置（X-2 ②）。对另一空间的账号 ID 调用任何账号接口一律返回 404 / 4040（不承认其存在），并写一条 `result=denied`、`code=4040` 的审计。
 8. **自我保护**：不能修改自己的角色、不能停用或重置自己；不能让空间内启用的空间超管数降到 0（检查与修改在同一事务内、对该空间的超管集合加锁，防止两个超管并发互相停用）。违反时返回 409 / 4093，状态不变（应急授权见 F-CON-06 规则 6）。
 9. 一个空间超管重置另一个空间超管时，需要第二个空间超管确认（双人复核）：**P1**；P0 只做"立即通知被重置者以外的全部空间超管和审计员"。
 10. 账号创建、角色变更、停用、启用、重置、解锁、激活都写审计，并需要 step-up（F-CON-07）。
@@ -339,7 +340,7 @@ X-5（F-KEY-01～05，im-server，约 4.5 人日）
 - AC-CON-02-3【后端】[C 钟]：输入 创建 kf2 后 24 小时零 1 分钟；操作 用激活码激活；预期 401，提示"账号或密码错误"；错误码 4015。
 - AC-CON-02-4【后端】：输入 kf1 处于 `setup` 会话（已激活、未绑定 TOTP）；操作 调用 `GET /console/api/users?q=u`；预期 401；错误码 4016。
 - AC-CON-02-5【前端】：输入 kf1 处于 `setup` 会话；操作 在地址栏直接打开 `/users`；预期 跳回"绑定二次验证"页；错误码 4016（前端据此跳转）。
-- AC-CON-02-6【后端】：输入 admin 空间超管 a1 的会话；操作 调用 `GET /console/api/accounts?username=ops1`、`POST /console/api/accounts/{ops1 的 id}/reset`；预期 列表不含任何 ops 账号；重置返回 404，ops1 状态不变；错误码 4040。
+- AC-CON-02-6【后端】：输入 admin 空间超管 a1 的会话；操作 调用 `GET /console/api/accounts?username=ops1`、`POST /console/api/accounts/{ops1 的 id}/reset`；预期 列表不含任何 ops 账号；重置返回 404，ops1 状态不变；审计新增一条 `space=admin`、`result=denied`、`code=4040` 的记录；错误码 4040。
 - AC-CON-02-7【后端】：输入 admin 空间只有一个启用的超管 a1；操作 a1 修改自己的角色、停用自己、重置自己；再新建超管 a2 后，a1 修改自己的角色；预期 四次都 409，状态不变；错误码 4093。
 - AC-CON-02-8【后端】：输入 admin 空间只有 a1、a2 两个启用的超管，都已 step-up；操作 a1 停用 a2 与 a2 停用 a1 两个请求并发发出（重复 20 轮，每轮恢复初始状态）；预期 每轮恰好一个成功，另一个返回 409 / 4093 或 401 / 4014（会话已随停用失效），任何一轮结束时启用的超管数都 ≥ 1；错误码 4093、4014。
 - AC-CON-02-9【后端】：输入 超管重置 kf1；操作 用 kf1 原 Cookie 请求、用原密码 + 原 TOTP 登录、用原恢复码登录；预期 三种都失败（401 / 4014、401 / 4015、401 / 4015）；新激活码可以激活；错误码 4014、4015。
@@ -358,13 +359,13 @@ X-5（F-KEY-01～05，im-server，约 4.5 人日）
 7. SSO（P1）：账号有 `idp_subject` 时走 OIDC 登录，仍由 console-server 做角色、会话、审计；每个空间保留至少 1 个本地空间超管作应急。
 
 **验收标准**
-- AC-CON-03-1：输入 已激活账号 kf1、正确密码、当前动态码；操作 登录；预期 200，进入首页，`Set-Cookie` 为 `__Host-con_sid`；错误码 —。
+- AC-CON-03-1：输入 已激活账号 kf1、正确密码、当前动态码；操作 登录；预期 200，进入首页，`Set-Cookie` 为 `__Host-adm_sid`；错误码 —。
 - AC-CON-03-2【后端】：输入 6 种失败情形（不存在、密码错、动态码错、恢复码错、已停用、待激活）；操作 各登录一次；预期 6 次响应的 HTTP 状态、`code`、`msg`、响应头集合完全相同；错误码 4015。
 - AC-CON-03-3【后端】：输入 隔离的测试环境，"不存在账号"与"存在账号密码错误"各 50 次；操作 登录并记录耗时；预期 两组中位数相差 ≤ 30ms；另有单元测试断言不存在的账号也调用了一次 Argon2id；错误码 4015。
 - AC-CON-03-4【后端】[C 钟]：输入 kf1 在步长 T 用码 X 登录成功；操作 在同一步长内用 X 再登录一次，再用 X 做 step-up；预期 两次都失败（401 / 4015），且计入失败次数；错误码 4015。
 - AC-CON-03-5【后端】[C 钟]：输入 步长 T−1、T+1 的码，和 T−2 的码；操作 登录；预期 前两个成功（分别在两个独立用例中），T−2 失败；错误码 4015。
 - AC-CON-03-6：输入 恢复码 R1；操作 用 R1 代替动态码登录，退出后再用 R1 登录；预期 第一次成功，审计有 `auth.recovery_code_used`，本人收到安全通知；第二次 401；错误码 4015。
-- AC-CON-03-7【后端】：输入 登录前浏览器里被预先设置 `__Host-con_sid=X`；操作 登录成功；预期 新 Cookie 值 ≠ X；用 X 请求 `GET /console/api/session` 返回 401；错误码 4014。
+- AC-CON-03-7【后端】：输入 登录前浏览器里被预先设置 `__Host-adm_sid=X`；操作 登录成功；预期 新 Cookie 值 ≠ X；用 X 请求 `GET /console/api/session` 返回 401；错误码 4014。
 - AC-CON-03-8【后端】：输入 密码为特征串 `Pw-CANARY-7f3a91`、动态码 `123456`（错误）；操作 登录失败后扫描 console-server 日志、反向代理访问日志、`audit` 表全部字段；预期 找不到 `Pw-CANARY-7f3a91`，审计中没有动态码字段；错误码 4015。
 - AC-CON-03-9【后端】：输入 剩余 2 个恢复码的账号；操作 登录后调用 `POST /console/api/me/recovery-codes`（未 step-up）；预期 403；step-up 后成功，返回 10 个新码，旧码全部失效，审计有 `auth.recovery_codes_regenerated`；错误码 4038。
 
@@ -376,7 +377,7 @@ X-5（F-KEY-01～05，im-server，约 4.5 人日）
 3. **锁定**（防枚举、防低频锁人）：失败计数按"规范化账号名 + 来源 IP"维护，**不管账号是否存在**；15 分钟内同一键连续失败 5 次，该键锁定 15 分钟。另外按账号名维护全局计数：1 小时内 50 次失败，该账号名对所有 IP 锁定 1 小时。锁定期间的登录**无论凭证是否正确**都返回 429 / 4291；对不存在的账号名同样会锁定、同样返回 4291，所以锁定提示不泄露账号是否存在。
 4. 成功登录清零该"账号名 + IP"的计数。step-up 失败计入同一账号的计数（F-CON-07 规则 4）。
 5. 按 IP 限流：每个 IP 每分钟最多 20 次 `login` + `activate` 请求，超出返回 429 / 4290（与锁定区分）。
-6. 解锁：空间超管可以在页面解锁本空间账号（step-up、写审计）；命令行 `console-server account unlock --space --username` 可以解锁任何账号（应急，写审计 `actor=cli:…`）。
+6. 解锁：空间超管可以在页面解锁本空间账号（step-up、写审计）；命令行 `console-server account unlock --space --username` 可以解锁任何账号（应急，写审计 `actor=cli:{操作系统用户}@{主机名}`、`action=account.unlock`）。
 7. 账号被锁定（键为已存在的账号）时，给本人和本空间空间超管发安全通知。
 8. 失败计数、锁定状态都在 Postgres，多实例一致。
 
@@ -395,8 +396,8 @@ X-5（F-KEY-01～05，im-server，约 4.5 人日）
 
 **规则**
 1. 会话存在 Postgres（`auth.sessions`）；Cookie 只放随机会话 ID（≥ 128 位熵），**库里只存 SHA-256**。
-2. Cookie：`__Host-con_sid`，`HttpOnly`、`Secure`、`SameSite=Strict`、`Path=/`，不设 `Domain`。会话凭证不放 localStorage / sessionStorage。
-3. 过期：空闲 30 分钟；绝对 12 小时。**带请求头 `X-Console-Background: 1` 的请求（自动刷新、轮询）不刷新空闲计时**；页面不可见时前端暂停自动刷新。
+2. Cookie：管理空间 `__Host-adm_sid`，运维空间 `__Host-ops_sid`；`HttpOnly`、`Secure`、`SameSite=Strict`、`Path=/`，不设 `Domain`。会话凭证不放 localStorage / sessionStorage。
+3. 过期：空闲 30 分钟；绝对 12 小时。**带请求头 `X-Console-Background: 1` 的请求（自动刷新、轮询）不刷新空闲计时**；页面不可见时前端暂停自动刷新。由用户操作发起的请求（点击、手动刷新、提交表单）不得带 `X-Console-Background`。经 console-server 认证代理转发到观测组件的请求（运维空间的 Grafana，PRD-ops F-OPS-17），只有 `Sec-Fetch-Mode: navigate` 的请求刷新空闲计时；代理 Cookie 绑定原会话，原会话失效时立即失效。
 4. 失效时机：退出登录；改密码（保留当前会话）；被停用、被重置；角色变化（该账号全部会话失效，重新登录后按新角色）；step-up 连续失败 5 次（F-CON-07）。
 5. 每个账号最多 3 个并发会话，第 4 个登录成功时最早的会话失效；被挤掉的会话下一次请求返回 401 / 4014，`reason: "replaced"`，前端提示"你的账号在别处登录，本次登录已退出"。
 6. 4014 的 `reason`：`none`（没带 Cookie）、`idle`、`absolute`、`loggedOut`、`revoked`（停用 / 重置 / 改角色 / 改密码）、`replaced`。前端只用它选择提示文案。
@@ -404,7 +405,7 @@ X-5（F-KEY-01～05，im-server，约 4.5 人日）
 8. 所有 `/console/api/*` 响应带 `Cache-Control: no-store`。
 
 **验收标准**
-- AC-CON-05-1【后端】：输入 登录成功的响应；操作 检查 `Set-Cookie`；预期 名称 `__Host-con_sid`，含 `HttpOnly`、`Secure`、`SameSite=Strict`、`Path=/`，没有 `Domain`；错误码 —。
+- AC-CON-05-1【后端】：输入 登录成功的响应；操作 检查 `Set-Cookie`；预期 名称 `__Host-adm_sid`，含 `HttpOnly`、`Secure`、`SameSite=Strict`、`Path=/`，没有 `Domain`；错误码 —。
 - AC-CON-05-2【前端】：输入 已登录页面；操作 执行 `document.cookie`、遍历 localStorage / sessionStorage；预期 都找不到会话 ID；错误码 —。
 - AC-CON-05-3【后端】[C 钟]：输入 最后一次普通请求在 T；操作 T+29 分钟发一次普通请求，再过 31 分钟（T+60 分钟）发第二次；预期 第一次 200；第二次 401，`reason=idle`；错误码 4014。
 - AC-CON-05-4【后端】[C 钟]：输入 登录后每 10 分钟发一次普通请求；操作 登录后 12 小时零 1 分钟请求；预期 401，`reason=absolute`；错误码 4014。
@@ -424,11 +425,11 @@ X-5（F-KEY-01～05，im-server，约 4.5 人日）
 
 **规则**
 1. **可叠加角色**：一个账号可以有多个角色（同一空间内），权限取并集。每个空间的角色和权限点由各自的 PRD 定义（管理后台见第 5 节；运维后台见 PRD-ops）。
-2. **白名单**：每个 `/console/api/*` 路由在代码里声明所需权限点（或声明为"只需登录"），未声明的路由启动失败。权限只在服务端判断，前端隐藏菜单只是体验。
+2. **白名单**：每个 `/console/api/*` 路由在代码里声明所需权限点（或声明为"只需登录"），未声明的路由启动失败。权限只在服务端判断，前端隐藏菜单只是体验。各空间的权限点由各自 PRD 定义（管理空间见第 5.2 节，运维空间见 PRD-ops F-OPS-02 规则 1）。
 3. 无权限返回 403 / 4030。已认证的拒绝写审计（`result=denied`）；同一账号 1 分钟内超过 20 次拒绝时，之后的拒绝在该分钟结束时合并为一条（含次数和动作分布）。**未认证的拒绝**（无会话、CSRF 失败、CIDR 拒绝）不进审计表，只写日志和指标 `console_rejected_total{reason}`（防刷爆审计，R-ADM-29）。
-4. **职责分离**：`auditor` 不能与同空间的任何其他角色叠加（授予时返回 409 / 4093）；空间超管默认**没有**正文查看、删除消息、全员推送、审计查看权限（第 5 节）。
+4. **职责分离**：每个空间的 PRD 声明本空间的**互斥角色**，互斥角色不能与同空间任何其他角色叠加（授予时返回 409 / 4093）。管理空间：`auditor`；运维空间：`ops_auditor`、`ops_superadmin`（PRD-ops F-OPS-02）。空间超管默认**没有**正文查看、删除消息、全员推送、审计查看权限（第 5 节）。
 5. 授予敏感角色（管理后台：`moderator`、`auditor`、`super_admin`；运维后台由 PRD-ops 指定）时，给本空间全部审计员发安全通知。
-6. **应急授权**：空间超管可以给自己临时加业务角色（不能加 `auditor`、不能加空间超管），时长 15～240 分钟，需要 step-up + 理由；写审计并立即通知本空间全部审计员和其他空间超管；到期自动撤销（判断时按 [C 钟] 当前时间，不需要定时任务）。这是"不能修改自己角色"（F-CON-02 规则 8）的唯一例外。
+6. **应急授权**：**只在管理空间提供**（权限点 `admin.emergency`），运维空间不提供。空间超管可以给自己临时加业务角色（不能加 `auditor`、不能加空间超管），时长 15～240 分钟，需要 step-up + 理由；写审计并立即通知本空间全部审计员和其他空间超管；到期自动撤销（判断时按 [C 钟] 当前时间，不需要定时任务）。这是"不能修改自己角色"（F-CON-02 规则 8）的唯一例外。运维空间的应急授权接口不注册（调用返回 403 / 4030）；运维超管要获得排障权限只能由另一名运维超管授予 `ops_engineer`（PRD-ops F-OPS-02）。
 
 **验收标准**
 - AC-CON-06-1【后端】：输入 在代码里新增一个没有声明权限点的 `/console/api/*` 路由；操作 运行测试和启动；预期 启动失败（"route without permission"）；错误码 —。
@@ -440,6 +441,7 @@ X-5（F-KEY-01～05，im-server，约 4.5 人日）
 - AC-CON-06-7【后端】[C 钟]：输入 超管 a1；操作 step-up 后为自己申请 30 分钟 `moderator` 应急授权，理由"处理举报 T-1"；31 分钟后调用 `moderator` 才有的接口；预期 申请成功，审计有 `account.emergency_grant`，审计员和其他超管收到通知；31 分钟后 403；错误码 4030。
 - AC-CON-06-8【后端】：输入 超管 a1；操作 应急授权申请 `auditor`、申请 300 分钟、不带理由；预期 三次都 400；错误码 4000。
 - AC-CON-06-9【后端】：输入 超管给 kf1 授予 `moderator`；操作 查审计员的通知；预期 有"kf1 被授予 moderator"通知；错误码 —。
+- AC-CON-06-10【后端】：输入 ops 空间账号已有 `ops_engineer`；操作 运维超管再授予 `ops_superadmin` 或 `ops_auditor`；预期 都 409，角色不变；错误码 4093。
 
 ### F-CON-07 重新验证（step-up）（第一批，P0）
 
@@ -463,7 +465,7 @@ X-5（F-KEY-01～05，im-server，约 4.5 人日）
 
 **规则**
 1. **记录范围**：所有写操作；所有敏感查看（正文、隔离原文、在线设备、单聊元数据、审计查询本身）；认证事件（登录成功 / 失败、退出、锁定、激活、绑定、恢复码使用与重新生成、step-up 失败）；已认证的权限拒绝（F-CON-06 规则 3）；命令行操作（`bootstrap`、`unlock`、`audit verify`、归档）。纯浏览（不含正文、不涉及单聊关系的列表与详情）不记录。
-2. **字段**：`seq`（全局递增，链序）、`id`（UUIDv7）、`ts`、`space`、`phase`（`intent` / `result` / `event`）、`requestId`、操作人（`accountId`、`username`、当时的角色集合；命令行为 `cli:{os 用户}`）、来源 IP（按 F-CON-01 规则 3 解析，完整保存）、UA、`action`（枚举，如 `user.kick`）、`target`（类型 + ID 列表，超过 50 个时记数量和前 50 个）、`params`（脱敏摘要）、`reason`、`ticket`、`result`（`success` / `failure` / `denied` / `unknown`）、`code`、`prevHash`、`hash`。
+2. **字段**：`seq`（全局递增，链序）、`id`（UUIDv7）、`ts`、`space`、`phase`（`intent` / `result` / `event`）、`requestId`、操作人（`accountId`、`username`、当时的角色集合；命令行为 `cli:{操作系统用户}@{主机名}`）、来源 IP（按 F-CON-01 规则 3 解析，完整保存）、UA、`action`（枚举，如 `user.kick`）、`target`（类型 + ID 列表，超过 50 个时记数量和前 50 个）、`params`（脱敏摘要）、`reason`、`ticket`、`result`（`success` / `failure` / `denied` / `unknown`）、`code`、`prevHash`、`hash`。
 3. **不记录**：密码、动态码、恢复码、激活码、会话 ID、CSRF 令牌、任何密钥、**消息正文**、好友备注；推送 `data` 只记长度和 SHA-256（全文在 `biz.push_records`，F-ADM-50）。
 4. **两阶段**：写操作和敏感查看先写 `intent`（含全部参数摘要和理由）；**intent 写入失败则不执行操作、不返回数据，响应 503 / 5031**。执行后写 `result`（同 `requestId`）。result 写入失败时，操作已经生效：响应照常返回真实结果，同时打日志和指标 `console_audit_result_failures_total`（告警）；该 intent 在审计页显示为"结果未知"，由对账任务补齐（F-CON-09 规则 4）。纯查看类（无副作用）只写一条 `event` 记录，写失败则不返回数据（5031）。
 5. **调用 im-server 超时**（默认 10 秒）：不重试写操作，响应 504 / 5040（"结果未知"），result 记为 `unknown`；对账任务按 `requestId` 从 im-server 侧审计（F-KEY-04）补写结论。
@@ -515,7 +517,7 @@ X-5（F-KEY-01～05，im-server，约 4.5 人日）
 1. IM 管理凭证、console 的签名私钥只在 console-server 的服务端配置里；前端代码、构建产物、接口响应、Cookie、日志中都不能出现。
 2. 用户可控内容（昵称、群名、群公告、消息正文、推送内容、审计里的理由）一律按纯文本渲染，禁止 `dangerouslySetInnerHTML` / `innerHTML`（ESLint 规则强制）。
 3. **头像**：后台**不加载业务方传入的外部头像 URL**，统一显示首字母占位（防止向第三方泄露后台人员的 IP 和 UA）；需要看原图时显示 URL 文本（P1：经 console-server 图片代理）。
-4. 响应头：`Content-Security-Policy: default-src 'self'; script-src 'self'; style-src 'self' 'nonce-{每次响应随机}'; img-src 'self' data:; connect-src 'self'; object-src 'none'; base-uri 'none'; frame-ancestors 'none'; form-action 'self'`；`X-Content-Type-Options: nosniff`；`Referrer-Policy: no-referrer`；`Strict-Transport-Security`（生产）；`Cache-Control: no-store`（接口）。**前端组件库选型条件：能在上述 CSP 下工作**；若确实做不到，只允许对 `style-src` 加 `'unsafe-inline'`，并记入 ARCH 实现记录，`script-src` 不能放宽。
+4. 响应头：`Content-Security-Policy: default-src 'self'; script-src 'self'; style-src 'self' 'nonce-{每次响应随机}'; img-src 'self' data:; connect-src 'self'; object-src 'none'; base-uri 'none'; frame-ancestors 'none'; form-action 'self'`；`X-Content-Type-Options: nosniff`；`Referrer-Policy: no-referrer`；`Strict-Transport-Security`（生产）；`Cache-Control: no-store`（接口）。**前端组件库选型条件：能在上述 CSP 下工作**；若确实做不到，只允许对 `style-src` 加 `'unsafe-inline'`，并记入 ARCH 实现记录，`script-src` 不能放宽。各空间可以在此基础上收紧，不能放宽：运维空间 `img-src 'self'`（不含 `data:`）、`style-src 'self'`，并加 `X-Frame-Options: DENY`（PRD-ops F-OPS-03 规则 4）。
 5. 依赖安全：前端 `npm audit --audit-level=high` 阻断构建（与服务端 S11 一致）。
 6. 每个空间的前端是独立入口（独立构建产物），各自的适配要求由各自 PRD 定义（管理后台：桌面，最小宽度 1280px）。
 
@@ -546,7 +548,7 @@ X-5（F-KEY-01～05，im-server，约 4.5 人日）
 
 **规则**
 1. 顶栏通知中心（铃铛 + 未读数），通知按账号存储，保留 90 天；邮件 / IM 通知为 P1。
-2. 触发：账号激活或重新绑定（通知本空间空间超管、审计员）；被重置（通知被重置者以外的空间超管、审计员）；被锁定（本人、空间超管）；恢复码被使用、剩余 ≤ 2 个（本人）；授予敏感角色（审计员）；应急授权（审计员、其他空间超管）；审计校验失败、锚定失败（空间超管、审计员）。
+2. 触发：账号激活或重新绑定（通知本空间空间超管、审计员）；被重置（通知被重置者以外的空间超管、审计员）；被锁定（本人、空间超管）；恢复码被使用、剩余 ≤ 2 个（本人）；授予敏感角色（审计员）；应急授权（审计员、其他空间超管）；审计校验失败、锚定失败（空间超管、审计员）。各空间 PRD 可以追加触发条件（如 PRD-ops F-OPS-02 规则 5、F-OPS-08 规则 9），接收人按"空间 + 角色"指定；通知接口支持发给某空间某角色的全部启用账号。
 3. 通知只说明"谁、什么事、何时"，不含密码、激活码、动态码等任何凭证。
 
 **验收标准**
@@ -684,10 +686,10 @@ X-5（F-KEY-01～05，im-server，约 4.5 人日）
 
 **规则**
 1. 需要 `user.sessions` + 理由；请求 `POST /console/api/users/sessions/query {userId, reason, ticket?}`（userId、理由不进 URL）。
-2. 返回每个连接：连接 ID、平台、上线时间、所在节点、来源 IP（**脱敏为 `a.b.*.*`**，IPv6 保留前 4 组）。字段与脱敏规则和运维后台的"当前连接"一致：im-server 只有一个查询函数，管理接口 `POST /admin/users/sessions/query` 和运维节点接口复用它（评审 X-05）。
+2. 返回每个连接：连接 ID、平台、建立时间、节点、脱敏 IP、下行队列状态（管理后台可以不显示队列状态）。脱敏：IPv4 保留前 2 段（`a.b.*.*`），IPv6 保留前 3 组（48 位），其余为 `*`；**im-server 的连接元数据和断开缓冲只保存脱敏后的值**，查询函数直接返回脱敏值，两个后台都拿不到完整 IP。字段与脱敏规则和运维后台的"当前连接"一致：im-server 只有一个查询函数，管理接口 `POST /admin/users/sessions/query` 和运维节点接口复用它（评审 X-05）。
 3. 每次查询写审计（`user.sessions.query`，含理由、结果条数）。
-4. 每个账号每分钟最多 30 次（4290），每天最多查询 50 个不同 userId（4292），防止长期跟踪某人在线规律。
-5. 集群下某个节点未响应时，不显示"不在线"，显示"在已响应的 N 个节点上找到 K 个连接；节点 X 未响应，结果可能不完整"。
+4. 每个账号每分钟最多 30 次（4290），每天（Asia/Shanghai 自然日，2.3 节）最多查询 50 个不同 userId（429 / 4292），防止长期跟踪某人在线规律。
+5. B6 之前（没有 Presence）管理接口只返回接收请求的那个节点上的连接，响应标 `partial: true`、`scope: "localNode"`；B6 之后由 im-server 经 Presence 汇总。集群下某个节点未响应时，不显示"不在线"，显示"在已响应的 N 个节点上找到 K 个连接；节点 X 未响应，结果可能不完整"。
 
 **验收标准**
 - AC-ADM-14-1：输入 u1 用 web、pc 各连一次，来源 IP 为 `10.1.2.3`；操作 客服填理由查询；预期 返回 2 条，平台分别为 web、pc，IP 显示为 `10.1.*.*`；审计有 `user.sessions.query`，理由一致，`params.count=2`；错误码 —。
@@ -695,7 +697,7 @@ X-5（F-KEY-01～05，im-server，约 4.5 人日）
 - AC-ADM-14-3【后端】：输入 `operator` 账号；操作 查询；预期 403；错误码 4030。
 - AC-ADM-14-4【后端】：输入 同一客服账号当天已查询 50 个不同 userId；操作 查询第 51 个；预期 429，无数据返回；查询已查过的 userId 仍成功；错误码 4292。
 - AC-ADM-14-5【后端】：输入 查询请求；操作 检查 console-server 访问日志和浏览器历史；预期 URL 中没有 userId 和理由；错误码 —。
-- AC-ADM-14-6【后端】（双节点）：输入 u1 只连在节点 B，节点 B 暂停响应；操作 查询 u1；预期 响应标记 `partial=true` 和未响应节点，页面不出现"当前不在线"；错误码 —。
+- AC-ADM-14-6【后端】[依赖 B6]：输入 u1 只连在节点 B，节点 B 暂停响应；操作 查询 u1；预期 响应标记 `partial=true` 和未响应节点，页面不出现"当前不在线"；错误码 —。
 
 #### F-ADM-13 封禁 / 解封（第二批，P0，PRD-core v1.3 变更）
 
@@ -1062,7 +1064,7 @@ X-5（F-KEY-01～05，im-server，约 4.5 人日）
 |---|---|---|---|---|
 | G-ADM-03 / 04 / 21 | 管理接口内网监听、调用方密钥与 scope、签名防重放、`admin_audit` 与查询接口、旧密钥过渡 | 接口、迁移、设施 | 第一批（前置） | 第 3 节 F-KEY-01～05；nonce 集群下进 Redis（B6） |
 | G-ADM-05 | 用户列表 / 搜索 `GET /admin/users?q=&official=&cursor=&limit=` | 接口、迁移 | 第一批 | 昵称索引（ASCII 不区分大小写）；`LIKE` 转义 `%`、`_`、`\` |
-| G-ADM-06 | 在线设备 `POST /admin/users/sessions/query {userId}` | 接口、设施 | 第一批 | 代码中**没有** `delivery.Presence`：`gateway.conn` 要保存平台、建立时间、来源 IP，`hub` 增加按用户列出连接；集群下 Presence（B6）。与运维节点接口**共用一个查询函数**（评审 X-05） |
+| G-ADM-06 | 在线设备 `POST /admin/users/sessions/query {userId}` | 接口、设施 | 第一批 | 代码中**没有** `delivery.Presence`：`gateway.conn` 要保存平台、建立时间、来源 IP（**只保存脱敏后的值**，F-ADM-14 规则 2），`hub` 增加按用户列出连接；集群下 Presence（B6）。与运维节点接口**共用一个查询函数**（评审 X-05） |
 | G-ADM-07 | 用户所在群 `GET /admin/users/{id}/groups` | 接口 | P1 | `group_members(user_id)` 索引由 PRD-social 0004 补上 |
 | G-ADM-09 | 群列表 / 搜索 `GET /admin/groups?q=&includeDissolved=&cursor=&limit=` | 接口、迁移 | 第一批 | 成员数用 PRD-social F-SOC-11 的计数；群名索引；`dissolved_at` |
 | G-ADM-10 | 群成员分页 `GET /admin/groups/{id}/members?cursor=&limit=&prefix=` | 接口 | 第一批 | 与客户端 `groupMembers`（M4）共用存储查询；本 PRD 先实现 |
@@ -1121,21 +1123,21 @@ console-server 的全部能力即第 4 节 F-CON-01～12 与第 6 节的 console
 
 ### 10.1 新增错误码（14 个，写入 errors.json）
 
-号段规则（ERRORS.md 第 1 节）：前三位决定 HTTP 状态。新增 `scope: "console"`：只出现在 console-server 对浏览器的接口上；**SDK 生成器跳过只含 `console` 的码**，不会混进终端 SDK 的枚举。
+号段规则（ERRORS.md 第 1 节）：新码前三位与 HTTP 状态一致；HTTP 状态以 errors.json 的 `http` 字段为准（既有例外：413x 使用 HTTP 400，沿用 4130、4131）。新增 `scope: "console"`：只出现在 console-server 对浏览器的接口上；**SDK 生成器跳过只含 `console` 的码**，不会混进终端 SDK 的枚举。
 
 | code | 名称 | HTTP | 通道（scope） | 可重试 | 含义 | 处理 | 批次 |
 |---|---|---|---|---|---|---|---|
 | 4014 | CONSOLE_AUTH_REQUIRED | 401 | console | 否 | 没有有效的后台会话（未登录、过期、退出、被注销、被挤掉），`reason` 见 F-CON-05 规则 6 | 跳登录页（**前端只在这个码时跳登录页**） | 一 |
 | 4015 | CONSOLE_CREDENTIALS_INVALID | 401 | console | 否 | 账号、密码、动态码、恢复码或激活码错误（登录、激活、step-up、改密时的当前密码） | 原地提示"账号、密码或动态码错误"，不跳转 | 一 |
 | 4016 | CONSOLE_SETUP_REQUIRED | 401 | console | 否 | 会话处于首次设置状态（未绑定 TOTP），只能调用设置接口 | 跳"绑定二次验证"页 | 一 |
-| 4017 | ADMIN_SIGNATURE_INVALID | 401 | admin | 否 | 管理接口签名无效：缺签名头、调用方不存在或停用、签名错误、时间戳超出 5 分钟、nonce 重复 | 业务服务端检查时钟、密钥和签名实现 | 一（前置） |
-| 4034 | USER_BANNED | 403 | admin | 否 | 用户被封禁，不能签发 token / 演示登录；`details.bannedUntil`（永久为 `null`） | 业务方提示用户"账号已被封禁" | 二 |
+| 4017 | ADMIN_SIGNATURE_INVALID | 401 | admin | 否 | 管理接口（含 PRD-ops F-OPS-16 节点运维接口）签名无效：缺签名头、调用方不存在或停用、签名错误、时间戳超出 5 分钟、nonce 重复、目标节点不符 | 业务服务端检查时钟、密钥和签名实现 | 一（前置） |
+| 4034 | USER_BANNED | 403 | admin | 否 | 用户被封禁，不能签发 token / 演示登录；`details.bannedUntil`（永久为 `null`）。也用于 `/demo/login`（HTTP，与管理接口同一响应格式）；scope 保持 `admin`，SDK 生成器不跳过，sdk-ts 能拿到 | 业务方提示用户"账号已被封禁" | 二 |
 | 4037 | CSRF_INVALID | 403 | console | 否 | CSRF 令牌缺失或错误，或 `Origin` 不匹配 | 重新取会话信息后重放一次，仍失败提示刷新 | 一 |
 | 4038 | STEP_UP_REQUIRED | 403 | console | 否 | 该操作需要重新验证（未验证、超过 5 分钟，或正文授权未带当次动态码） | 弹 TOTP 框，通过后自动重放 | 一 |
 | 4039 | MSG_READ_GRANT_REQUIRED | 403 | console | 否 | 没有该会话有效的正文 / 隔离原文查看授权（未申请、已过期、换了会话） | 弹"工单号 + 理由 + 动态码"框 | 二 |
 | 4044 | MESSAGE_NOT_FOUND | 404 | admin / console | 否 | 消息不存在（或隔离原文已过期删除） | 提示"消息不存在或已过期" | 二 |
 | 4092 | CONSOLE_ACCOUNT_EXISTS | 409 | console | 否 | 同一账号空间内账号名已存在 | 换一个账号名 | 一 |
-| 4093 | CONSOLE_ACCOUNT_STATE_CONFLICT | 409 | console | 否 | 操作会让自己失去权限、使空间内没有启用的空间超管，或违反职责分离（`auditor` 与其他角色叠加） | 提示具体原因（按 `reason`） | 一 |
+| 4093 | CONSOLE_ACCOUNT_STATE_CONFLICT | 409 | console | 否 | 操作会让自己失去权限、使空间内没有启用的空间超管，或违反职责分离（互斥角色与其他角色叠加：管理空间 `auditor`，运维空间 `ops_superadmin`、`ops_auditor`） | 提示具体原因（按 `reason`） | 一 |
 | 4291 | CONSOLE_LOGIN_LOCKED | 429 | console | **否**（例外） | 登录失败过多，该账号名（或账号名 + IP）暂时锁定 | 提示"尝试次数过多，请 N 分钟后再试"，不自动重试 | 一 |
 | 5031 | AUDIT_UNAVAILABLE | 503 | console | 是 | 审计写入失败，操作**未执行** | 提示"审计服务不可用，操作未执行，请稍后重试" | 一 |
 | 5040 | UPSTREAM_RESULT_UNKNOWN | 504 | console | **否** | 调用 im-server 超时，操作结果未知 | 提示"操作结果未知，请刷新确认，不要重复提交" | 一 |
@@ -1144,12 +1146,14 @@ console-server 的全部能力即第 4 节 F-CON-01～12 与第 6 节的 console
 
 | code | 变更 | 来源 |
 |---|---|---|
-| 4000、4004、4030、4040、4042、4043、4090、4130、4131、4290、5000、5030 | `scope` 增加 `console`（console-server 原样透传 im-server 的码，或在自己的接口上使用） | 2.3 节 |
+| 4000、4004、4030、4040、4290、5000、5030 | `scope` 增加 `console`（console-server 在自己的接口上也会产生这些码；按下方透传规则，只透传、不自己产生的码如 4042、4043、4090、4130、4131、4046、4132 不加 `console`） | 2.3 节 |
 | 4007 INVALID_CONV_ID | `scope` 增加 `admin`、`console`，`http` 由 `null` 改为 400（原来只在 ws 上使用，`http` 为空，补齐不改含义） | F-ADM-30（评审 R-ADM-03 ④） |
 | 4031 MUTED | 去掉"二期"，`action` 改为"提示禁言及解除时间（`details.mutedUntil`）"；ack 的 `error` 增加 `details: {scope, groupId?, mutedUntil}` | F-ADM-40、41 |
 | 4292 QUOTA_EXCEEDED（PRD-social 新增） | `scope` 增加 `admin`、`console`（正文授权配额、在线设备 / 单聊元数据的每日上限） | F-ADM-08、14、30 |
 | 4046 TARGET_NOT_GROUP_MEMBER（PRD-social 新增） | 增加用于"群成员禁言的对象不是群成员" | F-ADM-41 |
 | `kickReasons` | 增加 `{reason: "suspended", closeCode: 4012, note: "封禁，带 until"}` | F-ADM-13 |
+| `closeCodes` | 增加 `{code: 1011, name: "INTERNAL_ERROR", reconnect: true, meaning: "服务端内部错误（如握手阶段查询吊销状态失败）"}`（代码已使用，PRD-ops F-OPS-09 规则 3 计入断开记录） | 复审 E-06 |
+| **透传规则** | console 通道可以透传任何 `admin` scope 的码，透传码**不需要**逐个加 `console` scope；只有 console-server 自己产生的码才写 `scope: console`。写进 ERRORS.md 第 2 节 | 复审 E-04 |
 
 ### 10.3 与已占用错误码的核对
 
@@ -1165,7 +1169,7 @@ console-server 的全部能力即第 4 节 F-CON-01～12 与第 6 节的 console
 | 500x / 503x | 5000、5030 | — | 5031 | 5001～5009、5032～5039 |
 | 504x（新区段） | — | — | 5040 | 5041～5049 |
 
-结论：14 个新码与 errors.json 的 28 个已有码、PRD-social v0.2 的 12 个新码**没有重复**；PRD-social 预留给本 PRD 的 4037～4039、4291 按预留用途使用。PRD-ops v0.2 共用本节的基座错误码（4014～4016、4037、4038、4092、4093、4291、5031、5040），运维专用的新码请从上表"剩余空位"中取，并与本 PRD 一起写入 errors.json（errors.json 只增不改，三份 PRD 写入前一起核对）。
+结论：14 个新码与 errors.json 的 28 个已有码、PRD-social v0.2 的 12 个新码**没有重复**；PRD-social 预留给本 PRD 的 4037～4039、4291 按预留用途使用。PRD-ops v0.2 共用本节的基座错误码（4014～4016、4037、4038、4092、4093、4291、5031、5040），节点运维接口签名失败用 4017，每日排查上限用 4292；PRD-ops 声明不新增错误码（已核对）。之后若需要运维专用的新码，从上表"剩余空位"中取，并与本 PRD 一起写入 errors.json（errors.json 只增不改，写入前几份 PRD 一起核对）。
 
 ### 10.4 ERRORS.md 需要同步修改
 
@@ -1173,6 +1177,9 @@ console-server 的全部能力即第 4 节 F-CON-01～12 与第 6 节的 console
 2. 第 2 节：增加"后台接口（console）"一行：HTTP 状态取 `http`，响应体 `{code, msg, reason?, details?}`；`details` 为可选扩展对象。
 3. 第 3 节表格补 14 个新码和 10.2 节的扩展；第 4 节 `kicked` 原因补 `suspended`。
 4. 第 5 节"与 M1 实现的差异"补："管理接口在对外端口 → 迁到 `IM_ADMIN_ADDR`""旧密钥可调用全部接口 → 只能调用 v1.2 接口"。
+5. **对服务端的变更**：im-server 的错误码一致性测试（`protocol/errors_test.go` 的 `TestCodesMatchErrorsJSON`）跳过只含 `console` scope 的码（4014～4016、4037～4039、4092、4093、4291、5031、5040），im-server 不为它们定义 Go 常量；console-server 仓库有自己的一致性测试，只核对 `console` 码。
+6. **对 protocol 的变更**：errors.json `closeCodes` 增加 1011 `INTERNAL_ERROR`（`reconnect: true`），ERRORS.md 第 4 节同步（10.2 节）。
+7. 第 1 节注明 413x 使用 HTTP 400（沿用 4130、4131）；ADMIN.md 开头"HTTP 状态码由错误码前三位决定"改为"取 errors.json 的 `http` 字段"。
 
 ---
 
@@ -1212,7 +1219,7 @@ console-server 的全部能力即第 4 节 F-CON-01～12 与第 6 节的 console
 | VA-11 | F-SYNC-01、F-CONV-01 | 消息增加 `deleted`；删除后不含 `body`；`lastMsg.deleted`；**未读公式（C-02）不变**，已删除的消息仍计入未读 | 无 | 二 |
 | VA-12 | 第 5 节文案表 | 新增："群聊已解散"（一）；"该消息已被删除""你已被禁言，解除时间：{时间}""你已被禁言""账号已被封禁，解封时间：{时间}"（二） | 现有文案不变 | 一 / 二 |
 | VA-13 | 6.1 节测试环境 | im-server 测试时钟驱动封禁 / 禁言 / 隔离原文到期；`tools/set-clocks.sh`；console-server 测试模式 | — | 一 |
-| VA-14 | F-SYS-01 规则 4、C-10 | 错误码一致性测试覆盖 4031 的 `details`；`scope: console` 的码不进 SDK 枚举 | — | 一 |
+| VA-14 | F-SYS-01 规则 4、C-10 | 错误码一致性测试覆盖 4031 的 `details`；`scope: console` 的码不进 SDK 枚举；im-server 的 `TestCodesMatchErrorsJSON` 同样跳过只含 `console` scope 的码（10.4 节第 5 条） | — | 一 |
 | VA-15 | 下行 `push` | 系统通知（二期 push 协议） | — | 二（最后） |
 
 ### 11.3 对 `protocol/ADMIN.md` 的变更条目
@@ -1235,7 +1242,7 @@ console-server 的全部能力即第 4 节 F-CON-01～12 与第 6 节的 console
 |---|---|
 | ARCH-v1 | 第 1.2 节组件增加 console-server（独立仓库、Postgres）；4.2 节 S8 由 P1 改为"已按 F-KEY 实现"，签名算法增加 Ed25519（只存公钥）；2.2 节注明 `delivery.Presence` 尚未实现，G-ADM-06 先补连接元数据；S13 未实现列入合规风险；第 7 节实现记录补"管理端口与指标端口分离" |
 | PRD-social v0.2 | 9.3 节最后一行"后台服务默认只有 `social.friends` 的查询"改为"console 主凭证持有 `social.friends`、`social.settings`（X-6 第一批包含好友导入、模式配置、官方标记）"；F-SOC-26 / 9.5 节"是否提前到第一批"改为"已提前（X-6 + S-3）"；`admin_audit` 字段以本 PRD F-KEY-04 为准；4046 增加禁言用途 |
-| PRD-ops v0.2 | 引用第 4 节作为账号、登录、会话、角色、step-up、审计、部署的唯一规格；定义 `ops` 空间角色（含运维超管、审计员是否可看全部空间）；节点运维接口的凭证用 F-KEY-03 的签名方式（每节点独立公钥）；"当前连接"与 G-ADM-06 共用查询函数和脱敏规则；运维专用错误码从 10.3 节空位中取 |
+| PRD-ops v0.2 | 引用第 4 节作为账号、登录、会话、角色、step-up、审计、部署的唯一规格；定义 `ops` 空间角色（含运维超管、审计员是否可看全部空间）；节点运维接口按 F-KEY-03 同一实现签名（调用方 `console-ops`、Ed25519、每节点一把独立私钥、节点只存公钥，待签名串第 8 行 `X-IM-Target-Node` 必填）；"当前连接"与 G-ADM-06 共用查询函数和脱敏规则（IPv4 前 2 段、IPv6 前 48 位，在 im-server 内完成）；运维空间互斥角色为 `ops_superadmin`、`ops_auditor`，不提供应急授权；运维专用错误码从 10.3 节空位中取 |
 | PRD-ui v0.2 | 第二批的客户端提示（被禁言输入框、"该消息已被删除"、"群聊已解散"、"账号已被封禁"）补 F-UI 条目和文案；第一批先补"群聊已解散" |
 | PLAN | 第 2.3 节管理接口与本 PRD 对齐（`/admin/mute` 区分 `scope`；push 的 `target` 先做 `user` / `all`） |
 | QUEUE | 需求分发时 X-5（F-KEY）为第一项；console-server 仓库建立为第二项（需 Postgres 授权） |
@@ -1330,6 +1337,7 @@ console-server 的全部能力即第 4 节 F-CON-01～12 与第 6 节的 console
 |---|---|---|---|
 | v0.1 | 2026-11-03 | 初稿：角色与 RBAC、后台登录与安全（F-ADM-01～09）、用户 / 群 / 消息 / 禁言 / 系统通知 / 敏感词 / 概览功能点、服务端缺口 G-ADM-01～20、部署方案对比、待拍板 D-ADM-01～08 | 产品（AI） |
 | v0.2 | 2026-11-03 | 按 REVIEW-admin-v0.1（阻塞 7 / 重要 20 / 建议 8）和 DECISIONS（X-1～X-9、S-3、S-9、S-11）修订：新增第 3 节 X-5 前置改造（F-KEY-01～05）；新增第 4 节 console-server 公共基座（F-CON-01～12，两个后台的唯一规格，取代 v0.1 的 F-ADM-01～04、06、07、09）；角色可叠加、超管最小权限、应急授权；审计两阶段 + 哈希链 + 外部锚定；step-up 改为 403 / 4038；错误码按号段重排（14 个新码）；分两批并标注每个功能点；新增在线设备查看（F-ADM-14）、社交管理（F-ADM-15～17）、群主交接（F-ADM-25）、隔离原文（F-ADM-32）；单聊正文 im-server 开关默认关闭；PRD-core v1.3 / ADMIN.md 变更条目；工作量重估 127 人日 | 产品（AI） |
+| v0.2（复审后修订） | 2026-11-03 | 按 [一致性复审](../review/RECHECK-v0.2-2026-11-03.md) 第 6.1 节 A-1～A-15 修订（不升版本号），见 17.6 节 | 产品（AI） |
 
 ---
 
@@ -1462,3 +1470,32 @@ console-server 的全部能力即第 4 节 F-CON-01～12 与第 6 节的 console
 | AC | 129 | 277（第一批 213，含性能 4；第二批 58；P1 / P2 6） |
 | 新错误码 | 9（编号与号段规则冲突） | 14（逐码核对无冲突） |
 | 待拍板 | 8 | 0（1 个确认项 Q-1） |
+
+### 17.6 一致性复审后修订（2026-11-03）
+
+依据 [RECHECK-v0.2-2026-11-03](../review/RECHECK-v0.2-2026-11-03.md) 第 6.1 节，直接在 v0.2 上修改，不新建版本。15 条全部照做。
+
+| 清单编号 | 对应复审问题 | 怎么改的 |
+|---|---|---|
+| A-1 | C-01 | F-CON-06 规则 4 改为"各空间声明互斥角色，互斥角色不能与同空间任何其他角色叠加（409 / 4093）；管理空间 `auditor`，运维空间 `ops_auditor`、`ops_superadmin`"；AC-CON-06-6 不变；新增 AC-CON-06-10（ops 账号已有 `ops_engineer` 时再授予 `ops_superadmin` / `ops_auditor` 均 409 / 4093）；10.1 节 4093 的含义同步为"互斥角色与其他角色叠加" |
+| A-2 | N-1 | F-CON-06 规则 6 开头加"只在管理空间提供（权限点 `admin.emergency`），运维空间不提供"；末尾加"运维空间的应急授权接口不注册（调用返回 403 / 4030）；运维超管要获得排障权限只能由另一名运维超管授予 `ops_engineer`" |
+| A-3 | C-01 | F-CON-06 规则 2 末尾加"各空间的权限点由各自 PRD 定义（管理空间第 5.2 节，运维空间 PRD-ops F-OPS-02 规则 1）" |
+| A-4 | C-05 | F-CON-05 规则 2 Cookie 名改为"管理空间 `__Host-adm_sid`，运维空间 `__Host-ops_sid`"；AC-CON-03-1、03-7、05-1 中的 `__Host-con_sid` 改为 `__Host-adm_sid` |
+| A-5 | C-06 | F-CON-05 规则 3 末尾补：用户操作发起的请求不得带 `X-Console-Background`；经认证代理转发到观测组件（Grafana）的请求只有 `Sec-Fetch-Mode: navigate` 续期；代理 Cookie 绑定原会话 |
+| A-6 | C-07 | F-CON-02 规则 7 末尾补"对另一空间账号 ID 调用任何账号接口一律 404 / 4040，并写 `result=denied`、`code=4040` 审计"；AC-CON-02-6 预期补审计断言 |
+| A-7 | C-10 | F-CON-02 规则 2、F-CON-04 规则 6、F-CON-08 规则 2 的命令行操作人统一为 `cli:{操作系统用户}@{主机名}`；bootstrap 的 action 写明 `account.bootstrap`，命令行解锁写明 `account.unlock` |
+| A-8 | C-11 ① | F-CON-12 规则 2 末尾补"各空间 PRD 可追加触发条件，接收人按'空间 + 角色'指定；通知接口支持发给某空间某角色的全部启用账号" |
+| A-9 | C-11 ②③ | F-CON-01 规则 4 补"可信代理终止 TLS 时必须带 `X-Forwarded-Proto: https`，否则 403 / 4030"；规则 9 补"各空间 PRD 追加的生产检查（PRD-ops B-OPS-15）一并执行，一次列出全部问题后退出" |
+| A-10 | C-11 ④ | F-CON-10 规则 4 末尾补"各空间可收紧不可放宽；运维空间 `img-src 'self'`、`style-src 'self'`，加 `X-Frame-Options: DENY`" |
+| A-11 | D-03、D-04 | 2.3 节"理由"行补"运维排查接口的说明字段同样叫 `reason`、规则相同"，新增"每日上限"行（Asia/Shanghai 自然日，429 / 4292）；F-ADM-14 规则 2 脱敏改为 IPv4 前 2 段、IPv6 前 3 组（48 位），im-server 的连接元数据和断开缓冲只存脱敏值，字段取并集（连接 ID、平台、建立时间、节点、脱敏 IP、下行队列状态）；规则 4 每日上限注明自然日与 429 / 4292；G-ADM-06 同步"只保存脱敏后的值" |
+| A-12 | D-06 | F-KEY-03 规则 1 加可选 `X-IM-Target-Node`；规则 2 待签名串加第 8 行 `X-IM-Target-Node`（没有则空串），并写明节点运维接口复用本规则（`console-ops`、Ed25519、每节点一把私钥、`X-IM-Target-Node` 必填且等于 `IM_NODE_ID`、失败 401 / 4017）；F-CON-01 规则 8 第二句改写；11.4 节 PRD-ops 行同步（另补 IP 脱敏口径、互斥角色、无应急授权）；10.1 节 4017 含义补"含节点运维接口、目标节点不符" |
+| A-13 | D-10 | F-KEY-01 规则 4 改为 `IM_ADMIN_ADDR`、`IM_OPS_ADDR`、`IM_METRICS_ADDR`、`IM_PPROF_ADDR` 中已启用的两两不同；AC-KEY-01-5 增加"`IM_ADMIN_ADDR` 与 `IM_OPS_ADDR` 相同"一组 |
+| A-14 | E-04～E-08 | 10.1 节 4034 说明补"也用于 `/demo/login`，scope 保持 `admin`"；号段说明改为"HTTP 以 `http` 字段为准，413x 用 400 为既有例外"。10.2 节选定**透传规则**一种写法：表尾加"透传规则"行，首行改为只给 console-server 自己也会产生的码（4000、4004、4030、4040、4290、5000、5030）加 `console`，只透传的码不加；表中加 `closeCodes` 1011 行。10.4 节加第 5～7 条（对服务端的变更：`TestCodesMatchErrorsJSON` 跳过只含 console scope 的码、console-server 仓库自测；对 protocol 的变更：`closeCodes` 增加 1011 `INTERNAL_ERROR`；413x 用 400、ADMIN.md 改为"取 `http` 字段"）；VA-14 同步 im-server 测试跳过 console 码。只写变更条目，未改代码和 errors.json |
+| A-15 | D-05、D-09 | 文首"背景材料"中 PRD-ops v0.1 改为 v0.2（并加复审链接），版本行注明已按复审修订；4.0 节"空间超管"行改为 `ops_superadmin`（PRD-ops F-OPS-02）；F-ADM-14 规则 5 前加"B6 之前只返回接收请求的节点上的连接，标 `partial: true`、`scope: "localNode"`；B6 之后经 Presence 汇总"；AC-ADM-14-6 的"（双节点）"改为"[依赖 B6]" |
+| 自查补充 | 自查 | 10.3 节结论中 PRD-ops 使用的码补 4017（节点接口签名）、4292（每日排查上限），并注明 PRD-ops 不新增错误码 |
+
+**统计变化**：AC 新增 1 条（AC-CON-06-10），共 278 条（第一批 214）；新错误码仍为 14 个，无编号变化。
+
+#### 冻结前对齐（2026-11-03）
+
+- 2.3 节理由长度明确按 Unicode 码点计数（PRD-ops 一致性自查提出）。

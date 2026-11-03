@@ -2,14 +2,14 @@
 
 | 项 | 内容 |
 |---|---|
-| 版本 | **v0.2（修订稿，待复审）** |
+| 版本 | **v0.2（修订稿，已按一致性复审修订）** |
 | 作者 | 产品（AI） |
 | 拍板人 | Frank |
 | 日期 | 2026-11-03 |
 | 状态 | 按 [评审记录](../review/REVIEW-social-v0.1.md)（阻塞 4 / 重要 16 / 建议 13）和 [拍板清单](../review/DECISIONS-2026-11-03.md) E 节修订。复审确认阻塞项关闭后冻结为 v1.0，并作为 **PRD-core v1.3** 的变更合入（第 13.1 节） |
 | 取代 | [PRD-social-v0.1](PRD-social-v0.1.md) |
 | 依据（已拍板） | DECISIONS 2.5 节 S-1～S-3；E 节 S-4 ①、S-7 ②、S-8 ②、S-9 ②、S-10（随 X-6 / U-4）、S-11 ②（2026-11-03 按建议通过）；[PRD-core v1.2](PRD-core-v1.2.md)（冻结）；[ARCH-v1](../arch/ARCH-v1.md)；[协议](../../protocol/README.md)、[错误码](../../protocol/ERRORS.md)、[管理接口](../../protocol/ADMIN.md)；[SDK 设计说明](../sdk/README.md)；[PLAN](../PLAN.md) 第 6 节里程碑 |
-| 依赖（**待拍板，默认按建议方案**） | **X-5**（管理密钥收紧，S-11 依赖它）；**X-6**（解散群的批次，S-10 随它）；**U-4**（`users` 命令与会话成员数，S-10 随它）；**X-8**（封禁，只影响 F-SOC-09 规则 7）；**错误码号段重排**（DECISIONS 第 3 节，与 PRD-admin v0.2 一起写入 errors.json，PRD-admin 的号段依赖 A 节）。正文中凡是依赖它们的地方都写成"待 X-n 拍板，默认按建议方案" |
+| 依赖（已拍板） | X-5 ②、X-6 ②（S-10：解散群提前）、U-4（做）、X-8 ②，2026-11-03 已按建议通过；错误码与 PRD-admin v0.2 第 10 节一起写入 errors.json |
 | 修订记录 | 第 18 节（每条评审意见 → 处理方式） |
 
 ---
@@ -28,7 +28,7 @@
 | 范围（S-7 ②） | **M3**：好友、拉黑、通讯录、私聊权限、搜索、资料、官方账号、业务方好友接口（F-SOC-01～13）。**M4**：群角色、客户端建群与群管理、群公告、群提示消息（F-SOC-20～30）。两者都在分享会（M8）之前 |
 | 管理接口（S-11 ②） | 社交管理接口**在 X-5 落地之后**才对真实业务方开放，并且必须写审计日志；X-5 之前只在测试模式下注册（供 e2e 使用），生产部署用启动配置设定好友模式 |
 | 工作量 | M3 社交 **41 人日** + 前置依赖（X-5 约 3.5、H5 基础约 8）；M4 **21 人日**；原生 SDK 各 6（含在 M5 / M6 首版内）。社交合计 74 人日，比 v0.1 的 55 多 19，来自评审指出的漏项（第 15 节） |
-| 待拍板 | **无新增**。E 节已全部拍板；剩余依赖都在 A～D 节（X-5、X-6、U-4、X-8），按建议方案写入 |
+| 待拍板 | **无**。E 节与 A～D 节中本 PRD 依赖的 X-5、X-6、U-4、X-8 均已拍板 |
 
 ---
 
@@ -84,7 +84,7 @@
 
 ### 3.1 功能点总览
 
-| 编号 | 功能点 | 优先级 | 里程碑 | 涉及 | 依赖（待拍板，默认按建议） |
+| 编号 | 功能点 | 优先级 | 里程碑 | 涉及 | 依赖（已拍板） |
 |---|---|---|---|---|---|
 | F-SOC-01 | 社交模式与业务方配置（含配置变更的影响） | P0 | **M3** | 服务端 / 管理接口 / SDK | X-5（管理接口） |
 | F-SOC-02 | 发送好友申请 | P0 | **M3** | 服务端 / SDK / H5 | — |
@@ -105,7 +105,7 @@
 | F-SOC-23 | 退群（含群主退群） | P0 | **M4** | 服务端 / SDK / H5 | X-6（最后一人退群解散） |
 | F-SOC-24 | 移出成员 | P0 | **M4** | 服务端 / SDK / H5 | — |
 | F-SOC-25 | 转让群主与设置管理员 | P0 | **M4** | 服务端 / SDK / H5 | — |
-| F-SOC-26 | 解散群 | P0 | **M4** | 服务端 / SDK / H5 | X-6 |
+| F-SOC-26 | 解散群 | P0 | **M3**（存储方法、管理接口、`convRemoved.reason`、H5 提示）/ **M4**（客户端 `groupDissolve`、最后一人退群自动解散） | 服务端 / 管理接口 / SDK / H5 | X-6 ②（S-10：提前） |
 | F-SOC-27 | 修改群名与群公告 | P0 | **M4** | 服务端 / SDK / H5 | — |
 | F-SOC-28 | 群成员列表（分页） | P0 | **M4** | 服务端 / SDK / H5 | — |
 | F-SOC-29 | 群提示消息（tip） | P0 | **M4** | 协议 / 服务端 / SDK / H5 | — |
@@ -284,7 +284,7 @@
 
 **规则**
 1. 配置粒度：**一个 im-server 部署一套配置**（S-4 ①）。yd / yi / tb 共用一个部署时共用同一套配置；需要不同的好友模式就分开部署。
-2. 读写：管理接口 `GET / PATCH /admin/settings/social`，PATCH 只改传了的字段。上线条件见 F-SOC-12 规则 8（待 X-5 拍板，默认按建议方案 ②）。新部署的初始值也可以由启动配置 `IM_SOCIAL_DEFAULTS`（JSON，字段同 5.1 节）给出：**只在数据库里还没有 `social` 配置行时写入一次**，之后一律以数据库为准。
+2. 读写：管理接口 `GET / PATCH /admin/settings/social`，PATCH 只改传了的字段。上线条件见 F-SOC-12 规则 8（X-5 ②）。新部署的初始值也可以由启动配置 `IM_SOCIAL_DEFAULTS`（JSON，字段同 5.1 节）给出：**只在数据库里还没有 `social` 配置行时写入一次**，之后一律以数据库为准。
 3. 生效：服务端缓存配置，修改后通过 `cache.Invalidator`（主题 `socialSettings`）通知所有节点，TTL 60 秒兜底。
 4. 在线客户端：修改成功后给全部在线连接下发 `socialSettingsChanged {mode, strangerMsgLimit}`（尽力投递）；每一页 `socialSync` 应答头里也带这两项，所以每次重连都能拿到最新值。客户端只用它们做界面提示，**判定一律以服务端为准**。
 5. 模式切换不改任何已有数据：`open → friends` 后，非好友之间的历史会话仍在会话列表里、可以拉历史，但不能再发（4035）；`friends → open` 后立即恢复。待处理的好友申请在两种模式下都有效，不受切换影响。
@@ -533,7 +533,7 @@
 4. `setPrivacy {searchable}`：个人开关，默认跟随 `searchableDefault`；多端同步（5.4 节第 15 行）。关闭后只是不能被搜到；其他路径本来就不暴露存在性（11.2 节）。好友、同群成员、单聊对象仍可以通过资料卡看到他（F-SOC-10）。
 5. 限流见 5.2 节（每分钟 10 次、每天 `searchDailyLimit` 次）。
 6. 日志只记录"搜索了一次、是否命中"，不记录关键字。
-7. 被封禁的用户（待 X-8 拍板，默认按建议 ②；随 PRD-admin 第二批的封禁功能一起实现）：封禁期间搜索返回 null，他发出的、对方尚未处理的申请不出现在对方的"新的朋友"里（查询时过滤，不改数据、不改 ver）；解封后恢复。已有的好友关系和群成员关系不变。
+7. 被封禁的用户（X-8 ②；随 PRD-admin 第二批的封禁功能一起实现）：封禁期间搜索返回 null，他发出的、对方尚未处理的申请不出现在对方的"新的朋友"里（查询时过滤，不改数据、不改 ver）；解封后恢复。已有的好友关系和群成员关系不变。
 
 **验收标准**
 - AC-SOC-09-1：alice 搜索 `bob`，返回 bob 的 userId、昵称、头像，`relation=none`；alice 申请 bob 后再搜，`relation=pendingOut`。
@@ -546,9 +546,9 @@
 - AC-SOC-09-8【后端】：日志扫描：搜索特征串 `ZXQ-SEARCH-9` 后，服务端日志中搜不到它。
 - AC-SOC-09-9【后端】：对不可被搜索的 bob 和不存在的 `nobody` 各搜索 1000 次（测试中关闭限流），两组服务端处理耗时的中位数之差不超过较小者的 20%。
 
-### F-SOC-10 批量查用户资料与可见范围（P0，M3，待 U-4 拍板）
+### F-SOC-10 批量查用户资料与可见范围（P0，M3）
 
-> 依赖：U-4 待拍板，默认按建议方案（新增批量查资料命令，只能查"和自己有共同会话的人"，并限流）；S-10 已定"可见范围随 U-4 一起定"，本 PRD 按"共同会话 + 好友 + 收到的申请"写，U-4 拍板若收窄，删去对应的行即可，不影响其他规则。
+> 依赖：U-4 已拍板（做：新增批量查资料命令，只能查"和自己有共同会话的人"，并限流）；S-10 已定"可见范围随 U-4 一起定"，本 PRD 按"共同会话 + 好友 + 收到的申请"写。
 
 **规则**
 1. 命令 `users {userIds}`：1～100 个，去重后处理；返回 `{users: [{userId, nickname, avatar, official}]}`。
@@ -574,7 +574,7 @@
 **规则**
 1. 通讯录 = **好友列表**（`socialSync`）+ **我的群聊**（`myGroups`）+ "新的朋友"入口（带红点）。U-2 的"从单聊会话派生联系人"作废。
 2. 命令 `myGroups {cursor?, limit?}`：`limit` 1～200（默认 200），按 groupId 升序翻页；返回 `{groups: [{groupId, name, memberCount, joinedAt, myRole?}], nextCursor}`，`nextCursor` 为空表示没有更多。包括业务方拉入的群；**不受 `convs` 500 个上限（C-03）影响**。`myRole` 从 M4 开始返回。限流 `groupRead`。
-3. `convs` 的群会话增加 `memberCount`（M3，待 U-4 拍板，默认按建议方案"会话里带成员数"）；M4 起再增加 `myRole`（`owner` / `admin` / `member`）。
+3. `convs` 的群会话增加 `memberCount`（M3，U-4：会话里带成员数）；M4 起再增加 `myRole`（`owner` / `admin` / `member`）。
 4. 成员数由服务端在加减成员的事务里维护（`chat_groups.member_count`，管理接口和 M4 的客户端操作都在持有群锁时更新，8.3 节 L5）；0004 迁移时按 `group_members` 回填。
 5. 服务端只给数据，排序、分组、拼音规则在 PRD-ui v0.2 写（13.2 节）。
 6. 开放模式下也显示好友列表（好友只用来整理通讯录）；陌生人会话只在会话列表里。
@@ -597,7 +597,7 @@
 5. 查询：`GET /admin/users/{userId}/friends?cursor=&limit=`（limit 1～500，默认 100），按对方 userId 升序，游标翻页；每项 `{userId, source, createdAt}`，**不返回备注**（备注只有本人可见）。
 6. 一批导入或删除让每个**有变化**的用户的 ver 只加 1（5.4 节第 17 行），给这些用户的在线连接下发 `socialChanged`；导入同时把这些对之间的待处理 / 已拒绝申请标记为 `accepted`。加锁见 8.3 节 L3。
 7. 导入不受拉黑影响（业务方的决定优先），但不解除拉黑。
-8. **上线条件**（S-11 ②；待 X-5 拍板，默认按建议方案 ②）：本 PRD 的全部社交管理接口（F-SOC-01 配置、本功能点、F-SOC-13 官方账号标记、M4 的群主交接）只注册在 X-5 的独立内网管理端口上，按调用方密钥的 scope 判定（`social.settings`、`social.friends`）。**X-5 落地之前，这些接口只在 `IM_TEST_MODE=1` 时注册**（供 e2e 使用），生产部署用 `IM_SOCIAL_DEFAULTS` 设定好友模式，不能导入好友、不能标记官方账号。
+8. **上线条件**（S-11 ②；X-5 ②）：本 PRD 的全部社交管理接口（F-SOC-01 配置、本功能点、F-SOC-13 官方账号标记、M4 的群主交接）只注册在 X-5 的独立内网管理端口上，按调用方密钥的 scope 判定（`social.settings`、`social.friends`）。**X-5 落地之前，这些接口只在 `IM_TEST_MODE=1` 时注册**（供 e2e 使用），生产部署用 `IM_SOCIAL_DEFAULTS` 设定好友模式，不能导入好友、不能标记官方账号。
 9. **审计**：上述接口的每次成功调用写一条审计记录：时间、调用方（X-5 的密钥标识；测试模式下为 `test`）、接口、涉及的 userId / groupId、变化摘要（配置的旧值 → 新值、导入 / 删除的对数）；**不记录备注原文**。im-server 侧先写只追加的 `admin_audit` 表；审计的统一规格、保留期随 X-4 拍板（默认按建议方案 ②）由后台服务接入。
 
 **验收标准**
@@ -725,7 +725,7 @@
    - 自建群：自动转让给最早成为管理员的管理员（按 `role_at`，相同时按 userId）；没有管理员时给最早入群的成员（按入群时间，相同时按 userId）；生成 `ownerChanged` 提示消息（`from=""`，`targets=[新群主]`）。
    - 托管群（业务方指定的群主）：**回到"无群主"的托管状态**（R-SOC-19），不转让给任何成员；生成 `ownerChanged` 提示消息（`from=""`，`targets=[]`，客户端显示"群主已退出群聊"），由业务方重新指定。
 5. **最后一个人退群**：
-   - 自建群：群自动解散（按 F-SOC-26 处理，同一个事务）。待 X-6 拍板，默认按 S-10 的建议（解散群提前到第一批）；若 X-6 最终不提前，自建群在最后一人退出后保留为空群，与托管群相同，等解散功能上线后再补。
+   - 自建群：群自动解散（按 F-SOC-26 处理，同一个事务）。X-6 ②、S-10 已拍板：解散群提前，`DissolveGroup` 在 M3 随管理接口交付，M4 的自建群直接复用。
    - 托管群：**保留为空群**（PRD-core AC-GRP-02-3 不变，业务方可以之后再加人）。
 6. 不是成员时返回 4033（不是幂等成功：避免客户端误以为退了一个从来不在的群）。
 
@@ -767,9 +767,9 @@
 - AC-SOC-25-3【后端】：设置第 11 个管理员返回 4136；把已经是管理员的 carol 再设一次返回成功，群的 maxSeq 不变。
 - AC-SOC-25-4【后端】：把群主转让给管理员 carol 后，carol 的 `myRole=owner`，管理员数为原来减 1。
 
-### F-SOC-26 解散群（P0，M4，待 X-6 拍板）
+### F-SOC-26 解散群（P0；存储方法、管理接口、`convRemoved.reason` 为 M3，客户端 `groupDissolve` 为 M4）
 
-> 依赖：X-6 待拍板，默认按建议方案；S-10 已定"解散群是否提前到第一批随 X-6 一起定"，本 PRD 按 S-10 的建议（提前，客户端解散与 PRD-admin G-ADM-11 共用实现）写。若 X-6 最终不提前，本功能点随 PRD-admin 第二批一起交付，F-SOC-23 规则 5 按其中的备选处理。
+> X-6 ②、S-10 已拍板：解散群提前。规则 2～6 中的 `DissolveGroup`、`DELETE /admin/groups/{id}`、群 ID 不复用、`convRemoved {reason: dissolved}` 在 **M3** 交付（与 PRD-admin 第一批 G-ADM-11 同一实现）；规则 1 的客户端 `groupDissolve`、最后一人退群自动解散在 M4。
 
 **规则**
 1. `groupDissolve {groupId}`：只有**自建群的群主**可以；托管群（无论有没有群主）客户端都不能解散（4030），由业务方或后台解散（PRD-admin F-ADM-24）。
@@ -780,12 +780,12 @@
 6. 不生成提示消息（群已经不存在）。
 
 **验收标准**
-- AC-SOC-26-1：群主 alice 解散自建群 g1，3 个在线成员 1 秒内收到 `convRemoved {reason: "dissolved"}`；离线成员上线后 `convs` 中没有 g1。
-- AC-SOC-26-2【后端】：解散后成员 `send`、`sync`、`read` g1 都返回 4043；`GET /admin/groups/{g1}` 返回 404 / 4043；成员的 `myGroups` 中没有 g1。
-- AC-SOC-26-3【后端】：管理员调用解散返回 4030；托管群（无群主）里的成员调用返回 4030；托管群里业务方指定的群主 op1 调用也返回 4030。
-- AC-SOC-26-4【后端】：存储契约测试：解散后该群的消息行仍在数据库中、`group_members` 中没有该群的行、`chat_groups.dissolved_at` 不为 0；规则 3 列出的每个查询各有一条断言。（后台按会话查看历史消息属于 PRD-admin AC-ADM-24-4，依赖 X-7，不在本 PRD 验收。）
-- AC-SOC-26-5【后端】：alice 和 bob 只因同在 g1 而互相可见，g1 解散后 alice 的 `users [bob]` 返回空。
-- AC-SOC-26-6【后端】：业务方 `DELETE /admin/groups/g2`（托管群）的效果与 AC-SOC-26-1、26-2 相同；之后 `POST /admin/groups {groupId: "g2"}` 返回 409 / 4090。
+- AC-SOC-26-1【M4】：群主 alice 解散自建群 g1，3 个在线成员 1 秒内收到 `convRemoved {reason: "dissolved"}`；离线成员上线后 `convs` 中没有 g1。
+- AC-SOC-26-2【后端】【M3 / M4】：解散后成员 `send`、`sync`、`read` g1 都返回 4043；`GET /admin/groups/{g1}` 返回 404 / 4043；成员的 `myGroups` 中没有 g1。
+- AC-SOC-26-3【后端】【M4】：管理员调用解散返回 4030；托管群（无群主）里的成员调用返回 4030；托管群里业务方指定的群主 op1 调用也返回 4030。
+- AC-SOC-26-4【后端】【M3 / M4】：存储契约测试：解散后该群的消息行仍在数据库中、`group_members` 中没有该群的行、`chat_groups.dissolved_at` 不为 0；规则 3 列出的每个查询各有一条断言。（后台按会话查看历史消息属于 PRD-admin AC-ADM-24-4，依赖 X-7，不在本 PRD 验收。）
+- AC-SOC-26-5【后端】【M3 / M4】：alice 和 bob 只因同在 g1 而互相可见，g1 解散后 alice 的 `users [bob]` 返回空。
+- AC-SOC-26-6【后端】【M3】：业务方 `DELETE /admin/groups/g2`（托管群）的效果与 AC-SOC-26-1、26-2 相同；之后 `POST /admin/groups {groupId: "g2"}` 返回 409 / 4090。
 
 ### F-SOC-27 修改群名与群公告（P0，M4）
 
@@ -999,7 +999,7 @@ M4：`CreateClientGroup`（含去重、提示消息）；`InviteMembers`（部�
 | `groupKick` | `{groupId, members}` | `{removed}` | F-SOC-24 | M4 |
 | `groupTransfer` | `{groupId, to}` | `{}` | F-SOC-25 | M4 |
 | `groupSetAdmin` | `{groupId, userId, admin}` | `{}` | F-SOC-25 | M4 |
-| `groupDissolve` | `{groupId}` | `{}` | F-SOC-26 | M4（待 X-6） |
+| `groupDissolve` | `{groupId}` | `{}` | F-SOC-26 | M4 |
 | `groupUpdate` | `{groupId, name?, notice?}` | `{}` | F-SOC-27 | M4 |
 | `groupInfo` | `{groupId}` | 见 F-SOC-20 规则 3 | F-SOC-20 | M4 |
 | `groupMembers` | `{groupId, cursor?, limit?}` | `{members, nextCursor}` | F-SOC-28 | M4 |
@@ -1021,14 +1021,14 @@ M4：`CreateClientGroup`（含去重、提示消息）；`InviteMembers`（部�
 | `Conversation` 增加可选 `memberCount`（群） | F-SOC-11；向后兼容 | M3（待 U-4） |
 | `Conversation` 增加可选 `myRole`（群） | F-SOC-20 | M4 |
 | 新增事件 `groupChanged {groupId}` | 群资料或成员变化的提醒，同一个群至少间隔 1 秒合并发送 | M4 |
-| `convRemoved` 增加 `reason`：`removed` / `dissolved` / `left` | `removed`、`dissolved` 与 PRD-admin 第 8 节一致，新增 `left` | M4 |
+| `convRemoved` 增加 `reason`：`removed` / `dissolved` / `left` | `removed`、`dissolved` 与 PRD-admin 第 8 节一致（随管理接口解散群在 M3 交付），新增 `left` | `removed` / `dissolved`：M3；`left`：M4 |
 | `MsgType` 增加 `tip`；`Message.from`、`LastMsg.from` 在 `type=tip` 时允许为空 | Schema 用 `if/then`（`frame.schema.json` 中 `Message` 和 `LastMsg` 两处，`LastMsg.from` 现为 `UserId` 格式，第 218 行）；`vectors/frames.json` 补用例 | M4 |
 | `Error` 增加可选 `userId` | `frame.schema.json` 的 `Error` 定义从 `{code, msg}` 扩展为 `{code: integer, msg: string, userId?: UserId}`，`additionalProperties: false` 保持；`vectors/frames.json` 补"带 userId 的错误 ack"用例。用于建群失败时指出是哪个人 | M4 |
 | 协议 README 第 3 节规则 9 补充 | 单聊发送权限 4035 / 4036 / 4137 / 4292 与判定顺序；群操作 4030 / 4046；客户端遇到不认识的事件类型必须忽略 | M3 |
 
 ### 9.3 管理接口（ADMIN.md）
 
-全部按 F-SOC-12 规则 8 上线（待 X-5 拍板，默认按建议方案 ②：X-5 之前只在测试模式注册），按规则 9 审计。
+全部按 F-SOC-12 规则 8 上线（X-5 ②：X-5 之前只在测试模式注册），按规则 9 审计。
 
 | 接口 | 说明 | 功能点 | 里程碑 |
 |---|---|---|---|
@@ -1041,32 +1041,32 @@ M4：`CreateClientGroup`（含去重、提示消息）；`InviteMembers`（部�
 | `POST /admin/groups`：groupId 不能以 `ug-` 开头（4004）；增加 `owner?` | — | F-SOC-21、30 | M4 |
 | `PATCH /admin/groups/{groupId}` 增加 `owner?`（字符串或 `null`）、`notice?` | — | F-SOC-30 | M4 |
 | `GET /admin/groups/{groupId}` 返回再增加 `owner`、`admins`、`notice`、`createdBy`、`managed` | — | F-SOC-20 | M4 |
-| `DELETE /admin/groups/{groupId}` 解散 | 与 PRD-admin G-ADM-11 是同一个接口；是否提前到第一批待 X-6 拍板（默认按 S-10 建议提前） | F-SOC-26 | M4 |
-| X-5 权限范围（scope）新增 | `social.settings`（配置、官方账号、群主交接）、`social.friends`（导入 / 删除 / 查询好友）；后台服务（console）默认只有 `social.friends` 的查询 | X-5 | M3 |
+| `DELETE /admin/groups/{groupId}` 解散 | 与 PRD-admin G-ADM-11 是同一个接口（PRD-admin 第一批） | F-SOC-26 | M3 |
+| X-5 权限范围（scope）新增 | `social.settings`（配置、官方账号、群主交接）、`social.friends`（导入 / 删除 / 查询好友）；console-server 主凭证持有 `social.friends`（导入、删除、查询）和 `social.settings`（社交配置、官方账号、群主交接），供 PRD-admin 第一批 F-ADM-15～17、25 使用（**后台权限以 PRD-admin F-KEY-02 规则 4 为准**） | X-5 | M3 |
 | 测试接口（只在测试模式） | 5.6 节 | — | M3 |
 
-### 9.4 新增错误码（**暂定编号**）
+### 9.4 新增错误码（已与 PRD-admin v0.2 第 10 节核对）
 
-> 编号按 ERRORS.md 第 1 节的号段规则和评审 R-SOC-23 调整；**最终编号与 PRD-admin v0.2 一起在 errors.json 中定稿**（DECISIONS 第 3 节"新错误码按号段规则重新分配"）。PRD-admin 的号段依赖 A 节（X-1～X-5）拍板，**默认按建议方案**；若两份 PRD 冲突，以写入 errors.json 的结果为准，本 PRD 的 AC 随之改号。errors.json 只增不改，写入前必须两份一起核对。
+> 编号按 ERRORS.md 第 1 节的号段规则和评审 R-SOC-23 调整，已与 PRD-admin v0.2 第 10 节核对（一致性复审 RECHECK-v0.2 第 3 节），无冲突，按本表写入 errors.json。HTTP 列：scope 只有 ws 的码写 `—`（`http: null`，沿用 errors.json 中 4031～4033、4041 的惯例）；有 admin scope 的码写 HTTP 状态。errors.json 只增不改，写入前与 PRD-admin 一起核对。
 
 | code | 名称 | HTTP | 通道 | 可重试 | 含义 | 里程碑 |
 |---|---|---|---|---|---|---|
-| 4035 | NOT_FRIEND | 403 | ws | 否 | 好友制下不是互为好友（`send`）；建群 / 邀请的对象不是好友、拉黑了我或不存在（`groupCreate` / `groupInvite`） | M3 |
-| 4036 | REJECTED_BY_PEER | 403 | ws | 否 | 私聊被对方拉黑（只用于 `send`） | M3 |
-| 4045 | FRIEND_REQUEST_NOT_FOUND | 404 | ws | 否 | 申请不存在、已过期 | M3 |
-| 4046 | TARGET_NOT_GROUP_MEMBER | 404 | ws / admin | 否 | 操作对象不是群成员（转让、设管理员、指定群主） | M4 |
-| 4091 | FRIEND_REQUEST_HANDLED | 409 | ws | 否 | 申请已同意，不能再拒绝 | M3 |
+| 4035 | NOT_FRIEND | — | ws | 否 | 好友制下不是互为好友（`send`）；建群 / 邀请的对象不是好友、拉黑了我或不存在（`groupCreate` / `groupInvite`） | M3 |
+| 4036 | REJECTED_BY_PEER | — | ws | 否 | 私聊被对方拉黑（只用于 `send`） | M3 |
+| 4045 | FRIEND_REQUEST_NOT_FOUND | — | ws | 否 | 申请不存在、已过期 | M3 |
+| 4046 | TARGET_NOT_GROUP_MEMBER | 404 | ws / admin | 否 | 操作对象不是群成员（转让、设管理员、指定群主）；PRD-admin 增加禁言、指定群主用途 | M4 |
+| 4091 | FRIEND_REQUEST_HANDLED | — | ws | 否 | 申请已同意，不能再拒绝 | M3 |
 | 4132 | FRIEND_LIMIT_EXCEEDED | 400 | ws / admin | 否 | 自己的好友数已达上限 | M3 |
-| 4133 | PEER_FRIEND_LIMIT_EXCEEDED | 400 | ws | 否 | 对方的好友数已达上限 | M3 |
-| 4134 | BLOCK_LIMIT_EXCEEDED | 400 | ws | 否 | 黑名单已满 | M3 |
-| 4135 | JOINED_GROUP_LIMIT_EXCEEDED | 400 | ws | 否 | 自己或对方加入的群数已达上限 | M4 |
-| 4136 | GROUP_ADMIN_LIMIT_EXCEEDED | 400 | ws | 否 | 管理员已满 10 人 | M4 |
-| 4137 | STRANGER_MSG_LIMIT | 400 | ws | 否 | 开放模式下对方回复前的条数用完（v0.1 的 4037，按"数量上限"归入 413x） | M3 |
-| 4292 | QUOTA_EXCEEDED | 429 | ws | **否** | 配额用完：每日（好友申请、搜索、拉黑、建群、新对象被拒）或每小时（新对象） | M3 |
+| 4133 | PEER_FRIEND_LIMIT_EXCEEDED | — | ws | 否 | 对方的好友数已达上限 | M3 |
+| 4134 | BLOCK_LIMIT_EXCEEDED | — | ws | 否 | 黑名单已满 | M3 |
+| 4135 | JOINED_GROUP_LIMIT_EXCEEDED | — | ws | 否 | 自己或对方加入的群数已达上限 | M4 |
+| 4136 | GROUP_ADMIN_LIMIT_EXCEEDED | — | ws | 否 | 管理员已满 10 人 | M4 |
+| 4137 | STRANGER_MSG_LIMIT | — | ws | 否 | 开放模式下对方回复前的条数用完（v0.1 的 4037，按"数量上限"归入 413x） | M3 |
+| 4292 | QUOTA_EXCEEDED | 429 | ws / admin | **否** | 配额用完：每日（好友申请、搜索、拉黑、建群、新对象被拒）或每小时（新对象）；PRD-admin 用于正文授权、在线设备、单聊元数据和运维排查的每日上限（console 通道按 PRD-admin 10.2 节） | M3 |
 
 已有错误码扩大使用范围（只扩 `scope`、不改含义）：4130 增加 ws 通道（自建群人数上限），`message` 改为通用的"群成员已达上限"（只改说明、不改含义）；4030 用于群权限不足、托管群操作、`clientGroupEnabled=false`、X-5 的 scope 不足；4040 用于给非好友设备注；4000 用于申请自己拉黑的人、`tip-` 前缀。
 
-号段：403x 用到 4035、4036，**4037～4039 留给 PRD-admin**（CSRF、STEP_UP 等，待 A 节拍板）；4291 留给登录锁定（PRD-admin 备选）。
+号段：403x 用到 4035、4036，4037～4039 由 PRD-admin v0.2 按预留使用（4037 CSRF_INVALID、4038 STEP_UP_REQUIRED、4039 MSG_READ_GRANT_REQUIRED）；4291 由 PRD-admin 用作 CONSOLE_LOGIN_LOCKED（登录锁定）。
 
 **ERRORS.md 需要写明的例外**：4292 `retryable=false`，与第 1 节"429x 稍后重试"的兜底不同。带社交功能的 SDK 都认识 4292、不自动重试；老版本 SDK 只会在 `send` 上遇到 4292（新对象配额），按兜底会重试，重试同样返回 4292，受 SDK 现有的重试上限约束，不会造成放大。
 
@@ -1094,7 +1094,7 @@ M4：`CreateClientGroup`（含去重、提示消息）；`InviteMembers`（部�
 
 | 交接点 | 约定 |
 |---|---|
-| 解散群 | 客户端 `groupDissolve` 和 `DELETE /admin/groups/{id}`（G-ADM-11）共用实现与效果；是否从第二批提前到第一批随 X-6（S-10），默认提前 |
+| 解散群 | 客户端 `groupDissolve` 和 `DELETE /admin/groups/{id}`（G-ADM-11）共用实现与效果；已提前：服务端与 H5 提示在 M3，客户端命令在 M4 |
 | `convRemoved.reason` | 统一枚举 `removed` / `dissolved` / `left`，PRD-admin 第 8 节补 `left` |
 | 群成员分页 | `groupMembers`（客户端）和 `GET /admin/groups/{id}/members`（G-ADM-10）共用存储查询；后台额外支持按 userId 前缀筛选 |
 | 群列表 | 后台群列表（G-ADM-09）增加"群主""类型（自建 / 托管）""成员数"列 |
@@ -1167,7 +1167,7 @@ await im.loadGroupMembers(groupId, cursor?);      // → { members, nextCursor }
 | 资料缓存：每个 userId 一条，10 分钟有效；任何带资料的服务端应答都覆盖缓存；`getUsers` 合并同一事件循环内的请求、每批最多 100；`convs` 刷新不清空缓存 | F-SOC-10 规则 6 |
 | 发出的申请在对方同意前服务端不给资料：界面用发起申请时手里已有的资料（搜索结果、群成员、资料卡），没有时显示 userId | F-SOC-06 规则 9 |
 | （M4）收到 `groupChanged`：对该群调用 `groupInfo`，更新本地会话的 `myRole`、`memberCount`、`name`；不重拉整个 `convs` | F-SOC-20 规则 5 |
-| （M4）`convRemoved` 按 `reason` 区分，保留会话展示信息（DECISIONS 第 3 节） | F-SOC-23、24、26 |
+| `convRemoved` 按 `reason` 区分，保留会话展示信息（DECISIONS 第 3 节）：`removed` / `dissolved` 在 M3（管理接口解散），`left` 在 M4 | F-SOC-23、24、26 |
 | （M4）`type=tip` 的消息正常入库、计入未读；不认识的 `kind` 渲染为"[群通知]" | F-SOC-29 |
 | （M4）`createGroup` 的 `clientReqId` 在一次调用的所有重试中不变；SDK 生成的 `clientMsgId` 永远不以 `tip-` 开头 | F-SOC-21、29 |
 | 被踢、退出登录时清空全部社交状态 | F-AUTH-03 |
@@ -1247,7 +1247,7 @@ await im.loadGroupMembers(groupId, cursor?);      // → { members, nextCursor }
 | ver 分配 | 数据库事务内，持有用户锁 | 单库同左；分片见 8.4 节 | 同 seq 的做法（ARCH 2.3） |
 | 限流 / 配额 | 内存令牌桶，重启清零 | Redis 令牌桶；每日配额带 TTL 持久化 | ARCH G2；11.3 节 |
 | 清理任务 | 进程内每小时一次 `PurgeSocial` | 只在一个节点上跑（分布式锁或独立 cron） | 防止多节点重复清理 |
-| 审计表 | im-server 本地 `admin_audit` | 随 X-1 / X-4 接入后台服务的统一审计 | 待 X-4 拍板，默认按建议 ② |
+| 审计表 | im-server 本地 `admin_audit` | 随 X-1 / X-4 接入后台服务的统一审计 | X-4 ②（已拍板） |
 
 ---
 
@@ -1267,7 +1267,7 @@ await im.loadGroupMembers(groupId, cursor?);      // → { members, nextCursor }
 | V-08 | F-GRP-01、F-GRP-03 | 写明：**管理接口的建群、加减成员、改名、改 `historyVisible` 不产生群提示消息**；客户端邀请（M4）产生 `joined` 提示消息，被邀请的新成员在 `minSeq` 处能看到这条提示、未读为 1 | AC-GRP-01-6 / 7 / 12 注明"管理接口加人"，**结果不变**；TC-GRP 现有用例只用管理接口，不受影响；客户端邀请的场景由新增的 AC-SOC-22-5 覆盖 | M4 |
 | V-09 | F-GRP-01 | 增加群主、管理员、托管群（F-SOC-20、30）；`ug-` 前缀保留给自建群，`POST /admin/groups` 使用时返回 4004；群上限 2000 不变，自建群另有 `max_members` | 现有用例和代码中没有 `ug-` 开头的群 ID（已核对 `server/`） | M4 |
 | V-10 | AC-GRP-02-3 | **保持不变**：已存在但成员为空的群仍然合法（托管群的最后一人退出后群保留）；只有自建群在最后一人退出时解散（F-SOC-23 规则 5，待 X-6） | 无 | M4 |
-| V-11 | F-GRP-03 | `convRemoved` 增加 `reason`（`removed` / `dissolved` / `left`）；客户端群操作同样触发 `convAdded` / `convRemoved` | 新增可选字段 | M4 |
+| V-11 | F-GRP-03 | `convRemoved` 增加 `reason`（`removed` / `dissolved` / `left`）；客户端群操作同样触发 `convAdded` / `convRemoved` | 新增可选字段 | `removed` / `dissolved`：M3；`left`：M4 |
 | V-12 | 3.1 节（消息类型） | 新增消息类型 `tip`（F-SOC-29）；`Message.from`、`LastMsg.from` 在 `type=tip` 时允许为空；未读公式（C-02）不变，提示消息占用 seq、计入未读 | 现有用例都不产生 tip | M4 |
 | V-13 | F-CONV-03 | 发起单聊增加"从好友列表 / 资料卡发起"；好友制下给非好友发起时提示先加好友 | — | M3 |
 | V-14 | F-USER-02 | 资料来源增加 `users` 命令，访问范围见 F-SOC-10（待 U-4） | — | M3 |
@@ -1309,27 +1309,28 @@ await im.loadGroupMembers(groupId, cursor?);      // → { members, nextCursor }
 | 群成员列表（移出、设管理员） | `/chat/:convId/members` | F-SOC-24、25、28 | M4 |
 | 邀请成员（选择好友） | `/chat/:convId/invite` | F-SOC-22 | M4 |
 | 聊天页：群提示消息样式 | — | F-SOC-29 | M4 |
+| 聊天页："群聊已解散"（托管群被管理接口解散） | — | F-SOC-26 | M3 |
 
 ### 13.3 PRD-admin
 
-- G-ADM-11 解散群是否提前到第一批随 X-6（S-10），默认提前（9.5 节）；`convRemoved.reason` 补 `left`。
+- G-ADM-11 解散群已提前到第一批（X-6 ②、S-10），与本 PRD F-SOC-26 的 M3 部分同一实现（9.5 节）；`convRemoved.reason` 补 `left`（M4）。
 - F-ADM-42 全群禁言的"一期没有群管理员"前提在 M4 之后改变。
 - 群列表 / 详情增加群主、类型、管理员、成员数；用户详情增加好友数、黑名单数、官方账号（P1）。
-- 第 8 节错误码与本 PRD 第 9.4 节合并定稿：403x 中 4037～4039 留给 PRD-admin。
-- 后台服务调用社交管理接口时使用 X-5 的 scope（`social.friends` 查询为默认）。
+- 第 8 节错误码与本 PRD 第 9.4 节合并定稿：403x 中 4037～4039 由 PRD-admin 按预留使用（已核对）。
+- 后台服务调用社交管理接口时使用 X-5 的 scope：console-server 主凭证持有 `social.friends`、`social.settings`，以 PRD-admin F-KEY-02 规则 4 为准。
 
 ### 13.4 DECISIONS
 
-E 节 6 项已拍板，本 PRD 不新增拍板项。A～D 节中与本 PRD 有关的依赖（都按建议方案写入，拍板结果不同时只需改对应条目）：
+E 节 6 项已拍板，本 PRD 不新增拍板项。A～D 节中与本 PRD 有关的依赖于 2026-11-03 全部按建议通过：
 
-| 依赖 | 本 PRD 默认采用的建议 | 若拍板结果不同 |
+| 依赖 | 拍板结果 | 本 PRD 中的落实 |
 |---|---|---|
-| X-5 | ② 独立内网端口 + 分密钥 + scope；社交管理接口在它之后上线（S-11） | 若选 ①（不动），S-11 ② 的前提不成立，需要 Frank 重新决定社交管理接口能否上线 |
-| X-6 | ② 分批，但"解散群"按 S-10 提前到第一批 | 若解散群不提前：F-SOC-26 随 PRD-admin 第二批交付，F-SOC-23 规则 5 按备选（自建群保留空群） |
-| U-4 | 做（P0），新增 `users` + 会话成员数；可见范围按 S-10 扩大到好友和收到的申请 | 若范围收窄：删去 F-SOC-10 规则 2 对应的行和 AC-SOC-10-4、10-5 |
-| X-8 | ② IM 和业务方都可以封禁 | 若选 ①：F-SOC-09 规则 7 改为由业务方的封禁触发 |
-| X-4 | ② 审计提前到 P0 | 若选 ①：`admin_audit` 仍按 S-11 写（S-11 要求至少有审计），只是不接入统一规格 |
-| 错误码号段（第 3 节） | 本 PRD 9.4 节的暂定编号 | 以 errors.json 定稿结果为准，AC 随之改号 |
+| X-5 | ② 独立内网端口 + 分密钥 + scope；社交管理接口在它之后上线（S-11） | F-SOC-12 规则 8、9；9.3 节 |
+| X-6 | ② 分批，"解散群"按 S-10 提前到第一批 | F-SOC-26：服务端、管理接口、`convRemoved.reason` 在 M3，客户端命令在 M4；F-SOC-23 规则 5 自建群最后一人退出自动解散 |
+| U-4 | 做（P0），新增 `users` + 会话成员数；可见范围按 S-10 扩大到好友和收到的申请 | F-SOC-10、F-SOC-11 |
+| X-8 | ② IM 和业务方都可以封禁 | F-SOC-09 规则 7 |
+| X-4 | ② 审计提前到 P0 | `admin_audit` 按 S-11 写，字段以 PRD-admin F-KEY-04 为准 |
+| 错误码号段（第 3 节） | 按号段重新分配 | 9.4 节，已与 PRD-admin v0.2 第 10 节核对 |
 
 ### 13.5 其他
 
@@ -1337,7 +1338,7 @@ E 节 6 项已拍板，本 PRD 不新增拍板项。A～D 节中与本 PRD 有�
 - `docs/sdk/README.md`：第 1 节增加"社交状态"一行（sdk-ts 只在内存、每次刷新全量）；第 2、3 节写入第 10 节内容。
 - ARCH 第 1.2 节差距表补三条："`group_members` 缺少 `user_id` 索引（0004 补上）""分片后好友关系需要一对用户的权威记录 + 双写 + 上限预留（8.4 节）""每日配额在内存里，重启清零（集群化时迁 Redis）"。
 - PLAN 第 1 节产品范围表："好友关系 / 黑名单"从 P1 改为 P0（M3）；"群管理员"从 P1 改为 P0（M4）。
-- QUEUE：Q11a 完成后，Q12 的需求分发按 M3 / M4 分两批出任务单；M3 任务单的第一项是 X-5（若已拍板）。
+- QUEUE：Q11a 完成后，Q12 的需求分发按 M3 / M4 分两批出任务单；M3 任务单的第一项是 X-5（已拍板）。
 - 测试用例新增 `TC-SOC.md`；`tools/trace.py` 目前只读 `PRD-core-v1.2.md`，需要改为同时读本 PRD（或 v1.3 合并后读 v1.3）。本 PRD 的 AC 编号格式为 `AC-SOC-xx-n`，与 `AC_RE = AC-[A-Z]+-\d+-\d+` 和行首匹配 `^- (AC-…)` 兼容；验证层标记【后端】【前端】紧跟编号，`load_acs` 的 `rest[:8]` 能识别。
 
 ---
@@ -1355,7 +1356,7 @@ E 节 6 项已拍板，本 PRD 不新增拍板项。A～D 节中与本 PRD 有�
 | S-7 ② | M3 只做好友 + 拉黑 + 通讯录 + 私聊权限，群角色 / 客户端群管理 / 群公告放 M4 | 3.1 节每个功能点标注里程碑；3.2 节边界；第 15 节分开估算 |
 | S-8 ② | 陌生人条数和每小时新对象数默认关闭 | 5.1 节默认 0；13.1 节 V-04 |
 | S-9 ② | 官方账号可豁免 | F-SOC-13 |
-| S-10 | 解散群提前、`users` 可见范围扩大，随 X-6 / U-4 | F-SOC-10、F-SOC-26 标注依赖，按建议写入；13.4 节 |
+| S-10 | 解散群提前、`users` 可见范围扩大，随 X-6 / U-4 | X-6 ②、U-4 已拍板；F-SOC-10、F-SOC-26（M3 / M4 拆分）；13.4 节 |
 | S-11 ② | 社交管理接口等 X-5，至少先有审计 | F-SOC-12 规则 8、9 |
 
 v0.1 第 14 节的 S-5（错误码号段）、S-6（原生 SDK 何时带社交）按评审意见不需要拍板：S-5 归入错误码重排（9.4 节），S-6 写成规则（10.4 节）。
@@ -1393,7 +1394,7 @@ v0.1 第 14 节的 S-5（错误码号段）、S-6（原生 SDK 何时带社交�
 | 测试 | TC-SOC（M3 共 125 条 AC，后端两种模式）、11.2 节安全用例、同步模型测试、不回归压测对比 | 6 |
 | 文档 | PRD-core v1.3 合并、PRD-ui v0.2 社交页面交互（M3 部分）、PRD-admin 同步、SDK README、ARCH 差距 | 2.5 |
 | **M3 社交合计** | | **41** |
-| 前置依赖（不计入社交，但在 M3 关键路径上） | X-5 管理密钥收紧（DECISIONS 估 3～4 天，待拍板）；H5 基础 Q13（FE-010～018：登录、会话列表、聊天页、群聊、演示面板，参考估算约 8，以 Q13 任务单为准）；PRD-ui v0.2 的非社交部分（随 DECISIONS 第 4 节的文档修订） | 约 11.5 + 文档 |
+| 前置依赖（不计入社交，但在 M3 关键路径上） | X-5 管理密钥收紧（DECISIONS 估 3～4 天，已拍板 ②）；H5 基础 Q13（FE-010～018：登录、会话列表、聊天页、群聊、演示面板，参考估算约 8，以 Q13 任务单为准）；PRD-ui v0.2 的非社交部分（随 DECISIONS 第 4 节的文档修订） | 约 11.5 + 文档 |
 
 M3 的关键路径：X-5 → 0004 与社交服务端 → sdk-ts 社交 → H5 基础（Q13，可与服务端并行）→ H5 社交页面（需 PRD-ui v0.2 交互规格）→ M3 演示路径彩排。
 
@@ -1445,7 +1446,7 @@ M3 的关键路径：X-5 → 0004 与社交服务端 → sdk-ts 社交 → H5 �
 | 配置变更 | 模式切换、调低上限、改限额后的行为；`socialSettingsChanged`；双节点失效与 TTL 兜底 | M3 |
 | 群权限矩阵 | F-SOC-20 规则 2 的每一格 | M4 |
 | 群主退群 | 自建群：有管理员 / 无管理员 / 只剩一人；托管群：回到无群主；管理接口移除群主 | M4 |
-| 解散 | 客户端和管理接口两条路径效果一致；F-SOC-26 规则 3 的每个查询；群 ID 不复用；离线成员上线后的状态 | M4 |
+| 解散 | 管理接口解散（M3）；客户端和管理接口两条路径效果一致（M4）；F-SOC-26 规则 3 的每个查询；群 ID 不复用；离线成员上线后的状态 | M3 / M4 |
 | 提示消息 | seq 连续、同事务、`historyVisible=false` 时新成员能看到自己的入群提示、计入未读、管理接口操作不产生 | M4 |
 | 迁移 | 在已有 0003 数据的库上执行 0004 / 0005：`sent_count`、`member_count` 回填正确；`ug-` 预检；`repair counters` 幂等 | M3 / M4 |
 | 安全 | 日志扫描（附言、备注、关键字、公告特征串）；审计记录不含备注；XSS 字符串在附言、备注、群名、公告中原样显示 | M3 / M4 |
@@ -1459,6 +1460,7 @@ M3 的关键路径：X-5 → 0004 与社交服务端 → sdk-ts 社交 → H5 �
 |---|---|---|---|
 | v0.1 | 2026-11-03 | 初稿：按 S-1～S-3 起草好友、拉黑、通讯录、搜索、资料、私聊权限、群聊补缺（F-SOC-01～12、20～30），数据模型 0004 / 0005，协议与错误码，SDK、安全、分布式、文档影响，待拍板 S-4～S-7 | 产品（AI） |
 | v0.2 | 2026-11-03 | 按 REVIEW-social-v0.1（阻塞 4 / 重要 16 / 建议 13）和 E 节拍板修订：重新设计关系版本号与同步分页（F-SOC-06、5.4 节）；防枚举改为统一应答 + 存在性判断前的新对象配额（11.2 节）；PRD-core v1.3 变更补全（V-01～V-24）；新增并发与加锁规则、分片方案、发布与回滚（8.3～8.5 节）；新增 F-SOC-13 官方账号、`myGroups`、`socialSettingsChanged`、测试设施（5.6 节）；按 S-7 分 M3 / M4；防骚扰默认关闭（S-8）；社交管理接口依赖 X-5 并审计（S-11）；错误码 4037 → 4137、4292 改名 QUOTA_EXCEEDED；重估工作量 74 人日；删除 v0.1 第 14 节待拍板项 | 产品（AI） |
+| v0.2（一致性复审后修订） | 2026-11-03 | 按 RECHECK-v0.2-2026-11-03 第 6.3 节 S-1～S-4 修订（不升版本号）：后台社交权限以 PRD-admin F-KEY-02 为准；解散群拆为 M3（服务端、管理接口、`convRemoved.reason`）/ M4（客户端命令）；依赖改为已拍板；ws 专用错误码 HTTP 改为 —。见第 18 节末"一致性复审后修订" | 产品（AI） |
 
 ---
 
@@ -1576,3 +1578,16 @@ v0.1 尚未冻结、也没有下游任务单和用例引用，v0.2 的 AC 按功
 | N-01 新对象被拒配额先查后扣，10 连接并发可突破 | 改为预扣、成功退还（F-SOC-08 规则 5a、判定顺序第 4 步）；新增 AC-SOC-08-14、08-15；`ratelimit.Limiter` 增加 `Take` / `Refund` |
 | N-02 被 4292 拒绝是否扣发送令牌前后矛盾 | 保持判定顺序；5.2 节规则 1 和 V-06 改为与 C-29 原文一致（被哪一项拒绝就不扣哪一项，前面已通过的照常扣） |
 | N-03 分片方案两处不一致 | 不阻塞（分片不在 M3 / M4 / B6 范围），记入 ARCH 差距表 |
+
+### 一致性复审后修订（2026-11-03）
+
+依据 [RECHECK-v0.2-2026-11-03](../review/RECHECK-v0.2-2026-11-03.md) 第 6.3 节，直接在 v0.2 上修改，不新建版本。4 条全部照做。
+
+| 清单编号 | 对应复审问题 | 怎么改的 |
+|---|---|---|
+| S-1 | D-01 | 9.3 节"X-5 权限范围（scope）新增"行改为"console-server 主凭证持有 `social.friends`（导入、删除、查询）和 `social.settings`（社交配置、官方账号、群主交接），供 PRD-admin 第一批 F-ADM-15～17、25 使用"，并注明**后台权限以 PRD-admin F-KEY-02 规则 4 为准**；13.3 节同一句同步 |
+| S-2 | D-02 | F-SOC-26 标题改为"P0；存储方法、管理接口、`convRemoved.reason` 为 M3，客户端 `groupDissolve` 为 M4"，引言改为已拍板并写明 M3 / M4 的拆分；AC-SOC-26-6 标【M3】，26-1、26-3 标【M4】，26-2、26-4、26-5 标【M3 / M4】；9.3 节 `DELETE /admin/groups/{groupId}` 改为 M3，去掉"待 X-6 拍板"；9.5 节解散群行改为"已提前：服务端与 H5 提示在 M3，客户端命令在 M4"；3.1 节总览 F-SOC-26 里程碑改为 M3 / M4。为避免残留，同时改了：F-SOC-23 规则 5 删去"若 X-6 不提前"的备选；9.2 节 `convRemoved.reason` 改为 `removed` / `dissolved` M3、`left` M4（V-11 同步）；13.2 节补 M3 的"群聊已解散"提示页；13.3 节 G-ADM-11 改为已提前；16 节解散测试要点改为 M3 / M4 |
+| S-3 | D-09 | 第 12 行改为"依赖（已拍板）：X-5 ②、X-6 ②（S-10：解散群提前）、U-4（做）、X-8 ②，2026-11-03 已按建议通过；错误码与 PRD-admin v0.2 第 10 节一起写入 errors.json"；全文删去"待 X-5 / X-6 / U-4 拍板""默认按建议方案"（F-SOC-01 规则 2、F-SOC-10 标题与依赖说明、F-SOC-11 规则 3、F-SOC-12 规则 8、F-SOC-26、9.1 `groupDissolve` 行、9.3 节开头、15.1 前置依赖、13.5 QUEUE）；同类的"待 X-8 拍板"（F-SOC-09 规则 7）、"待 X-4 拍板"（11 节审计表行）也一并改为已拍板；3.1 节依赖列表头、文首"待拍板"行、13.4 节表格（改为"拍板结果 / 本 PRD 中的落实"）、14.1 节 S-10 行同步 |
+| S-4 | E-07 | 9.4 节只有 ws scope 的 4035、4036、4045、4091、4133、4134、4135、4136、4137 的 HTTP 列改为"—"；4046 保持 ws / admin 并注明"PRD-admin 增加禁言、指定群主用途"；4292 通道改为 ws / admin 并注明 PRD-admin 的每日上限用途；标题和表上说明的"暂定编号"改为"已与 PRD-admin v0.2 第 10 节核对，无冲突，按本表写入 errors.json"；号段说明中 4037～4039、4291 改为 PRD-admin 已按预留使用（名称与 PRD-admin 10.1 节一致） |
+
+**统计变化**：AC 数量不变（只给 AC-SOC-26-1～26-6 加了里程碑标记），无改号。
