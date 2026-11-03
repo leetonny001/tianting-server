@@ -128,13 +128,15 @@ func (g *Gateway) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	uid := claims.UserID
 
 	c := &conn{
-		id:        g.cfg.NodeID + "-" + strconv.FormatUint(g.nextID.Add(1), 10),
-		uid:       uid,
-		platform:  platform,
-		expiresAt: claims.ExpiresAt,
-		ws:        ws,
-		done:      make(chan struct{}),
-		gw:        g,
+		id:       g.cfg.NodeID + "-" + strconv.FormatUint(g.nextID.Add(1), 10),
+		uid:      uid,
+		platform: platform,
+		// 剩余有效期在鉴权时按注入的时钟算好：auth 的 ack 发出之后测试可能马上改时钟，
+		// 如果等 run 开始时再算，就会和改时钟赛跑（race 检测下变慢时会被立即踢下线）。
+		ttl:  claims.ExpiresAt.Sub(g.clock.Now()),
+		ws:   ws,
+		done: make(chan struct{}),
+		gw:   g,
 	}
 	// auth 的 ack 先入队、再登记到在线表：保证客户端先收到 ack，再收到任何推送。
 	c.write(protocol.AckOK(authID, protocol.AuthAck{UserID: uid, ServerTime: g.clock.Now().UnixMilli()}))
@@ -231,12 +233,12 @@ func (g *Gateway) kick(ws *websocket.Conn, reason string) {
 
 // conn 是一个 WebSocket 连接，实现 hub.Client。
 type conn struct {
-	id        string
-	uid       string
-	platform  string
-	expiresAt time.Time
-	ws        *websocket.Conn
-	done      chan struct{} // 关闭后 Send 一律返回 false
+	id       string
+	uid      string
+	platform string
+	ttl      time.Duration // 鉴权时 token 的剩余有效期
+	ws       *websocket.Conn
+	done     chan struct{} // 关闭后 Send 一律返回 false
 
 	// 待发送队列。按需分配、按需启动写协程，写空后协程退出：
 	// 1 万条空闲连接如果各自预分配 256 格的 channel、常驻一个写协程，要多占约 60MB 堆和约 80MB 栈（Q5a 内存分析）。
@@ -338,8 +340,8 @@ func (c *conn) run(parent context.Context) closeReason {
 	})
 	defer idle.Stop()
 
-	// token 到期时踢下线（PRD F-AUTH-03 规则 1）。按注入的时钟计算剩余时间。
-	expiry := time.AfterFunc(c.expiresAt.Sub(c.gw.clock.Now()), func() { c.Kick(protocol.KickTokenExpired) })
+	// token 到期时踢下线（PRD F-AUTH-03 规则 1）。剩余时间在鉴权时按注入的时钟算好。
+	expiry := time.AfterFunc(c.ttl, func() { c.Kick(protocol.KickTokenExpired) })
 	defer expiry.Stop()
 
 	for {
