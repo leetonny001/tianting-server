@@ -5,6 +5,7 @@ import (
 	"context"
 	"crypto/rand"
 	"encoding/hex"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"log/slog"
@@ -25,6 +26,7 @@ import (
 	"tianting/server/internal/metrics"
 	"tianting/server/internal/protocol"
 	"tianting/server/internal/ratelimit"
+	"tianting/server/internal/social"
 	"tianting/server/internal/store"
 )
 
@@ -47,11 +49,13 @@ type Config struct {
 	// AdminAllowedCIDRs 非空时，管理端口只接受来自这些网段的 TCP 连接（只看对端地址，不解析 X-Forwarded-For）。
 	AdminAllowedCIDRs []netip.Prefix
 	Gateway           gateway.Config
-	TestMode          bool // 开启故障注入、时钟注入、短有效期 token（PRD 6.1 节），生产必须关闭
-	DemoLogin         bool // 开启演示登录 /demo/login（PRD F-AUTH-04），生产必须关闭
-	SendRate          int  // 每个用户每秒可发消息数，0 表示默认值 20（PRD F-MSG-07）
-	Version           string
-	Logger            *slog.Logger
+	// SocialDefaults 是 IM_SOCIAL_DEFAULTS（JSON，字段同 PRD-social 5.1 节）：只在库里没有配置行时写入一次。
+	SocialDefaults string
+	TestMode       bool // 开启故障注入、时钟注入、短有效期 token（PRD 6.1 节），生产必须关闭
+	DemoLogin      bool // 开启演示登录 /demo/login（PRD F-AUTH-04），生产必须关闭
+	SendRate       int  // 每个用户每秒可发消息数，0 表示默认值 20（PRD F-MSG-07）
+	Version        string
+	Logger         *slog.Logger
 }
 
 const defaultSendRate = 20
@@ -66,6 +70,7 @@ type App struct {
 	hub         *hub.Hub
 	metrics     *metrics.Metrics
 	draining    atomic.Bool
+	stop        chan struct{} // 关闭后台任务（社交清理）
 }
 
 func New(cfg Config) (*App, error) {
@@ -100,8 +105,15 @@ func New(cfg Config) (*App, error) {
 	m := metrics.New()
 	inv := cache.NewLocal() // 单节点：失效通知直接在本机回调；集群时换成经消息总线广播的实现
 	svc := logic.New(st, h, clk, faults, ratelimit.New(sendRate, sendRate, clk), inv, m, cfg.Logger)
+	if cfg.SocialDefaults != "" {
+		if err := initSocialDefaults(st, cfg.SocialDefaults, clk.Now().UnixMilli()); err != nil {
+			st.Close()
+			return nil, err
+		}
+	}
 
-	a := &App{store: st, hub: h, metrics: m}
+	a := &App{store: st, hub: h, metrics: m, stop: make(chan struct{})}
+	go svc.RunSocialPurge(a.stop)
 	info := api.Info{Version: cfg.Version, StartedAt: time.Now(), Ready: a.ready}
 	if cfg.ReportLegacyAdmin {
 		info.Details = map[string]any{"legacyAdminKey": true}
@@ -117,6 +129,7 @@ func New(cfg Config) (*App, error) {
 		LegacyKey: cfg.AdminKey, LegacyDisabled: cfg.AdminLegacyDisabled, Callers: cfg.AdminCallers,
 		NodeID: gw.NodeID, Failures: m.AdminAuthFailures,
 	}, signer, st, h, inv, svc, clk, cfg.TestMode, cfg.Logger)
+	adm.WithSocial(svc)
 	adminMux := http.NewServeMux()
 	adm.Register(adminMux)
 	if cfg.TestMode {
@@ -157,7 +170,21 @@ func (a *App) StopAccepting() { a.draining.Store(true) }
 // KickAll 通知本节点全部在线连接服务端即将下线（kicked/serverShutdown，客户端退避重连），返回连接数。
 func (a *App) KickAll() int { return a.hub.KickAll(protocol.KickShutdown) }
 
-func (a *App) Close() error { return a.store.Close() }
+func (a *App) Close() error {
+	close(a.stop)
+	return a.store.Close()
+}
+
+// initSocialDefaults 把启动配置合并到默认值上，只在没有配置行时写入（之后一律以数据库为准，AC-SOC-01-9）。
+func initSocialDefaults(st *store.SQLite, raw string, now int64) error {
+	s, err := social.Patch(social.Defaults(), []byte(raw))
+	if err != nil {
+		return fmt.Errorf("IM_SOCIAL_DEFAULTS: %w", err)
+	}
+	b, _ := json.Marshal(s)
+	_, err = st.InitSocialSettings(context.Background(), string(b), now)
+	return err
+}
 
 // randomNodeID 在没有配置 IM_NODE_ID 时生成节点标识，例如 "n3f9a1c"。
 func randomNodeID() string {

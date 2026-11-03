@@ -28,6 +28,10 @@ type Message struct {
 	// 以下字段只在 SaveMessage 时传入，不随消息读出。
 	Summary   string   // 会话列表里的摘要（调用方截断好，前 100 个码点）
 	ConvUsers []string // 单聊：双方 userId，让会话出现在双方的会话列表里；群消息为空
+	// StrangerLimit > 0 时做陌生人限额（PRD-social F-SOC-08 规则 4、8.3 节 L6）：在同一事务里、分配 seq 之前，
+	// 对方在这个会话里从未发过消息且我已发 >= StrangerLimit 条时返回 ErrStrangerMsgLimit（不占 seq）。
+	// 是否适用（开放模式、不互为好友、双方都不是官方账号）由调用方判断。
+	StrangerLimit int
 }
 
 // Group 是群（PRD F-GRP-01）。
@@ -85,10 +89,13 @@ type User struct {
 	Nickname  string
 	Avatar    string
 	CreatedAt int64
+	Official  bool // 官方账号（PRD-social F-SOC-13）；UpsertUsers 忽略，用 SetOfficial 修改
 }
 
 // Store 是 IM 服务端用到的全部持久化操作。
 type Store interface {
+	SocialStore
+
 	// SaveMessage 为消息分配会话内递增 seq 并保存。
 	// 同一发送者重复提交同一 ClientMsgID 时不新建，返回第一次保存的消息且 dup=true。
 	// 同一个事务里还会：更新会话的最后一条消息；单聊把会话加入双方的会话列表（ConvUsers）；

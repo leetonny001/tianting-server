@@ -263,3 +263,16 @@ func TestCallerSecretMustDifferFromJWT(t *testing.T) {
 		t.Error("invalid IM_C2C_BODY_ACCESS accepted")
 	}
 }
+
+// AC-SOC-01-9 的启动部分：IM_SOCIAL_DEFAULTS 格式或范围非法拒绝启动，合法时原样带给 app。
+func TestSocialDefaults(t *testing.T) {
+	cfg, _, err := Load(envOf(map[string]string{"IM_SOCIAL_DEFAULTS": `{"mode":"friends"}`}))
+	if err != nil || cfg.App.SocialDefaults != `{"mode":"friends"}` {
+		t.Fatalf("valid defaults: %v %q", err, cfg.App.SocialDefaults)
+	}
+	for _, bad := range []string{`{"mode":"x"}`, `{"maxFriends":1}`, `not json`, `{"foo":1}`} {
+		if _, _, err := Load(envOf(map[string]string{"IM_SOCIAL_DEFAULTS": bad})); err == nil {
+			t.Errorf("%s accepted", bad)
+		}
+	}
+}

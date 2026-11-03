@@ -73,10 +73,12 @@ func main() {
 		err = backup(args)
 	case "restore":
 		err = restore(args)
+	case "repair":
+		err = repair(args)
 	case "version":
 		fmt.Println(version)
 	default:
-		err = fmt.Errorf("unknown command %q (serve | migrate | backup | restore | version)", cmd)
+		err = fmt.Errorf("unknown command %q (serve | migrate | backup | restore | repair | version)", cmd)
 	}
 	if err != nil {
 		logger.Error("command failed", "cmd", cmd, "err", err)
@@ -213,6 +215,27 @@ func migrate(args []string) error {
 	default:
 		return errors.New("usage: im-server migrate [-db FILE] up|status")
 	}
+	return nil
+}
+
+// repair counters 按基础表重算计数器（PRD-social 8.5 节）：幂等，可在线执行；恢复备份后、发现漂移时运行。
+func repair(args []string) error {
+	fs := flag.NewFlagSet("repair", flag.ExitOnError)
+	db := fs.String("db", dbPath(), "database file")
+	fs.Parse(args)
+	if fs.Arg(0) != "counters" {
+		return errors.New("usage: im-server repair [-db FILE] counters")
+	}
+	st, err := store.OpenSQLite(*db, store.SQLiteOptions{})
+	if err != nil {
+		return err
+	}
+	defer st.Close()
+	n, err := st.RepairCounters(context.Background())
+	if err != nil {
+		return err
+	}
+	fmt.Printf("repaired %d counter row(s) in %s\n", n, *db)
 	return nil
 }
 

@@ -2,6 +2,7 @@
 package ratelimit
 
 import (
+	"strings"
 	"sync"
 	"time"
 
@@ -55,10 +56,7 @@ func (l *TokenBucket) Allow(key string) bool {
 		b = &bucket{tokens: l.burst, last: now}
 		l.buckets[key] = b
 	}
-	if elapsed := now.Sub(b.last).Seconds(); elapsed > 0 {
-		b.tokens = min(l.burst, b.tokens+elapsed*l.rate)
-		b.last = now
-	}
+	l.refill(b, now)
 
 	l.calls++
 	if l.calls%1024 == 0 {
@@ -76,6 +74,72 @@ func (l *TokenBucket) prune(now time.Time) {
 	for k, b := range l.buckets {
 		full := b.tokens+now.Sub(b.last).Seconds()*l.rate >= l.burst
 		if full && now.Sub(b.last) > idleTTL {
+			delete(l.buckets, k)
+		}
+	}
+}
+
+// NewDaily 是"每天 n 次"的近似：每 24h/n 补 1 个、容量 n（PRD-social 5.2 节规则 2，不按自然日清零）。
+func NewDaily(n int, clk clock.Clock) *TokenBucket {
+	return NewPer(24*time.Hour/time.Duration(max(n, 1)), max(n, 1), clk)
+}
+
+// NewHourly 是"每小时 n 次"的近似。
+func NewHourly(n int, clk clock.Clock) *TokenBucket {
+	return NewPer(time.Hour/time.Duration(max(n, 1)), max(n, 1), clk)
+}
+
+// refill 把桶补到 now（调用方持锁）。
+func (l *TokenBucket) refill(b *bucket, now time.Time) {
+	if elapsed := now.Sub(b.last).Seconds(); elapsed > 0 {
+		b.tokens = min(l.burst, b.tokens+elapsed*l.rate)
+		b.last = now
+	}
+}
+
+// Reconfigure 修改速率与容量，对已有的桶立即生效（PRD-social 5.2 节规则 3）：先按旧速率补到当前时刻，
+// 再把剩余令牌截断到新容量；不清零（已用量保留），调大时也不自动补满，按新速率补充。
+func (l *TokenBucket) Reconfigure(interval time.Duration, burst int) {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	now := l.clock.Now()
+	for _, b := range l.buckets {
+		l.refill(b, now)
+		b.tokens = min(b.tokens, float64(burst))
+	}
+	l.rate, l.burst = 1/interval.Seconds(), float64(burst)
+}
+
+// Refund 退还一个令牌（预扣 + 退还，PRD-social F-SOC-08 规则 5a），不超过容量。
+func (l *TokenBucket) Refund(key string) {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	b := l.buckets[key]
+	if b == nil {
+		return // 桶已被回收说明本来就是满的
+	}
+	l.refill(b, l.clock.Now())
+	b.tokens = min(l.burst, b.tokens+1)
+}
+
+// Tokens 返回 key 当前的剩余令牌数（测试用）。
+func (l *TokenBucket) Tokens(key string) float64 {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	b := l.buckets[key]
+	if b == nil {
+		return l.burst
+	}
+	l.refill(b, l.clock.Now())
+	return b.tokens
+}
+
+// ResetUser 清空某用户的桶：key 等于 uid 或以 "uid:" 开头（测试接口 /admin/test/limits/reset）。
+func (l *TokenBucket) ResetUser(uid string) {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	for k := range l.buckets {
+		if k == uid || strings.HasPrefix(k, uid+":") {
 			delete(l.buckets, k)
 		}
 	}

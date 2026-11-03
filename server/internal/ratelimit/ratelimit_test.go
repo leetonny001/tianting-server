@@ -1,6 +1,8 @@
 package ratelimit
 
 import (
+	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -80,5 +82,72 @@ func TestNewPerSlowRefill(t *testing.T) {
 	clk.Freeze(t0.Add(3 * time.Second))
 	if !l.Allow("ip") {
 		t.Fatal("one token expected after 3s")
+	}
+}
+
+func TestReconfigureTruncatesWithoutRefill(t *testing.T) {
+	clk := clock.New()
+	clk.Freeze(time.UnixMilli(1_700_000_000_000))
+	l := NewPer(time.Second, 10, clk)
+	for range 3 {
+		l.Allow("u") // 剩 7
+	}
+	l.Reconfigure(time.Second, 5) // 截断到 5
+	if got := l.Tokens("u"); got != 5 {
+		t.Fatalf("after shrink: %v, want 5", got)
+	}
+	l.Reconfigure(time.Second, 20) // 调大不补满
+	if got := l.Tokens("u"); got != 5 {
+		t.Fatalf("after grow: %v, want 5", got)
+	}
+	clk.Freeze(clk.Now().Add(3 * time.Second))
+	if got := l.Tokens("u"); got != 8 {
+		t.Fatalf("after 3s at new rate: %v, want 8", got)
+	}
+}
+
+func TestRefundAndReset(t *testing.T) {
+	clk := clock.New()
+	clk.Freeze(time.UnixMilli(1_700_000_000_000))
+	l := NewDaily(2, clk)
+	if !l.Allow("u") || !l.Allow("u") || l.Allow("u") {
+		t.Fatal("daily bucket of 2 should allow exactly 2")
+	}
+	l.Refund("u")
+	if !l.Allow("u") || l.Allow("u") {
+		t.Fatal("refund should give back exactly one token")
+	}
+	l.Refund("u")
+	l.Refund("u")
+	l.Refund("u")
+	if got := l.Tokens("u"); got != 2 {
+		t.Fatalf("refund must not exceed burst: %v", got)
+	}
+	l.Allow("u:bob")
+	l.Allow("ux")
+	l.ResetUser("u")
+	if l.Tokens("u:bob") != 2 || l.Tokens("ux") != 1 {
+		t.Fatalf("ResetUser cleared wrong keys: u:bob=%v ux=%v", l.Tokens("u:bob"), l.Tokens("ux"))
+	}
+}
+
+func TestTakeIsAtomicUnderConcurrency(t *testing.T) {
+	clk := clock.New()
+	clk.Freeze(time.UnixMilli(1_700_000_000_000))
+	l := NewDaily(100, clk)
+	var ok atomic.Int32
+	var wg sync.WaitGroup
+	for range 500 {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			if l.Allow("u") {
+				ok.Add(1)
+			}
+		}()
+	}
+	wg.Wait()
+	if ok.Load() != 100 {
+		t.Fatalf("granted %d, want 100", ok.Load())
 	}
 }

@@ -122,6 +122,21 @@ func (h *Hub) ConnCount(userID string) int {
 	return len(h.users[userID])
 }
 
+// DeliverToAll 实现 delivery.Broadcaster：发给本节点上的全部连接。
+func (h *Hub) DeliverToAll(frame []byte) {
+	h.mu.RLock()
+	var targets []Client
+	for _, conns := range h.users {
+		for _, e := range conns {
+			targets = append(targets, e.c)
+		}
+	}
+	h.mu.RUnlock()
+	for _, c := range targets {
+		c.Send(frame)
+	}
+}
+
 // KickAll 踢掉本节点上的全部连接（优雅下线），返回连接数。
 func (h *Hub) KickAll(reason string) int {
 	h.mu.RLock()

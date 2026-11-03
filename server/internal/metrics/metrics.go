@@ -103,6 +103,9 @@ func (m *Metrics) Handler() http.Handler {
 // knownCmds 是允许作为标签值的命令名。
 var knownCmds = map[string]bool{
 	"send": true, "sync": true, "convs": true, "read": true, "joinRoom": true, "leaveRoom": true, "auth": true,
+	// PRD-social M3（与 protocol.SocialCmds 一致，metrics 不依赖 protocol 包）
+	"friendApply": true, "friendRespond": true, "friendDelete": true, "friendRemark": true, "friendRequestsSeen": true,
+	"socialSync": true, "block": true, "unblock": true, "userSearch": true, "setPrivacy": true, "users": true, "myGroups": true,
 }
 
 // CmdLabel 把客户端传来的命令名规整成有限的标签值。

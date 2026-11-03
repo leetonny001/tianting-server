@@ -24,14 +24,26 @@ const (
 	CodeMuted                    = 4031
 	CodeNotConvParticipant       = 4032
 	CodeNotGroupMember           = 4033
+	CodeNotFriend                = 4035
+	CodeRejectedByPeer           = 4036
 	CodeNotFound                 = 4040
 	CodeNotInRoom                = 4041
 	CodeUserNotFound             = 4042
 	CodeGroupNotFound            = 4043
+	CodeFriendRequestNotFound    = 4045
+	CodeTargetNotGroupMember     = 4046
 	CodeGroupExists              = 4090
+	CodeFriendRequestHandled     = 4091
 	CodeGroupMemberLimitExceeded = 4130
 	CodeBatchLimitExceeded       = 4131
+	CodeFriendLimitExceeded      = 4132
+	CodePeerFriendLimitExceeded  = 4133
+	CodeBlockLimitExceeded       = 4134
+	CodeJoinedGroupLimitExceeded = 4135
+	CodeGroupAdminLimitExceeded  = 4136
+	CodeStrangerMsgLimit         = 4137
 	CodeRateLimited              = 4290
+	CodeQuotaExceeded            = 4292
 	CodeInternal                 = 5000
 	CodeServiceUnavailable       = 5030
 )
@@ -61,14 +73,26 @@ var codes = map[int]codeInfo{
 	CodeMuted:                    {"MUTED", 0},
 	CodeNotConvParticipant:       {"NOT_CONV_PARTICIPANT", 0},
 	CodeNotGroupMember:           {"NOT_GROUP_MEMBER", 0},
+	CodeNotFriend:                {"NOT_FRIEND", 0},
+	CodeRejectedByPeer:           {"REJECTED_BY_PEER", 0},
 	CodeNotFound:                 {"NOT_FOUND", 404},
 	CodeNotInRoom:                {"NOT_IN_ROOM", 0},
 	CodeUserNotFound:             {"USER_NOT_FOUND", 404},
 	CodeGroupNotFound:            {"GROUP_NOT_FOUND", 404},
+	CodeFriendRequestNotFound:    {"FRIEND_REQUEST_NOT_FOUND", 0},
+	CodeTargetNotGroupMember:     {"TARGET_NOT_GROUP_MEMBER", 404},
 	CodeGroupExists:              {"GROUP_EXISTS", 409},
+	CodeFriendRequestHandled:     {"FRIEND_REQUEST_HANDLED", 0},
 	CodeGroupMemberLimitExceeded: {"GROUP_MEMBER_LIMIT_EXCEEDED", 400},
 	CodeBatchLimitExceeded:       {"BATCH_LIMIT_EXCEEDED", 400},
+	CodeFriendLimitExceeded:      {"FRIEND_LIMIT_EXCEEDED", 400},
+	CodePeerFriendLimitExceeded:  {"PEER_FRIEND_LIMIT_EXCEEDED", 0},
+	CodeBlockLimitExceeded:       {"BLOCK_LIMIT_EXCEEDED", 0},
+	CodeJoinedGroupLimitExceeded: {"JOINED_GROUP_LIMIT_EXCEEDED", 0},
+	CodeGroupAdminLimitExceeded:  {"GROUP_ADMIN_LIMIT_EXCEEDED", 0},
+	CodeStrangerMsgLimit:         {"STRANGER_MSG_LIMIT", 0},
 	CodeRateLimited:              {"RATE_LIMITED", 429},
+	CodeQuotaExceeded:            {"QUOTA_EXCEEDED", 429},
 	CodeInternal:                 {"INTERNAL", 500},
 	CodeServiceUnavailable:       {"SERVICE_UNAVAILABLE", 503},
 }

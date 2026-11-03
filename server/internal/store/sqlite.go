@@ -130,6 +130,25 @@ func (s *SQLite) SaveMessage(ctx context.Context, m Message) (Message, bool, err
 		return Message{}, false, err
 	}
 
+	// 陌生人限额（L6）：SQLite 单连接下整个事务串行；Postgres 实现要先锁 conv_seq 行再读 sent_count。
+	if m.StrangerLimit > 0 && len(m.ConvUsers) == 2 {
+		peer := m.ConvUsers[0]
+		if peer == m.From {
+			peer = m.ConvUsers[1]
+		}
+		mine, err := sentCount(ctx, tx, m.From, m.ConvID)
+		if err != nil {
+			return Message{}, false, err
+		}
+		theirs, err := sentCount(ctx, tx, peer, m.ConvID)
+		if err != nil {
+			return Message{}, false, err
+		}
+		if theirs == 0 && mine >= m.StrangerLimit {
+			return Message{}, false, ErrStrangerMsgLimit
+		}
+	}
+
 	// 分配 seq，同时记下会话的最后一条消息（同一行、同一个事务）。
 	if err := tx.QueryRowContext(ctx,
 		`INSERT INTO conv_seq (conv_id, max_seq, last_msg_id, last_from, last_type, last_text, last_ts)
@@ -157,6 +176,13 @@ func (s *SQLite) SaveMessage(ctx context.Context, m Message) (Message, bool, err
 			`INSERT INTO user_conv (user_id, conv_id, peer_id, created_at) VALUES (?, ?, ?, ?)
 			 ON CONFLICT DO NOTHING`, uid, m.ConvID, peer, m.TS); err != nil {
 			return Message{}, false, fmt.Errorf("add conversation: %w", err)
+		}
+	}
+	// 单聊：发送者在这个会话里的条数 +1（陌生人限额，不封顶）。
+	if len(m.ConvUsers) > 0 {
+		if _, err := tx.ExecContext(ctx,
+			`UPDATE user_conv SET sent_count = sent_count + 1 WHERE user_id = ? AND conv_id = ?`, m.From, m.ConvID); err != nil {
+			return Message{}, false, fmt.Errorf("count sent: %w", err)
 		}
 	}
 	// 发言即已读：发送者的已读位置推进到这条消息。
@@ -429,8 +455,8 @@ func (s *SQLite) EnsureUser(ctx context.Context, userID string) error {
 func (s *SQLite) GetUser(ctx context.Context, userID string) (User, error) {
 	var u User
 	err := s.db.QueryRowContext(ctx,
-		`SELECT user_id, nickname, avatar, created_at FROM users WHERE user_id = ?`, userID).
-		Scan(&u.UserID, &u.Nickname, &u.Avatar, &u.CreatedAt)
+		`SELECT user_id, nickname, avatar, created_at, official FROM users WHERE user_id = ?`, userID).
+		Scan(&u.UserID, &u.Nickname, &u.Avatar, &u.CreatedAt, &u.Official)
 	if errors.Is(err, sql.ErrNoRows) {
 		return User{}, ErrNotFound
 	}

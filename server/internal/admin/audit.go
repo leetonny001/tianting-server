@@ -98,6 +98,16 @@ func auditDigest(r *http.Request, body []byte) (targets, summary string) {
 			add(m)
 		}
 	}
+	var pairs []struct { // 社交导入 / 删除：只取 userId，备注不进审计
+		A string `json:"a"`
+		B string `json:"b"`
+	}
+	if json.Unmarshal(fields["pairs"], &pairs) == nil {
+		for _, p := range pairs {
+			add(p.A)
+			add(p.B)
+		}
+	}
 	var users []struct {
 		UserID string `json:"userId"`
 	}

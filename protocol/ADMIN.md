@@ -52,7 +52,7 @@ HMAC：`HMAC-SHA256(secret, 待签名串)`；Ed25519：私钥对待签名串签�
 |---|---|---|---|
 | `POST /admin/users/token` | `{userId, ttlSeconds?}` | `{userId, token, expiresAt}` | 签发 token（对应腾讯 `userSig`），用户不存在时自动注册。有效期默认 7 天，范围 60 秒～30 天 |
 | `POST /admin/users/import` | `{users:[{userId, nickname?, avatar?}]}` | `{imported}` | 批量导入 / 更新，单次 ≤ 500；任何一项不合法整批不写入 |
-| `GET /admin/users/{userId}` | — | `{userId, nickname, avatar, createdAt}` | 不存在：404 / 4042 |
+| `GET /admin/users/{userId}` | — | `{userId, nickname, avatar, createdAt, official}` | 不存在：404 / 4042 |
 | `POST /admin/users/{userId}/force-logout` | `{}` | `{}` | 踢下线全部连接，此前签发的 token 全部作废；重新签发即可解封 |
 
 ## 群
@@ -73,6 +73,21 @@ HMAC：`HMAC-SHA256(secret, 待签名串)`；Ed25519：私钥对待签名串签�
 
 scope：`POST /admin/users/token` → `token.issue`；`POST /admin/users/import` → `user.write`；`GET /admin/users/{userId}` → `user.read`；`POST /admin/users/{userId}/force-logout` → `user.kick`；`GET /admin/groups/{groupId}` → `group.read`；建群、改设置、加 / 移除成员 → `group.write`；`/admin/test/*` → `test`。完整 scope 目录见 PRD-admin F-KEY-02 规则 2。
 
+## 社交（PRD-social 9.3 节，M3）
+
+只在管理端口注册，按 scope 判定（旧密钥不能调用：403 / 4030）；写接口按下一节审计（摘要只有字段名，备注原文不会进审计）。
+
+| 接口 | 请求 | 成功响应 | 说明 |
+|---|---|---|---|
+| `GET /admin/settings/social` | — | 5.1 节全部参数 | scope `social.settings` |
+| `PATCH /admin/settings/social` | 只传要改的字段 | 修改后的全部参数 | scope `social.settings`。超范围、未知字段、`null`、`mode` 非法 400 / 4000，整次不生效；成功后各节点 1 秒内生效，给全部在线连接下发 `socialSettingsChanged` |
+| `POST /admin/friends/import` | `{pairs:[{a, b, remarkA?, remarkB?}]}` | `{imported}` | scope `social.friends`。≤ 500 对，建立双向边（来源 `admin`），整批原子；错误优先级 4004 → 4000（`a == b`）→ 4131 → 4042 → 4132（`msg` 写出 userId）。幂等：备注值变化才算变化；同一请求里重复的对以最后一条为准；同时把这些对之间的申请置为 accepted；不受拉黑影响也不解除拉黑 |
+| `DELETE /admin/friends` | `{pairs:[{a, b}]}` | `{removed}` | scope `social.friends`。删除双向边（墓碑），不是好友的忽略 |
+| `GET /admin/users/{userId}/friends?cursor=&limit=` | — | `{friends:[{userId, source, createdAt}], nextCursor}` | scope `social.friends`。按对方 userId 升序，`limit` 1～500（默认 100），**不返回备注**；`nextCursor` 为空表示没有更多 |
+| `PUT /admin/users/{userId}/official` | `{official}` | `{userId, official}` | scope `social.settings`。用户不存在 404 / 4042；立即生效，不改 ver、不发事件 |
+
+`IM_SOCIAL_DEFAULTS`（JSON，字段同上）只在库里还没有社交配置时写入一次，之后以数据库为准；格式或范围非法拒绝启动。
+
 ## 审计（PRD-admin F-KEY-04）
 
 每次写接口（以及在线设备、消息元数据、正文读取、审计查询）在执行**前**写一条 `intent`，执行后写一条 `result`（同一 `X-Request-Id`，`code` 为业务结果码，0 表示成功）；`intent` 写不进去时接口不执行，返回 503 / 5030。只读的 `user.read` / `group.read` 不记录。
@@ -92,8 +107,8 @@ scope：`POST /admin/users/token` → `token.issue`；`POST /admin/users/import`
 
 `IM_METRICS_ADDR` 上还提供 `/debug/pprof/`（Go 性能分析），同样只在内网。内存规划和 `GOMEMLIMIT` 设置见 [内存分析](../docs/reports/mem-2026-11-03.md)。
 
-备份、恢复、数据库迁移通过命令行完成（`im-server backup / restore / migrate`），不提供 HTTP 接口。
+备份、恢复、数据库迁移、计数器修复通过命令行完成（`im-server backup / restore / migrate / repair counters`），不提供 HTTP 接口。
 
 ## 仅测试 / 演示环境
 
-`POST /admin/test/drop-ack`、`/admin/test/skip-delivery`、`/admin/test/clock`、`/admin/test/faults`（`{adminAuditWrite: "fail" | ""}`，模拟审计写失败）（`IM_TEST_MODE=1`），`POST /demo/login {username, nickname?}`（`IM_DEMO_LOGIN=1`，不需要管理密钥；`nickname` 去首尾空白后 1～32 个码点，登录时覆盖该用户的昵称，超长 400 / 4000，不传或为空不改）。生产环境（`IM_ENV=production`）开启这两个开关会拒绝启动。
+`POST /admin/test/drop-ack`、`/admin/test/skip-delivery`、`/admin/test/clock`、`/admin/test/faults`（`{adminAuditWrite: "fail" | ""}`，模拟审计写失败）、社交测试设施（PRD-social 5.6 节）`/admin/test/social/drop-events {userId, type, count}`、`/admin/test/social/purge`、`/admin/test/social/seed {friends?, blocks?, requests?, groupMembers?, updatedAt?}`、`/admin/test/limits/reset {userId}`（`IM_TEST_MODE=1`），`POST /demo/login {username, nickname?}`（`IM_DEMO_LOGIN=1`，不需要管理密钥；`nickname` 去首尾空白后 1～32 个码点，登录时覆盖该用户的昵称，超长 400 / 4000，不传或为空不改）。生产环境（`IM_ENV=production`）开启这两个开关会拒绝启动。

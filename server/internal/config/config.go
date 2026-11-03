@@ -18,6 +18,7 @@ import (
 	"tianting/server/internal/app"
 	"tianting/server/internal/auth"
 	"tianting/server/internal/gateway"
+	"tianting/server/internal/social"
 )
 
 // 运行环境。
@@ -103,6 +104,13 @@ func Load(getenv func(string) string) (cfg Server, warnings []string, err error)
 	}
 	a.AdminKey = getenv("IM_ADMIN_KEY")
 	legacy := boolEnv(getenv, "IM_ADMIN_LEGACY", false, bad)
+	// 社交配置的初始值（PRD-social F-SOC-01 规则 2）：只在库里没有 social 配置行时写入一次；格式或范围非法拒绝启动。
+	if raw := getenv("IM_SOCIAL_DEFAULTS"); raw != "" {
+		if _, err := social.Patch(social.Defaults(), []byte(raw)); err != nil {
+			bad("IM_SOCIAL_DEFAULTS: %v", err)
+		}
+		a.SocialDefaults = raw
+	}
 	switch v := getenv("IM_C2C_BODY_ACCESS"); v {
 	case "", "off":
 	case "on":

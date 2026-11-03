@@ -8,10 +8,11 @@ type Faults struct {
 	mu           sync.Mutex
 	dropAck      map[string]bool
 	skipDelivery map[string]bool
+	dropEvents   map[string]int // userId + "/" + 事件类型 → 还要丢弃几个（PRD-social 5.6 节）
 }
 
 func NewFaults() *Faults {
-	return &Faults{dropAck: map[string]bool{}, skipDelivery: map[string]bool{}}
+	return &Faults{dropAck: map[string]bool{}, skipDelivery: map[string]bool{}, dropEvents: map[string]int{}}
 }
 
 // DropAck：保存这条消息，但不回 ack（模拟"服务端已保存但 ack 丢失"）。
@@ -49,4 +50,25 @@ func (f *Faults) takeSkipDelivery(clientMsgID string) bool {
 		return false
 	}
 	return f.take(f.skipDelivery, clientMsgID)
+}
+
+// DropEvents：丢弃接下来发给 userID 的 count 个 typ 类型事件（/admin/test/social/drop-events）。
+func (f *Faults) DropEvents(userID, typ string, count int) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.dropEvents[userID+"/"+typ] = count
+}
+
+func (f *Faults) takeDropEvent(userID, typ string) bool {
+	if f == nil {
+		return false
+	}
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	k := userID + "/" + typ
+	if f.dropEvents[k] <= 0 {
+		return false
+	}
+	f.dropEvents[k]--
+	return true
 }

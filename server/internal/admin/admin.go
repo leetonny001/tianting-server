@@ -45,6 +45,7 @@ type Admin struct {
 	router   delivery.Router
 	inv      cache.Invalidator
 	notifier ConvNotifier
+	social   SocialService // nil 时不注册社交路由
 	clock    clock.Clock
 	log      *slog.Logger
 	testMode bool
@@ -85,6 +86,7 @@ func (a *Admin) Register(mux *http.ServeMux) {
 	a.route(mux, "POST", "/admin/groups/{groupId}/members", adminauth.ScopeGroupWrite, a.addMembers)
 	a.route(mux, "DELETE", "/admin/groups/{groupId}/members", adminauth.ScopeGroupWrite, a.removeMembers)
 	a.route(mux, "GET", "/admin/audit", adminauth.ScopeAuditRead, a.queryAudit)
+	a.registerSocial(mux)
 }
 
 // RegisterTestRoutes 注册故障注入和时钟接口，只能在测试模式下调用（PRD 6.1 节）。
@@ -130,6 +132,7 @@ func (a *Admin) RegisterTestRoutes(mux *http.ServeMux, faults *logic.Faults, clk
 		}
 		writeJSON(w, http.StatusOK, struct{}{})
 	})
+	a.registerSocialTestRoutes(mux)
 }
 
 type tokenReq struct {
@@ -179,6 +182,7 @@ type userJSON struct {
 	Nickname  string `json:"nickname,omitempty"`
 	Avatar    string `json:"avatar,omitempty"`
 	CreatedAt int64  `json:"createdAt,omitempty"`
+	Official  bool   `json:"official"` // PRD-social F-SOC-13；导入时忽略
 }
 
 // importUsers 批量导入用户（PRD F-USER-01、C-16、C-17）。任何一项不合法则整批不写入。
@@ -242,7 +246,7 @@ func (a *Admin) getUser(w http.ResponseWriter, r *http.Request) {
 	case err != nil:
 		a.internal(w, "get user", err)
 	default:
-		writeJSON(w, http.StatusOK, userJSON{UserID: u.UserID, Nickname: u.Nickname, Avatar: u.Avatar, CreatedAt: u.CreatedAt})
+		writeJSON(w, http.StatusOK, userJSON{UserID: u.UserID, Nickname: u.Nickname, Avatar: u.Avatar, CreatedAt: u.CreatedAt, Official: u.Official})
 	}
 }
 

@@ -1,0 +1,245 @@
+package store
+
+import (
+	"context"
+	"fmt"
+	"path/filepath"
+	"sync"
+	"testing"
+)
+
+// TC-SOC-11-06（AC-SOC-11-5）、BE-100：在只有 0003 数据的库上执行到最新：成员数、单聊 sent_count 回填正确。
+func TestMigration0006SocialBackfill(t *testing.T) {
+	ctx := context.Background()
+	db := rawDB(t)
+	all, err := SQLiteMigrations()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := Migrate(ctx, db, all[:3]); err != nil {
+		t.Fatal(err)
+	}
+	for g, n := range map[string]int{"g2": 2, "g10": 10, "g2000": 2000} {
+		if _, err := db.Exec(`INSERT INTO chat_groups (group_id, name, created_at) VALUES (?, ?, 1)`, g, g); err != nil {
+			t.Fatal(err)
+		}
+		for i := range n {
+			if _, err := db.Exec(`INSERT INTO group_members (group_id, user_id, joined_at) VALUES (?, ?, 1)`, g, fmt.Sprintf("u%d", i)); err != nil {
+				t.Fatal(err)
+			}
+		}
+	}
+	// 单聊：alice 发 3 条、bob 发 1 条（user_conv 由 0003 按 messages 回填）。
+	for i, from := range []string{"alice", "alice", "bob", "alice"} {
+		if _, err := db.Exec(`INSERT INTO messages (msg_id, conv_id, seq, from_uid, client_msg_id, type, body, ts) VALUES (?, 'c2c:alice:bob', ?, ?, ?, 'text', '{}', 1)`,
+			fmt.Sprintf("m%d", i), i+1, from, fmt.Sprintf("c%d", i)); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if _, err := db.Exec(`INSERT INTO user_conv (user_id, conv_id, peer_id, created_at) VALUES ('alice', 'c2c:alice:bob', 'bob', 1), ('bob', 'c2c:alice:bob', 'alice', 1)`); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := Migrate(ctx, db, all); err != nil {
+		t.Fatal(err)
+	}
+	for g, want := range map[string]int{"g2": 2, "g10": 10, "g2000": 2000} {
+		var n int
+		db.QueryRow(`SELECT member_count FROM chat_groups WHERE group_id = ?`, g).Scan(&n)
+		if n != want {
+			t.Errorf("%s member_count = %d, want %d", g, n, want)
+		}
+	}
+	for uid, want := range map[string]int{"alice": 3, "bob": 1} {
+		var n int
+		db.QueryRow(`SELECT sent_count FROM user_conv WHERE user_id = ?`, uid).Scan(&n)
+		if n != want {
+			t.Errorf("%s sent_count = %d, want %d", uid, n, want)
+		}
+	}
+}
+
+func openTestSQLite(t *testing.T) *SQLite {
+	t.Helper()
+	s, err := OpenSQLite(filepath.Join(t.TempDir(), "s.db"), SQLiteOptions{AutoMigrate: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { s.Close() })
+	return s
+}
+
+// TC-SOC-11-07（BE-100 第 3 条）：人为改坏计数 → 修复 → 再执行一次无变化。
+func TestRepairCounters(t *testing.T) {
+	ctx := context.Background()
+	s := openTestSQLite(t)
+	if err := s.UpsertUsers(ctx, []User{{UserID: "alice"}, {UserID: "bob"}}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.SeedSocial(ctx, SocialSeed{Friends: []SeedEdge{{"alice", "bob"}, {"alice", "carol"}}, Blocks: []SeedEdge{{"alice", "x"}},
+		GroupMembers: []SeedMember{{"g1", "alice"}, {"g1", "bob"}}, UpdatedAt: 1}); err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := s.SaveMessage(ctx, Message{MsgID: "m1", ClientMsgID: "c1", ConvID: "c2c:alice:bob", From: "alice", Type: "text", Body: []byte(`{}`), TS: 1, ConvUsers: []string{"alice", "bob"}}); err != nil {
+		t.Fatal(err)
+	}
+	for _, q := range []string{
+		`UPDATE user_social SET friend_count = 7, block_count = 0 WHERE user_id = 'alice'`,
+		`UPDATE chat_groups SET member_count = 99`,
+		`UPDATE user_conv SET sent_count = 5 WHERE user_id = 'alice'`,
+	} {
+		if _, err := s.db.Exec(q); err != nil {
+			t.Fatal(err)
+		}
+	}
+	n, err := s.RepairCounters(ctx)
+	if err != nil || n != 4 {
+		t.Fatalf("repair = %d, %v; want 4 rows", n, err)
+	}
+	st, _ := s.SocialState(ctx, "alice")
+	g, _ := s.GetGroup(ctx, "g1")
+	var sent int
+	s.db.QueryRow(`SELECT sent_count FROM user_conv WHERE user_id = 'alice'`).Scan(&sent)
+	if st.FriendCount != 2 || st.BlockCount != 1 || g.MemberCount != 2 || sent != 1 {
+		t.Fatalf("after repair: %+v members=%d sent=%d", st, g.MemberCount, sent)
+	}
+	if n, err := s.RepairCounters(ctx); err != nil || n != 0 {
+		t.Fatalf("second repair = %d, %v; want 0", n, err)
+	}
+}
+
+// SocialVerConcurrent（AC-SOC-06-9，B6 前置：SQLite 上运行）：同一用户 8 个并发写 × 125 次，ver 连续无重复。
+func TestSocialVerConcurrent(t *testing.T) {
+	ctx := context.Background()
+	s := openTestSQLite(t)
+	if err := s.UpsertUsers(ctx, []User{{UserID: "alice"}}); err != nil {
+		t.Fatal(err)
+	}
+	var mu sync.Mutex
+	seen := map[int64]bool{}
+	var wg sync.WaitGroup
+	for w := range 8 {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			for i := range 125 {
+				c, err := s.Block(ctx, "alice", fmt.Sprintf("p%d-%d", w, i), int64(i+1), 5000)
+				if err != nil {
+					t.Error(err)
+					return
+				}
+				mu.Lock()
+				if seen[c.Ver] {
+					t.Errorf("ver %d allocated twice", c.Ver)
+				}
+				seen[c.Ver] = true
+				mu.Unlock()
+			}
+		}()
+	}
+	wg.Wait()
+	for v := int64(1); v <= 1000; v++ {
+		if !seen[v] {
+			t.Fatalf("ver %d missing", v)
+		}
+	}
+}
+
+// FriendApplyTable（TC-SOC-02-17）：判定表第 3～9 行在存储层逐行。
+func TestFriendApplyTable(t *testing.T) {
+	ctx := context.Background()
+	const day = int64(24 * 3600 * 1000)
+	apply := func(s *SQLite, from, to string, now int64) (string, SocialChange, error) {
+		return s.ApplyFriend(ctx, ApplyFriendParams{From: from, To: to, Source: "other", Now: now, ExpireAt: now + 7*day, MaxFriends: 2000})
+	}
+	users := func(s *SQLite) {
+		if err := s.UpsertUsers(ctx, []User{{UserID: "a"}, {UserID: "b"}}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	t.Run("3 I blocked peer", func(t *testing.T) {
+		s := openTestSQLite(t)
+		users(s)
+		s.Block(ctx, "a", "b", 1, 1000)
+		if _, _, err := apply(s, "a", "b", 2); err != ErrIBlockedPeer {
+			t.Fatalf("err = %v", err)
+		}
+	})
+	t.Run("4 already mutual", func(t *testing.T) {
+		s := openTestSQLite(t)
+		users(s)
+		s.SeedSocial(ctx, SocialSeed{Friends: []SeedEdge{{"a", "b"}, {"b", "a"}}, UpdatedAt: 1})
+		st, c, err := apply(s, "a", "b", 2)
+		if err != nil || st != ReqAccepted || c.Changed {
+			t.Fatalf("%s %+v %v", st, c, err)
+		}
+	})
+	t.Run("5 my friends full", func(t *testing.T) {
+		s := openTestSQLite(t)
+		users(s)
+		var es []SeedEdge
+		for i := range 2000 {
+			es = append(es, SeedEdge{"a", fmt.Sprintf("f%d", i)})
+		}
+		s.SeedSocial(ctx, SocialSeed{Friends: es, UpdatedAt: 1})
+		if _, _, err := apply(s, "a", "nobody", 2); err != ErrFriendLimit {
+			t.Fatalf("err = %v", err)
+		}
+	})
+	t.Run("6 peer missing or blocks me: only my out row", func(t *testing.T) {
+		s := openTestSQLite(t)
+		users(s)
+		s.Block(ctx, "b", "a", 1, 1000)
+		for _, peer := range []string{"b", "nobody"} {
+			st, c, err := apply(s, "a", peer, 2)
+			if err != nil || st != ReqPending || len(c.Bumped) != 1 || len(c.Items.Requests) != 1 || c.Items.Requests[0].Direction != DirOut {
+				t.Fatalf("%s: %s %+v %v", peer, st, c, err)
+			}
+		}
+		var n int
+		s.db.QueryRow(`SELECT count(*) FROM friend_requests WHERE owner_id <> 'a'`).Scan(&n)
+		if n != 0 {
+			t.Fatalf("%d rows written for the peer", n)
+		}
+	})
+	t.Run("7 restore my edge", func(t *testing.T) {
+		s := openTestSQLite(t)
+		users(s)
+		s.SeedSocial(ctx, SocialSeed{Friends: []SeedEdge{{"b", "a"}}, UpdatedAt: 1})
+		st, c, err := apply(s, "a", "b", 2)
+		if err != nil || st != ReqAccepted || len(c.Bumped) != 1 || len(c.Items.Friends) != 1 {
+			t.Fatalf("%s %+v %v", st, c, err)
+		}
+	})
+	t.Run("8 auto accept", func(t *testing.T) {
+		s := openTestSQLite(t)
+		users(s)
+		apply(s, "b", "a", 1)
+		st, c, err := apply(s, "a", "b", 2)
+		if err != nil || st != ReqAccepted || len(c.Bumped) != 2 {
+			t.Fatalf("%s %+v %v", st, c, err)
+		}
+		var pending int
+		s.db.QueryRow(`SELECT count(*) FROM friend_requests WHERE status <> 'accepted'`).Scan(&pending)
+		if pending != 0 {
+			t.Fatalf("%d requests not accepted", pending)
+		}
+	})
+	t.Run("8 expired in row falls through to 9", func(t *testing.T) {
+		s := openTestSQLite(t)
+		users(s)
+		apply(s, "b", "a", 1)
+		st, _, err := apply(s, "a", "b", 8*day)
+		if err != nil || st != ReqPending {
+			t.Fatalf("%s %v", st, err)
+		}
+	})
+	t.Run("9 new then merge", func(t *testing.T) {
+		s := openTestSQLite(t)
+		users(s)
+		apply(s, "a", "b", 1)
+		st, c, err := apply(s, "a", "b", 2)
+		if err != nil || st != ReqPending || len(c.Bumped) != 2 || c.Items.Requests[0].ApplyCount != 2 {
+			t.Fatalf("%s %+v %v", st, c, err)
+		}
+	})
+}

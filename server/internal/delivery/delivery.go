@@ -19,3 +19,9 @@ type Router interface {
 	// KickUser 给用户的所有连接下发 kicked 并关闭。
 	KickUser(userID, reason string)
 }
+
+// Broadcaster 是可选能力：投递给全部在线连接（socialSettingsChanged，尽力而为）。
+// 单节点由 hub 实现；集群时经消息总线发给每个节点。
+type Broadcaster interface {
+	DeliverToAll(frame []byte)
+}

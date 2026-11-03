@@ -29,6 +29,8 @@ type Service struct {
 	faults  *Faults // 仅测试模式非 nil
 	limiter ratelimit.Limiter
 	members *memberCache
+	social  *socialState
+	inv     cache.Invalidator
 	metrics *metrics.Metrics
 	newID   func() string
 }
@@ -44,6 +46,8 @@ func New(st store.Store, router delivery.Router, clk clock.Clock, faults *Faults
 		faults:  faults,
 		limiter: limiter,
 		members: newMemberCache(st, clk, inv),
+		social:  newSocialState(st, clk, inv),
+		inv:     inv,
 		metrics: m,
 		// UUIDv7 按时间递增，作为主键插入时对 B 树更友好。
 		newID: func() string { return uuid.Must(uuid.NewV7()).String() },
@@ -75,7 +79,10 @@ func (s *Service) Handle(ctx context.Context, c delivery.Session, in protocol.In
 	case protocol.CmdJoinRoom, protocol.CmdLeaveRoom:
 		err = protocol.Errorf(protocol.CodeBadRequest, "%s is not available yet", in.Cmd)
 	default:
-		err = protocol.Errorf(protocol.CodeUnknownCmd, "unknown cmd %q", in.Cmd)
+		var ok bool
+		if data, err, ok = s.handleSocial(ctx, c, in); !ok {
+			err = protocol.Errorf(protocol.CodeUnknownCmd, "unknown cmd %q", in.Cmd)
+		}
 	}
 	if err != nil {
 		return ack(protocol.AckErr(in.ID, err))
@@ -112,19 +119,17 @@ func (s *Service) send(ctx context.Context, c delivery.Session, raw json.RawMess
 
 	var convID string
 	var recipients, convUsers []string
+	strangerLimit, onSaved := 0, func() {}
 	switch req.ConvType {
 	case protocol.ConvC2C:
-		// 对方必须存在（D5）；给自己发不用查。
+		convID = protocol.C2CConvID(uid, req.To)
+		// 单聊权限（PRD-social F-SOC-08 规则 7）：新对象配额 → 对方存在（D5）→ 好友制 → 拉黑；给自己发永远允许。
 		if req.To != uid {
-			exists, err := s.store.UserExists(ctx, req.To)
-			if err != nil {
-				return nil, false, s.internal("check user", err)
-			}
-			if !exists {
-				return nil, false, protocol.Errorf(protocol.CodeUserNotFound, "user %s not found", req.To)
+			var perr *protocol.Error
+			if strangerLimit, onSaved, perr = s.c2cPermission(ctx, uid, req.To, convID); perr != nil {
+				return nil, false, perr
 			}
 		}
-		convID = protocol.C2CConvID(uid, req.To)
 		recipients = []string{req.To}
 		convUsers = []string{uid, req.To}
 		if req.To == uid {
@@ -146,19 +151,24 @@ func (s *Service) send(ctx context.Context, c delivery.Session, raw json.RawMess
 		return nil, false, s.internal("marshal body", err)
 	}
 	saved, dup, err := s.store.SaveMessage(ctx, store.Message{
-		MsgID:       s.newID(),
-		ClientMsgID: req.ClientMsgID,
-		ConvID:      convID,
-		From:        uid,
-		Type:        req.Type,
-		Body:        body,
-		TS:          s.clock.Now().UnixMilli(),
-		Summary:     protocol.Summary(req.Body.Text), // custom 消息没有文本摘要，客户端按 type 显示
-		ConvUsers:   convUsers,
+		MsgID:         s.newID(),
+		ClientMsgID:   req.ClientMsgID,
+		ConvID:        convID,
+		From:          uid,
+		Type:          req.Type,
+		Body:          body,
+		TS:            s.clock.Now().UnixMilli(),
+		Summary:       protocol.Summary(req.Body.Text), // custom 消息没有文本摘要，客户端按 type 显示
+		ConvUsers:     convUsers,
+		StrangerLimit: strangerLimit,
 	})
+	if errors.Is(err, store.ErrStrangerMsgLimit) {
+		return nil, false, protocol.Errorf(protocol.CodeStrangerMsgLimit, "stranger message limit reached")
+	}
 	if err != nil {
 		return nil, false, s.internal("save message", err)
 	}
+	onSaved()
 	if dup && saved.ConvID != convID {
 		return nil, false, protocol.Errorf(protocol.CodeClientMsgIDConflict, "clientMsgId already used in another conversation")
 	}

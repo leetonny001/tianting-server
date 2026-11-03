@@ -40,6 +40,26 @@ func TestOutFramesMatchSchema(t *testing.T) {
 		"conv removed": Event(ConvRemovedEvent{Type: EventConvRemoved, ConvID: "group:g1"}),
 		"read updated": Event(ReadUpdatedEvent{Type: EventReadUpdated, ConvID: "group:g1", ReadSeq: 3}),
 		"pong":         {Cmd: CmdPong},
+		// PRD-social M3
+		"friendApply ack": AckOK("s1", SocialChangeAck{Status: "pending", Ver: 3, Changed: true, Items: SocialItems{
+			Friends: []FriendItem{}, Blocks: []BlockItem{},
+			Requests: []RequestItem{{UserID: "bob", Direction: "out", Status: "pending", Source: SourceSearch, ApplyCount: 1, CreatedAt: 1, UpdatedAt: 1, ExpireAt: 2, Ver: 3}},
+		}}),
+		"respond ack": AckOK("s2", SocialChangeAck{Ver: 4, Changed: true, Items: SocialItems{
+			Friends:  []FriendItem{{UserID: "bob", Remark: "B", Source: SourceAdmin, CreatedAt: 1, Ver: 4, Profile: &Profile{Nickname: "bob"}}},
+			Requests: []RequestItem{}, Blocks: []BlockItem{{UserID: "x", CreatedAt: 1, Ver: 4, Deleted: true}},
+		}}),
+		"seen ack":    AckOK("s3", RequestsSeenAck{RequestSeenVer: 5, Ver: 8, Changed: true}),
+		"privacy ack": AckOK("s4", VerAck{Ver: 2, Changed: false}),
+		"socialSync ack": AckOK("s5", SocialSyncAck{Full: true, UntilVer: 9, LatestVer: 10, HasMore: true, Cursor: "abc.def",
+			Friends: []FriendItem{}, Requests: []RequestItem{}, Blocks: []BlockItem{}, Settings: PrivacySettings{Searchable: true}, Mode: "open"}),
+		"restart ack":      AckOK("s6", SocialSyncAck{Restart: true, Friends: []FriendItem{}, Requests: []RequestItem{}, Blocks: []BlockItem{}, Mode: "friends"}),
+		"search hit":       AckOK("s7", UserSearchAck{User: &SearchUser{UserID: "bob", Nickname: "bob", Relation: RelPendingOut}}),
+		"search miss":      AckOK("s8", UserSearchAck{}),
+		"users ack":        AckOK("s9", UsersAck{Users: []UserProfile{{UserID: "bob", Official: true}}}),
+		"myGroups":         AckOK("s10", MyGroupsAck{Groups: []MyGroupItem{{GroupID: "g1", Name: "g", MemberCount: 3, JoinedAt: 1}}, NextCursor: "g1"}),
+		"social changed":   Event(SocialChangedEvent{Type: EventSocialChanged, Ver: 3}),
+		"settings changed": Event(SocialSettingsChangedEvent{Type: EventSocialSettingsChanged, Mode: "open", StrangerMsgLimit: 3}),
 	}
 	for name, f := range frames {
 		t.Run(name, func(t *testing.T) {
