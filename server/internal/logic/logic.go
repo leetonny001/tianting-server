@@ -302,6 +302,8 @@ func toConversation(r store.ConvRow) protocol.Conversation {
 	switch conv.Type {
 	case protocol.ConvGroup:
 		out.Name = r.GroupName
+		n := r.MemberCount
+		out.MemberCount = &n
 		out.MinSeq = groupMinSeq(store.Group{HistoryVisible: r.HistoryVisible}, store.GroupMember{JoinSeq: r.JoinSeq})
 	default:
 		// 单聊名称：对方有昵称用昵称，否则用 userId（BE-043；昵称修改后下次拉取生效，C-19）。

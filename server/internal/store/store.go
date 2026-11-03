@@ -36,6 +36,7 @@ type Group struct {
 	Name           string
 	HistoryVisible bool // 新成员能否看到入群前的历史（D2），查询时生效
 	CreatedAt      int64
+	MemberCount    int // 成员数，加 / 减成员时在同一个事务里维护（只读，CreateGroup 忽略传入值）
 }
 
 // GroupMember 是群成员。JoinSeq 是入群时会话的 maxSeq。
@@ -61,6 +62,7 @@ type ConvRow struct {
 	HistoryVisible bool   // 群设置；单聊为 false
 	PeerID         string // 单聊对方；群为空
 	PeerNickname   string // 单聊对方的昵称，可能为空
+	MemberCount    int    // 群成员数；单聊为 0
 	// UpdatedAt 是排序依据：最后一条**该用户可见**的消息的时间；没有可见消息的群用入群时间。
 	UpdatedAt int64
 	// LastVisible 为 false 时没有可展示的最后一条消息（群里没有消息，或者只有入群前、且历史不可见的消息）。
@@ -124,6 +126,8 @@ type Store interface {
 	UpsertUsers(ctx context.Context, users []User) error
 	// EnsureUser 用户不存在时注册（签发凭证时调用）。
 	EnsureUser(ctx context.Context, userID string) error
+	// SetNickname 只修改昵称（演示登录带昵称时用，BE-091）；用户不存在返回 ErrNotFound。
+	SetNickname(ctx context.Context, userID, nickname string) error
 	// GetUser 不存在时返回 ErrNotFound。
 	GetUser(ctx context.Context, userID string) (User, error)
 	UserExists(ctx context.Context, userID string) (bool, error)

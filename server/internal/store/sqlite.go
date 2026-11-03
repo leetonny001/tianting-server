@@ -265,7 +265,17 @@ func (s *SQLite) CreateGroup(ctx context.Context, g Group, members []string) err
 	if _, err := insertMembers(ctx, tx, g.GroupID, members, now); err != nil {
 		return err
 	}
+	if err := updateMemberCount(ctx, tx, g.GroupID); err != nil {
+		return err
+	}
 	return tx.Commit()
+}
+
+// updateMemberCount 在加 / 减成员的同一个事务里重算成员数，并发修改也不会算错。
+func updateMemberCount(ctx context.Context, tx *sql.Tx, groupID string) error {
+	_, err := tx.ExecContext(ctx,
+		`UPDATE chat_groups SET member_count = (SELECT count(*) FROM group_members WHERE group_id = ?) WHERE group_id = ?`, groupID, groupID)
+	return err
 }
 
 func (s *SQLite) AddGroupMembers(ctx context.Context, groupID string, members []string, maxTotal int, joinedAt int64) ([]string, error) {
@@ -288,6 +298,9 @@ func (s *SQLite) AddGroupMembers(ctx context.Context, groupID string, members []
 	}
 	if total > maxTotal {
 		return nil, ErrLimitExceeded // 回滚：一人都不加
+	}
+	if _, err := tx.ExecContext(ctx, `UPDATE chat_groups SET member_count = ? WHERE group_id = ?`, total, groupID); err != nil {
+		return nil, err
 	}
 	return added, tx.Commit()
 }
@@ -312,14 +325,17 @@ func (s *SQLite) RemoveGroupMembers(ctx context.Context, groupID string, members
 			removed = append(removed, uid)
 		}
 	}
+	if err := updateMemberCount(ctx, tx, groupID); err != nil {
+		return nil, err
+	}
 	return removed, tx.Commit()
 }
 
 func (s *SQLite) GetGroup(ctx context.Context, groupID string) (Group, error) {
 	var g Group
 	err := s.db.QueryRowContext(ctx,
-		`SELECT group_id, name, history_visible, created_at FROM chat_groups WHERE group_id = ?`, groupID).
-		Scan(&g.GroupID, &g.Name, &g.HistoryVisible, &g.CreatedAt)
+		`SELECT group_id, name, history_visible, created_at, member_count FROM chat_groups WHERE group_id = ?`, groupID).
+		Scan(&g.GroupID, &g.Name, &g.HistoryVisible, &g.CreatedAt, &g.MemberCount)
 	if errors.Is(err, sql.ErrNoRows) {
 		return Group{}, ErrNotFound
 	}
@@ -505,7 +521,7 @@ func (s *SQLite) ReadSeq(ctx context.Context, userID, convID string) (int64, err
 const (
 	c2cConvSelect = `
 	SELECT uc.user_id, uc.conv_id, cs.max_seq, COALESCE(rs.seq, 0) AS read_seq, 0 AS join_seq,
-	       '' AS group_name, 0 AS history_visible, uc.peer_id, COALESCE(u.nickname, '') AS peer_nickname,
+	       '' AS group_name, 0 AS history_visible, uc.peer_id, COALESCE(u.nickname, '') AS peer_nickname, 0 AS member_count,
 	       cs.max_seq > 0 AS last_visible, uc.created_at AS joined_at,
 	       cs.last_msg_id, cs.last_from, cs.last_type, cs.last_text, cs.last_ts
 	FROM user_conv uc
@@ -517,7 +533,7 @@ const (
 	groupConvSelect = `
 	SELECT gm.user_id, 'group:' || gm.group_id AS conv_id, COALESCE(cs.max_seq, 0) AS max_seq,
 	       COALESCE(rs.seq, 0) AS read_seq, gm.join_seq,
-	       g.name AS group_name, g.history_visible, '' AS peer_id, '' AS peer_nickname,
+	       g.name AS group_name, g.history_visible, '' AS peer_id, '' AS peer_nickname, g.member_count,
 	       COALESCE(cs.max_seq, 0) >= CASE WHEN g.history_visible THEN 1 ELSE gm.join_seq + 1 END AS last_visible,
 	       gm.joined_at,
 	       COALESCE(cs.last_msg_id, '') AS last_msg_id, COALESCE(cs.last_from, '') AS last_from,
@@ -530,7 +546,7 @@ const (
 	WHERE %s`
 
 	// convColumns 是外层统一选出的列，顺序与 scanConv 一致（第一列 user_id）。
-	convColumns = `user_id, conv_id, max_seq, read_seq, join_seq, group_name, history_visible, peer_id, peer_nickname,
+	convColumns = `user_id, conv_id, max_seq, read_seq, join_seq, group_name, history_visible, peer_id, peer_nickname, member_count,
 	       last_visible, CASE WHEN last_visible THEN last_ts ELSE joined_at END AS updated_at,
 	       last_msg_id, last_from, last_type, last_text, last_ts`
 )
@@ -602,7 +618,7 @@ func (s *SQLite) GroupConversations(ctx context.Context, groupID string, userIDs
 
 func scanConv(r rowScanner) (ConvRow, error) {
 	var c ConvRow
-	err := r.Scan(&c.UserID, &c.ConvID, &c.MaxSeq, &c.ReadSeq, &c.JoinSeq, &c.GroupName, &c.HistoryVisible, &c.PeerID, &c.PeerNickname,
+	err := r.Scan(&c.UserID, &c.ConvID, &c.MaxSeq, &c.ReadSeq, &c.JoinSeq, &c.GroupName, &c.HistoryVisible, &c.PeerID, &c.PeerNickname, &c.MemberCount,
 		&c.LastVisible, &c.UpdatedAt, &c.Last.MsgID, &c.Last.From, &c.Last.Type, &c.Last.Text, &c.Last.TS)
 	return c, err
 }
@@ -712,4 +728,15 @@ func cmpOr(v, def string) string {
 		return def
 	}
 	return v
+}
+
+func (s *SQLite) SetNickname(ctx context.Context, userID, nickname string) error {
+	res, err := s.db.ExecContext(ctx, `UPDATE users SET nickname = ? WHERE user_id = ?`, nickname, userID)
+	if err != nil {
+		return err
+	}
+	if n, _ := res.RowsAffected(); n == 0 {
+		return ErrNotFound
+	}
+	return nil
 }

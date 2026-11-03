@@ -38,6 +38,7 @@
 | BE-065 首帧 auth | ✅ 完成 | PRD v1.2 C-52；4401；Schema、用例、全部 e2e 已改 |
 | BE-066 握手限流与日志脱敏 | ✅ 完成 | 按 IP 限流 / 封禁；可信代理；日志扫描测试（变异测试验证） |
 | BE-067 JWT 密钥轮换 | ✅ 完成 | `kid`；轮换三步测试 |
+| BE-091 演示登录昵称 | ✅ 完成 | `/demo/login {nickname?}`：1～32 码点，超长 4000 且不签发、不注册；不带不改（e2e）。`Store.SetNickname` 进契约测试 |
 | BE-068 CI 安全扫描 | ✅ 完成 | govulncheck 无漏洞；gosec 中危 0（2 处 #nosec 有理由，1 处日志注入已修） |
 | BE-069 就绪检查与优雅下线 | ✅ 完成 | 进程级测试：SIGTERM 后 readyz 503，再收到 serverShutdown / 1001 |
 | BE-030 群模型与建群 / 加成员 | ✅ 完成 | 迁移 0002（history_visible、join_seq）；成员必须存在（4042）；总数 2000 在事务内检查（并发也不会突破）；C-08 错误优先级 |

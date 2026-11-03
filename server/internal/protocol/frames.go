@@ -267,6 +267,8 @@ type Conversation struct {
 	Unread    int64    `json:"unread"`
 	LastMsg   *LastMsg `json:"lastMsg"` // 没有消息时为 null
 	UpdatedAt int64    `json:"updatedAt"`
+	// MemberCount 是群成员数（PRD-core V-07）；单聊不带这个字段。客户端遇到字段缺失时只显示群名。
+	MemberCount *int `json:"memberCount,omitempty"`
 }
 
 // ConvsAck 是 convs 的应答。

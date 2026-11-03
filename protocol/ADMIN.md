@@ -60,7 +60,7 @@ HMAC：`HMAC-SHA256(secret, 待签名串)`；Ed25519：私钥对待签名串签�
 | 接口 | 请求 | 成功响应 | 说明 |
 |---|---|---|---|
 | `POST /admin/groups` | `{groupId, name, members?, historyVisible?}` | 201 `{}` | 建群。初始成员 ≤ 2000（不受 500 批量限制） |
-| `GET /admin/groups/{groupId}` | — | `{groupId, name, historyVisible, createdAt, members}` | 查询群 |
+| `GET /admin/groups/{groupId}` | — | `{groupId, name, historyVisible, createdAt, memberCount, members}` | 查询群 |
 | `PATCH /admin/groups/{groupId}` | `{name?, historyVisible?}` | `{}` | 修改设置；至少传一项。`historyVisible` 在查询时生效 |
 | `POST /admin/groups/{groupId}/members` | `{members}` | `{added}` | 加成员，单次 ≤ 500；已经是成员的忽略（不重置入群位置） |
 | `DELETE /admin/groups/{groupId}/members` | `{members}` | `{removed}` | 移除成员，单次 ≤ 500；不是成员的忽略 |
@@ -96,4 +96,4 @@ scope：`POST /admin/users/token` → `token.issue`；`POST /admin/users/import`
 
 ## 仅测试 / 演示环境
 
-`POST /admin/test/drop-ack`、`/admin/test/skip-delivery`、`/admin/test/clock`、`/admin/test/faults`（`{adminAuditWrite: "fail" | ""}`，模拟审计写失败）（`IM_TEST_MODE=1`），`POST /demo/login`（`IM_DEMO_LOGIN=1`，不需要管理密钥）。生产环境（`IM_ENV=production`）开启这两个开关会拒绝启动。
+`POST /admin/test/drop-ack`、`/admin/test/skip-delivery`、`/admin/test/clock`、`/admin/test/faults`（`{adminAuditWrite: "fail" | ""}`，模拟审计写失败）（`IM_TEST_MODE=1`），`POST /demo/login {username, nickname?}`（`IM_DEMO_LOGIN=1`，不需要管理密钥；`nickname` 去首尾空白后 1～32 个码点，登录时覆盖该用户的昵称，超长 400 / 4000，不传或为空不改）。生产环境（`IM_ENV=production`）开启这两个开关会拒绝启动。

@@ -44,6 +44,8 @@ func Run(t *testing.T, open Opener) {
 		{"FindByClientMsgID", testFindByClientMsgID},
 		{"BodyRoundTrip", testBodyRoundTrip},
 		{"AdminAuditAppendAndQuery", testAdminAuditAppendAndQuery},
+		{"MemberCountMaintained", testMemberCountMaintained},
+		{"SetNickname", testSetNickname},
 	} {
 		t.Run(tc.name, func(t *testing.T) { tc.fn(t, open) })
 	}
@@ -630,5 +632,52 @@ func testAdminAuditAppendAndQuery(t *testing.T, open Opener) {
 	got, _, _ := s.QueryAdminAudit(ctx, store.AdminAuditQuery{FromMs: 0, ToMs: 10_000, RequestID: "r-3", Operator: "admin:a1"})
 	if len(got) != 1 || got[0].TargetsJSON != `{"ids":["u1"],"count":1}` || got[0].SummaryJSON != "{}" || got[0].Phase != store.AuditIntent {
 		t.Errorf("by requestId = %+v", got)
+	}
+}
+
+// BE-113 第 3 条：建群、加人、移出后 member_count 与成员数一致，会话列表和群查询都带上。
+func testMemberCountMaintained(t *testing.T, open Opener) {
+	s, ctx := open(t), context.Background()
+	if err := s.CreateGroup(ctx, store.Group{GroupID: "g1", Name: "g1", CreatedAt: 1}, []string{"a", "b"}); err != nil {
+		t.Fatal(err)
+	}
+	check := func(want int) {
+		t.Helper()
+		g, err := s.GetGroup(ctx, "g1")
+		if err != nil || g.MemberCount != want {
+			t.Fatalf("GetGroup memberCount = %d (err %v), want %d", g.MemberCount, err, want)
+		}
+		convs, _, _ := s.ListConversations(ctx, "a", 10)
+		if len(convs) != 1 || convs[0].MemberCount != want {
+			t.Fatalf("conversation memberCount = %+v, want %d", convs, want)
+		}
+	}
+	check(2)
+	if _, err := s.AddGroupMembers(ctx, "g1", []string{"c", "d", "a"}, 2000, 2); err != nil {
+		t.Fatal(err)
+	}
+	check(4)
+	if _, err := s.AddGroupMembers(ctx, "g1", []string{"e", "f"}, 5, 3); !errors.Is(err, store.ErrLimitExceeded) {
+		t.Fatalf("over limit: %v", err)
+	}
+	check(4) // 超过上限整批回滚，成员数不变
+	if _, err := s.RemoveGroupMembers(ctx, "g1", []string{"b", "x"}); err != nil {
+		t.Fatal(err)
+	}
+	check(3)
+}
+
+// BE-091：只改昵称；用户不存在返回 ErrNotFound。
+func testSetNickname(t *testing.T, open Opener) {
+	s, ctx := open(t), context.Background()
+	if err := s.SetNickname(ctx, "ghost", "x"); !errors.Is(err, store.ErrNotFound) {
+		t.Fatalf("missing user: %v", err)
+	}
+	s.EnsureUser(ctx, "u1")
+	if err := s.SetNickname(ctx, "u1", "张三"); err != nil {
+		t.Fatal(err)
+	}
+	if u, _ := s.GetUser(ctx, "u1"); u.Nickname != "张三" {
+		t.Fatalf("nickname = %q", u.Nickname)
 	}
 }

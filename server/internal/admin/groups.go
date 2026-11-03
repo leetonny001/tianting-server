@@ -199,6 +199,7 @@ type groupResp struct {
 	Name           string   `json:"name"`
 	HistoryVisible bool     `json:"historyVisible"`
 	CreatedAt      int64    `json:"createdAt"`
+	MemberCount    int      `json:"memberCount"`
 	Members        []string `json:"members"`
 }
 
@@ -223,7 +224,7 @@ func (a *Admin) getGroup(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, groupResp{
-		GroupID: g.GroupID, Name: g.Name, HistoryVisible: g.HistoryVisible, CreatedAt: g.CreatedAt, Members: nonNil(members),
+		GroupID: g.GroupID, Name: g.Name, HistoryVisible: g.HistoryVisible, CreatedAt: g.CreatedAt, MemberCount: g.MemberCount, Members: nonNil(members),
 	})
 }
 

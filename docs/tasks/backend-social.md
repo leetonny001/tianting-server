@@ -17,6 +17,7 @@
 | BE-100 ～ BE-121（M3） | ⬜ 未开始 | 开工条件：PRD-admin F-KEY-01～05（X-5）排在 M3 第一项；BE-114、BE-115 的生产注册依赖 X-5，测试模式下可以先做 |
 | BE-122（M3，解散群） | ⬜ 未开始 | 与 PRD-admin G-ADM-11 / F-ADM-24 同一实现，工作量计入 PRD-admin |
 | BE-130 ～ BE-138（M4） | ⬜ 未开始 | 开工条件：M3 后端全部完成 |
+| BE-113 第 3 条（`member_count`） | ✅ 提前完成 | 2026-11-03 为 H5 群标题提前做：迁移 0005、加 / 减成员同事务维护、`convs` 群会话和 `GET /admin/groups/{id}` 带 `memberCount`（契约测试 `MemberCountMaintained`、e2e）。第 1、2 条（`users` 可见范围、`myGroups`）仍待社交关系表 |
 
 ## 总览
 

@@ -5,6 +5,8 @@ package e2e
 import (
 	"encoding/json"
 	"fmt"
+	"net/http"
+	"reflect"
 	"strings"
 	"testing"
 	"time"
@@ -380,7 +382,7 @@ func TestGroupMembershipEvents(t *testing.T) {
 	if time.Since(start) > time.Second {
 		t.Errorf("convAdded took %v", time.Since(start))
 	}
-	if want := findConv(t, convsOf(t, carol), "group:g1"); fmt.Sprint(ev.Conv) != fmt.Sprint(want) {
+	if want := findConv(t, convsOf(t, carol), "group:g1"); !reflect.DeepEqual(ev.Conv, want) {
 		t.Errorf("convAdded %+v differs from convs entry %+v", ev.Conv, want)
 	}
 	if ev.Conv.MaxSeq != 3 || ev.Conv.MinSeq != 4 || ev.Conv.Unread != 0 || ev.Conv.LastMsg != nil {
@@ -486,5 +488,33 @@ func TestConvNameUsesNickname(t *testing.T) {
 	}
 	if c := findConv(t, convsOf(t, e.dial("bob", "web")), "c2c:alice:bob"); c.Name != "alice" {
 		t.Errorf("peer without nickname: name = %q, want userId", c.Name)
+	}
+}
+
+// PRD-core V-07（BE-113 第 3 条）：会话列表的群会话带 memberCount，单聊不带；加人后再拉取更新。
+func TestConvsMemberCount(t *testing.T) {
+	e := newEnv(t)
+	e.createGroup("g1", "alice", "bob", "carol")
+	alice := e.dial("alice", "web")
+	mustAck[protocol.SendAck](t, alice.sendText("c2c", "bob", "cid-00000001", "hi"))
+	var ack struct{ Convs []json.RawMessage }
+	json.Unmarshal(alice.call(protocol.CmdConvs, nil).Data, &ack)
+	byID := map[string]json.RawMessage{}
+	for _, c := range ack.Convs {
+		var x struct{ ConvID string }
+		json.Unmarshal(c, &x)
+		byID[x.ConvID] = c
+	}
+	if !strings.Contains(string(byID["group:g1"]), `"memberCount":3`) {
+		t.Errorf("group conv = %s", byID["group:g1"])
+	}
+	if strings.Contains(string(byID["c2c:alice:bob"]), "memberCount") {
+		t.Errorf("c2c conv must not carry memberCount: %s", byID["c2c:alice:bob"])
+	}
+	e.users("dave")
+	e.adminPost("/admin/groups/g1/members", map[string]any{"members": []string{"dave"}}, adminKey)
+	code, body := e.adminDo(http.MethodGet, "/admin/groups/g1", nil, adminKey)
+	if code != http.StatusOK || !strings.Contains(string(body), `"memberCount":4`) {
+		t.Errorf("GET group = %d %s", code, body)
 	}
 }

@@ -219,3 +219,25 @@ func TestDemoLogin(t *testing.T) {
 		assertAdminErr(t, code, body, http.StatusBadRequest, protocol.CodeInvalidID)
 	}
 }
+
+// BE-091（PRD-ui G-UI-23）：演示登录带昵称时写入昵称；33 个码点 400 / 4000 且不签发；不带昵称不改原昵称。
+func TestDemoLoginNickname(t *testing.T) {
+	e := newEnvCfg(t, func(c *app.Config) { c.DemoLogin = true })
+	if code, body := e.publicPost("/demo/login", map[string]any{"username": "zhangsan", "nickname": "  张三  "}); code != http.StatusOK {
+		t.Fatalf("login with nickname: %d %s", code, body)
+	}
+	if _, u := e.getUser("zhangsan"); u["nickname"] != "张三" {
+		t.Errorf("nickname = %v", u["nickname"])
+	}
+	code, body := e.publicPost("/demo/login", map[string]any{"username": "lisi", "nickname": strings.Repeat("字", 33)})
+	if code != http.StatusBadRequest || !strings.Contains(string(body), `"code":4000`) || strings.Contains(string(body), "token") {
+		t.Errorf("33 code points: %d %s", code, body)
+	}
+	if code, _ := e.getUser("lisi"); code != http.StatusNotFound {
+		t.Errorf("rejected login must not register the user: %d", code)
+	}
+	e.publicPost("/demo/login", map[string]any{"username": "zhangsan"})
+	if _, u := e.getUser("zhangsan"); u["nickname"] != "张三" {
+		t.Errorf("login without nickname changed it: %v", u["nickname"])
+	}
+}

@@ -59,6 +59,8 @@ jobs:
         run: |
           node tools/admin-sign/sign.mjs protocol/vectors/admin-sign.json
           java tools/admin-sign/AdminSign.java protocol/vectors/admin-sign.json
+      - name: 头像共享用例与生成脚本一致
+        run: node tools/gen-avatar-vectors.mjs --check
 
   traceability:
     runs-on: ubuntu-latest

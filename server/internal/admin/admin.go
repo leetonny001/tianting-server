@@ -276,6 +276,7 @@ func (a *Admin) RegisterDemoLogin(mux *http.ServeMux) {
 		allowCORS(w)
 		var req struct {
 			Username   string `json:"username"`
+			Nickname   string `json:"nickname"`
 			TTLSeconds int64  `json:"ttlSeconds"`
 		}
 		if !readJSON(w, r, &req) {
@@ -285,6 +286,22 @@ func (a *Admin) RegisterDemoLogin(mux *http.ServeMux) {
 		if !protocol.ValidID(uid) {
 			writeErr(w, protocol.Errorf(protocol.CodeInvalidID, "invalid username"))
 			return
+		}
+		// 可选昵称（BE-091、PRD-ui G-UI-23）：去首尾空白后 1～32 个码点，登录（自动注册）时覆盖原昵称；
+		// 不传或为空不改。只在演示模式下可用：任何人都能改任何人的昵称，这是演示环境可以接受的已知行为。
+		if nick := protocol.TrimText(req.Nickname); nick != "" {
+			if protocol.TextLen(nick) > maxNicknameLen {
+				writeErr(w, protocol.Errorf(protocol.CodeBadRequest, "nickname longer than %d", maxNicknameLen))
+				return
+			}
+			if err := a.store.EnsureUser(r.Context(), uid); err != nil {
+				a.internal(w, "ensure user", err)
+				return
+			}
+			if err := a.store.SetNickname(r.Context(), uid, nick); err != nil {
+				a.internal(w, "set nickname", err)
+				return
+			}
 		}
 		ttl := demoTokenTTL
 		if a.testMode && req.TTLSeconds > 0 {
