@@ -44,6 +44,22 @@ jobs:
       - name: gosec（中危及以上阻断；豁免必须写 #nosec 规则号和理由）
         run: go run github.com/securego/gosec/v2/cmd/gosec@v2.30.0 -quiet -severity medium -confidence medium -exclude-dir=e2e ./...
 
+  admin-sign:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+      - name: 管理接口签名的 Node.js / Java 参考实现跑测试向量（Go 实现在 test job 里跑）
+        run: |
+          node tools/admin-sign/sign.mjs protocol/vectors/admin-sign.json
+          java tools/admin-sign/AdminSign.java protocol/vectors/admin-sign.json
+
   traceability:
     runs-on: ubuntu-latest
     steps:

@@ -1,15 +1,16 @@
-// Package admin 是给业务服务端调用的管理接口，用 X-Admin-Key 鉴权。
+// Package admin 是给业务服务端和 console-server 调用的管理接口（只在管理端口上）：
+// 调用方签名鉴权 + scope（PRD-admin F-KEY-02、03），旧密钥 X-Admin-Key 只能访问 v1.2 已有接口（F-KEY-05）。
 package admin
 
 import (
 	"context"
-	"crypto/subtle"
 	"encoding/json"
 	"errors"
 	"log/slog"
 	"net/http"
 	"time"
 
+	"tianting/server/internal/adminauth"
 	"tianting/server/internal/auth"
 	"tianting/server/internal/cache"
 	"tianting/server/internal/clock"
@@ -35,7 +36,9 @@ const (
 
 // Admin 注册 /admin/* 路由。
 type Admin struct {
-	key      string
+	auth     AuthConfig
+	callers  map[string]*adminauth.Caller
+	routes   []RouteInfo
 	signer   *auth.Signer
 	store    store.Store
 	router   delivery.Router
@@ -54,26 +57,35 @@ type ConvNotifier interface {
 
 // inv 用于在群成员变动后通知各节点的成员缓存失效（logic.TopicGroupMembers）；
 // notifier 用于给被加入 / 移出的用户下发会话事件。
-func New(key string, signer *auth.Signer, st store.Store, router delivery.Router, inv cache.Invalidator, notifier ConvNotifier, clk clock.Clock, testMode bool, log *slog.Logger) *Admin {
-	return &Admin{key: key, signer: signer, store: st, router: router, inv: inv, notifier: notifier, clock: clk, testMode: testMode, log: log}
+func New(ac AuthConfig, signer *auth.Signer, st store.Store, router delivery.Router, inv cache.Invalidator, notifier ConvNotifier, clk clock.Clock, testMode bool, log *slog.Logger) *Admin {
+	if ac.Nonces == nil {
+		ac.Nonces = adminauth.NewMemoryNonces(defaultNonceCapacity)
+	}
+	callers := make(map[string]*adminauth.Caller, len(ac.Callers))
+	for i := range ac.Callers {
+		callers[ac.Callers[i].ID] = &ac.Callers[i]
+	}
+	return &Admin{auth: ac, callers: callers, signer: signer, store: st, router: router, inv: inv, notifier: notifier, clock: clk, testMode: testMode, log: log}
 }
+
+const defaultNonceCapacity = 1_000_000 // PRD-admin F-KEY-03 规则 5
 
 // Register 把管理路由挂到 mux 上。
 func (a *Admin) Register(mux *http.ServeMux) {
-	mux.Handle("POST /admin/users/token", a.guard(a.issueToken))
-	mux.Handle("POST /admin/users/import", a.guard(a.importUsers))
-	mux.Handle("GET /admin/users/{userId}", a.guard(a.getUser))
-	mux.Handle("POST /admin/users/{userId}/force-logout", a.guard(a.forceLogout))
-	mux.Handle("POST /admin/groups", a.guard(a.createGroup))
-	mux.Handle("GET /admin/groups/{groupId}", a.guard(a.getGroup))
-	mux.Handle("PATCH /admin/groups/{groupId}", a.guard(a.updateGroup))
-	mux.Handle("POST /admin/groups/{groupId}/members", a.guard(a.addMembers))
-	mux.Handle("DELETE /admin/groups/{groupId}/members", a.guard(a.removeMembers))
+	a.route(mux, "POST", "/admin/users/token", adminauth.ScopeTokenIssue, a.issueToken)
+	a.route(mux, "POST", "/admin/users/import", adminauth.ScopeUserWrite, a.importUsers)
+	a.route(mux, "GET", "/admin/users/{userId}", adminauth.ScopeUserRead, a.getUser)
+	a.route(mux, "POST", "/admin/users/{userId}/force-logout", adminauth.ScopeUserKick, a.forceLogout)
+	a.route(mux, "POST", "/admin/groups", adminauth.ScopeGroupWrite, a.createGroup)
+	a.route(mux, "GET", "/admin/groups/{groupId}", adminauth.ScopeGroupRead, a.getGroup)
+	a.route(mux, "PATCH", "/admin/groups/{groupId}", adminauth.ScopeGroupWrite, a.updateGroup)
+	a.route(mux, "POST", "/admin/groups/{groupId}/members", adminauth.ScopeGroupWrite, a.addMembers)
+	a.route(mux, "DELETE", "/admin/groups/{groupId}/members", adminauth.ScopeGroupWrite, a.removeMembers)
 }
 
 // RegisterTestRoutes 注册故障注入和时钟接口，只能在测试模式下调用（PRD 6.1 节）。
 func (a *Admin) RegisterTestRoutes(mux *http.ServeMux, faults *logic.Faults, clk *clock.Settable) {
-	mux.Handle("POST /admin/test/drop-ack", a.guard(func(w http.ResponseWriter, r *http.Request) {
+	a.route(mux, "POST", "/admin/test/drop-ack", adminauth.ScopeTest, func(w http.ResponseWriter, r *http.Request) {
 		var req struct {
 			ClientMsgID string `json:"clientMsgId"`
 		}
@@ -81,8 +93,8 @@ func (a *Admin) RegisterTestRoutes(mux *http.ServeMux, faults *logic.Faults, clk
 			faults.DropAck(req.ClientMsgID)
 			writeJSON(w, http.StatusOK, struct{}{})
 		}
-	}))
-	mux.Handle("POST /admin/test/skip-delivery", a.guard(func(w http.ResponseWriter, r *http.Request) {
+	})
+	a.route(mux, "POST", "/admin/test/skip-delivery", adminauth.ScopeTest, func(w http.ResponseWriter, r *http.Request) {
 		var req struct {
 			ClientMsgID string `json:"clientMsgId"`
 		}
@@ -90,8 +102,8 @@ func (a *Admin) RegisterTestRoutes(mux *http.ServeMux, faults *logic.Faults, clk
 			faults.SkipDelivery(req.ClientMsgID)
 			writeJSON(w, http.StatusOK, struct{}{})
 		}
-	}))
-	mux.Handle("POST /admin/test/clock", a.guard(func(w http.ResponseWriter, r *http.Request) {
+	})
+	a.route(mux, "POST", "/admin/test/clock", adminauth.ScopeTest, func(w http.ResponseWriter, r *http.Request) {
 		var req struct {
 			NowMs *int64 `json:"nowMs"`
 		}
@@ -104,17 +116,6 @@ func (a *Admin) RegisterTestRoutes(mux *http.ServeMux, faults *logic.Faults, clk
 			clk.Freeze(time.UnixMilli(*req.NowMs))
 		}
 		writeJSON(w, http.StatusOK, struct{}{})
-	}))
-}
-
-func (a *Admin) guard(next http.HandlerFunc) http.Handler {
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		got := r.Header.Get("X-Admin-Key")
-		if subtle.ConstantTimeCompare([]byte(got), []byte(a.key)) != 1 {
-			writeErr(w, protocol.Errorf(protocol.CodeAdminKeyInvalid, "invalid admin key"))
-			return
-		}
-		next(w, r)
 	})
 }
 

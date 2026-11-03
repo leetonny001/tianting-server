@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"tianting/server/internal/admin"
+	"tianting/server/internal/adminauth"
 	"tianting/server/internal/api"
 	"tianting/server/internal/auth"
 	"tianting/server/internal/cache"
@@ -34,7 +35,15 @@ type Config struct {
 	JWTSecret    string     // 单把签名密钥（kid 为 auth.DefaultKeyID）；配置了 JWTKeys 时忽略
 	JWTKeys      []auth.Key // 多把签名密钥（密钥轮换，ARCH S5）
 	JWTActiveKID string     // 签发新 token 用的密钥 ID
-	AdminKey     string
+	AdminKey     string     // 旧的共享管理密钥（调用方 legacy，只能访问 v1.2 已有接口，PRD-admin F-KEY-05）
+	// AdminLegacyDisabled 为 true 时不接受旧密钥：生产环境默认如此，除非设置 IM_ADMIN_LEGACY=1。
+	AdminLegacyDisabled bool
+	// AdminCallers 是签名调用方（IM_ADMIN_CALLERS，PRD-admin F-KEY-02）。
+	AdminCallers []adminauth.Caller
+	// ReportLegacyAdmin 为 true 时 /readyz 带 legacyAdminKey: true（生产环境开启了旧密钥时的告警）。
+	ReportLegacyAdmin bool
+	// C2CBodyAccess 对应 IM_C2C_BODY_ACCESS（默认关闭）：只能改配置重启，不能通过任何管理接口打开（X-7）。
+	C2CBodyAccess bool
 	// AdminAllowedCIDRs 非空时，管理端口只接受来自这些网段的 TCP 连接（只看对端地址，不解析 X-Forwarded-For）。
 	AdminAllowedCIDRs []netip.Prefix
 	Gateway           gateway.Config
@@ -49,12 +58,14 @@ const defaultSendRate = 20
 
 // App 是组装好的服务。
 type App struct {
-	handler  http.Handler
-	admin    http.Handler
-	store    *store.SQLite
-	hub      *hub.Hub
-	metrics  *metrics.Metrics
-	draining atomic.Bool
+	handler http.Handler
+	admin   http.Handler
+	// adminRoutes 是已注册的管理路由（测试遍历全部路由检查 scope）。
+	adminRoutes []admin.RouteInfo
+	store       *store.SQLite
+	hub         *hub.Hub
+	metrics     *metrics.Metrics
+	draining    atomic.Bool
 }
 
 func New(cfg Config) (*App, error) {
@@ -69,8 +80,8 @@ func New(cfg Config) (*App, error) {
 	if err != nil {
 		return nil, err
 	}
-	if cfg.AdminKey == "" {
-		return nil, fmt.Errorf("admin key is required")
+	if cfg.AdminKey == "" && len(cfg.AdminCallers) == 0 {
+		return nil, fmt.Errorf("admin credentials are required (IM_ADMIN_CALLERS or IM_ADMIN_KEY)")
 	}
 	st, err := store.OpenSQLite(cfg.DBPath, store.SQLiteOptions{AutoMigrate: cfg.AutoMigrate})
 	if err != nil {
@@ -91,14 +102,21 @@ func New(cfg Config) (*App, error) {
 	svc := logic.New(st, h, clk, faults, ratelimit.New(sendRate, sendRate, clk), inv, m, cfg.Logger)
 
 	a := &App{store: st, hub: h, metrics: m}
-	mux := api.NewRouter(api.Info{Version: cfg.Version, StartedAt: time.Now(), Ready: a.ready})
+	info := api.Info{Version: cfg.Version, StartedAt: time.Now(), Ready: a.ready}
+	if cfg.ReportLegacyAdmin {
+		info.Details = map[string]any{"legacyAdminKey": true}
+	}
+	mux := api.NewRouter(info)
 	gw := cfg.Gateway
 	if gw.NodeID == "" {
 		gw.NodeID = randomNodeID()
 	}
 	mux.Handle("GET /ws", gateway.New(gw, signer, st, clk, h, svc, m, cfg.Logger))
 	// 管理接口只注册在单独的管理 mux 上（PRD-admin F-KEY-01）：对外端口上请求 /admin/* 是 404。
-	adm := admin.New(cfg.AdminKey, signer, st, h, inv, svc, clk, cfg.TestMode, cfg.Logger)
+	adm := admin.New(admin.AuthConfig{
+		LegacyKey: cfg.AdminKey, LegacyDisabled: cfg.AdminLegacyDisabled, Callers: cfg.AdminCallers,
+		NodeID: gw.NodeID, Failures: m.AdminAuthFailures,
+	}, signer, st, h, inv, svc, clk, cfg.TestMode, cfg.Logger)
 	adminMux := http.NewServeMux()
 	adm.Register(adminMux)
 	if cfg.TestMode {
@@ -110,6 +128,7 @@ func New(cfg Config) (*App, error) {
 
 	a.handler = mux
 	a.admin = admin.AllowCIDRs(cfg.AdminAllowedCIDRs, adminMux)
+	a.adminRoutes = adm.Routes()
 	return a, nil
 }
 
@@ -118,6 +137,9 @@ func (a *App) Handler() http.Handler { return a.handler }
 
 // AdminHandler 是管理端口（IM_ADMIN_ADDR）上的 /admin/*，由 main 单独监听。
 func (a *App) AdminHandler() http.Handler { return a.admin }
+
+// AdminRoutes 返回已注册的管理路由及其 scope。
+func (a *App) AdminRoutes() []admin.RouteInfo { return a.adminRoutes }
 
 // MetricsHandler 是 /metrics。由 main 挂在单独的内网地址上（IM_METRICS_ADDR），不和对外端口共用。
 func (a *App) MetricsHandler() http.Handler { return a.metrics.Handler() }

@@ -40,6 +40,9 @@ type Metrics struct {
 	CommandDuration *prometheus.HistogramVec // 命令处理耗时（收到请求到产生 ack），按命令
 	Messages        *prometheus.CounterVec   // 新保存的消息数（不含去重命中的重发），按会话类型
 	SlowConsumers   prometheus.Counter       // 因下行积压被断开的连接数
+	// AdminAuthFailures 是管理接口签名鉴权失败数，按原因（missing / caller / signature / window / nonce / node）。
+	// 失败不写审计（防刷爆），靠这个指标发现异常（PRD-admin F-KEY-03 规则 6）。
+	AdminAuthFailures *prometheus.CounterVec
 }
 
 // New 创建并注册全部指标，另外带上 Go 运行时和进程指标。
@@ -74,6 +77,9 @@ func New() *Metrics {
 		SlowConsumers: prometheus.NewCounter(prometheus.CounterOpts{
 			Name: "im_slow_consumers_total", Help: "Connections closed because their send queue was full.",
 		}),
+		AdminAuthFailures: prometheus.NewCounterVec(prometheus.CounterOpts{
+			Name: "im_admin_auth_failures_total", Help: "Rejected signed admin API requests by reason.",
+		}, []string{"reason"}),
 	}
 	f(m.Connections)
 	f(m.Handshakes)
@@ -82,6 +88,7 @@ func New() *Metrics {
 	f(m.Commands)
 	f(m.CommandDuration)
 	f(m.Messages)
+	f(m.AdminAuthFailures)
 	f(m.SlowConsumers)
 	f(collectors.NewGoCollector())
 	f(collectors.NewProcessCollector(collectors.ProcessCollectorOpts{}))

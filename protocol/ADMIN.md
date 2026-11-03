@@ -2,8 +2,49 @@
 
 管理接口**只在单独的管理端口上提供**（`IM_ADMIN_ADDR`，默认 `127.0.0.1:8081`，`off` 关闭）；对外端口（`IM_ADDR`）上请求 `/admin/*` 返回 404。生产环境管理地址不是回环地址时必须配置 TLS（`IM_ADMIN_TLS_CERT` / `IM_ADMIN_TLS_KEY`），可以用 `IM_ADMIN_ALLOWED_CIDRS` 限制来源网段（只看 TCP 对端地址，不解析 `X-Forwarded-For`），见 PRD-admin F-KEY-01。
 
-所有接口都需要请求头 `X-Admin-Key`；请求和响应都是 JSON。错误统一返回 `{"code": 4xxx, "msg": "..."}`，HTTP 状态码由错误码前三位决定（见 [ERRORS.md](ERRORS.md)）。
-管理密钥只能放在业务服务端，**不能下发到任何客户端**。
+请求和响应都是 JSON。错误统一返回 `{"code": 4xxx, "msg": "..."}`，HTTP 状态码由错误码前三位决定（见 [ERRORS.md](ERRORS.md)）。
+密钥只能放在业务服务端 / console-server，**不能下发到任何客户端或浏览器**。
+
+## 鉴权：调用方签名（PRD-admin F-KEY-02、F-KEY-03）
+
+每个调用方（业务服务端、console-server）一把独立密钥，配置在 `IM_ADMIN_CALLERS` 指向的 JSON 文件（权限必须是 0600，改了要重启）：
+
+```json
+[
+  {"id": "biz1", "alg": "hmac-sha256", "secret": "<base64，至少 32 字节>", "scopes": ["token.issue", "user.read", "user.write", "user.kick", "group.read", "group.write"]},
+  {"id": "console", "alg": "ed25519", "publicKey": "<base64，32 字节公钥>", "scopes": ["user.read", "group.read"], "allowedCIDRs": ["10.0.0.0/8"]}
+]
+```
+
+- `id` 为 `[a-z0-9-]{3,32}`；不同调用方的密钥不能相同，也不能等于 JWT 密钥或旧管理密钥（否则拒绝启动）。Ed25519 调用方只配置公钥。
+- 每个接口要求一个 scope（下表"scope"列）；scope 不足 403 / 4030。正文类 scope（`msg.body.*`、`msg.quarantine`）只能配置在唯一一个 `"bodyAccess": true` 的调用方上，且该调用方不能有其他 scope。
+- 可选 `allowedCIDRs`：来源不在范围内 403 / 4030；`disabled: true` 的调用方 401 / 4017。
+
+**请求头**：`X-IM-Caller`（调用方 id）、`X-IM-Timestamp`（毫秒）、`X-IM-Nonce`（16～64 个 base64url 字符，每次随机）、`X-IM-Signature`（base64url 无填充）；可选 `X-IM-Operator`（后台操作人，如 `admin:a_01J…`）、`X-Request-Id`（≤ 64）、`X-IM-Target-Node`（目标节点，必须等于服务端 `IM_NODE_ID`）。
+
+**待签名串**（UTF-8，8 行，`\n` 分隔，末尾没有换行）：
+
+```
+METHOD                      大写，如 POST
+PATH[?规范化查询串]          查询串：解码后按键名（相同键按值）以字节序排序，键和值按 RFC 3986 编码（只保留 A-Z a-z 0-9 - . _ ~），& 连接
+X-IM-Timestamp
+X-IM-Nonce
+hex(SHA-256(请求体))         没有请求体时用空串的哈希
+X-IM-Operator               没有为空串
+X-Request-Id                没有为空串
+X-IM-Target-Node            没有为空串
+```
+
+HMAC：`HMAC-SHA256(secret, 待签名串)`；Ed25519：私钥对待签名串签名。操作人和请求 ID 都在签名范围内，中间人改不了。
+
+**校验**：时间戳与服务端时间相差超过 300 秒拒绝；同一调用方 10 分钟内重复的 nonce 拒绝（只有签名正确的请求才登记 nonce）。失败统一 401 / 4017（`msg` 说明原因，只用于排查），并计入指标 `im_admin_auth_failures_total{reason}`。
+
+**示例与测试向量**：[`vectors/admin-sign.json`](vectors/admin-sign.json)（HMAC、Ed25519 各 3 组）。参考实现：Go [`server/internal/adminauth`](../server/internal/adminauth/sign.go)、Node.js [`tools/admin-sign/sign.mjs`](../tools/admin-sign/sign.mjs)、Java [`tools/admin-sign/AdminSign.java`](../tools/admin-sign/AdminSign.java)，三者在 CI 里都跑这组向量。
+
+## 旧密钥 `X-Admin-Key`（过渡，PRD-admin F-KEY-05）
+
+旧的共享密钥 `IM_ADMIN_KEY` 视为调用方 `legacy`：不需要签名，但**只能访问 v1.2 已有的 9 个接口**（下面"用户与凭证""群"两张表）和测试模式下的 `/admin/test/*`，调用其他接口 403 / 4030；密钥错误 401 / 4013。请求带 `X-IM-Caller` 时按签名判定，忽略 `X-Admin-Key`。
+生产环境（`IM_ENV=production`）默认不接受旧密钥，只有设置 `IM_ADMIN_LEGACY=1` 才接受，并在启动日志和 `/readyz`（`legacyAdminKey: true`）告警。新接入请直接使用调用方签名。
 
 ## 用户与凭证
 
@@ -29,6 +70,8 @@
 - 成员中有不存在的用户：404 / 4042，**整批不生效**。同一请求里重复的 userId 按 1 个计。
 - 多个错误同时出现时的优先级：ID 格式 4004 → 其他参数 4000 → 群不存在 4043（建群为已存在 4090）→ 单次超过 500 人 4131 → 用户不存在 4042 → 总人数超过 2000 4130。
 - `historyVisible=false`（默认）：新成员只能看到入群之后的消息；`true`：可以看到全部历史。被移除后再加入，按重新加入的时刻计算。
+
+scope：`POST /admin/users/token` → `token.issue`；`POST /admin/users/import` → `user.write`；`GET /admin/users/{userId}` → `user.read`；`POST /admin/users/{userId}/force-logout` → `user.kick`；`GET /admin/groups/{groupId}` → `group.read`；建群、改设置、加 / 移除成员 → `group.write`；`/admin/test/*` → `test`。完整 scope 目录见 PRD-admin F-KEY-02 规则 2。
 
 ## 运维
 

@@ -14,6 +14,7 @@ import (
 	"strings"
 	"time"
 
+	"tianting/server/internal/adminauth"
 	"tianting/server/internal/app"
 	"tianting/server/internal/auth"
 	"tianting/server/internal/gateway"
@@ -101,6 +102,14 @@ func Load(getenv func(string) string) (cfg Server, warnings []string, err error)
 		a.JWTSecret = getenv("IM_JWT_SECRET")
 	}
 	a.AdminKey = getenv("IM_ADMIN_KEY")
+	legacy := boolEnv(getenv, "IM_ADMIN_LEGACY", false, bad)
+	switch v := getenv("IM_C2C_BODY_ACCESS"); v {
+	case "", "off":
+	case "on":
+		a.C2CBodyAccess = true
+	default:
+		bad("IM_C2C_BODY_ACCESS must be on or off, got %q", v)
+	}
 
 	if !prod {
 		if a.JWTSecret == "" && len(a.JWTKeys) == 0 {
@@ -110,6 +119,27 @@ func Load(getenv func(string) string) (cfg Server, warnings []string, err error)
 		if a.AdminKey == "" {
 			a.AdminKey = DevAdminKey
 			warnings = append(warnings, "IM_ADMIN_KEY not set, using the development default")
+		}
+	}
+
+	// 签名调用方（PRD-admin F-KEY-02）。密钥不能与 JWT 密钥、旧管理密钥相同，所以放在默认密钥确定之后检查。
+	if path := getenv("IM_ADMIN_CALLERS"); path != "" {
+		others := [][]byte{[]byte(a.AdminKey), []byte(a.JWTSecret)}
+		for _, k := range a.JWTKeys {
+			others = append(others, k.Secret)
+		}
+		callers, cerr := adminauth.LoadCallersFile(path, others...)
+		if cerr != nil {
+			bad("IM_ADMIN_CALLERS: %v", cerr)
+		}
+		a.AdminCallers = callers
+	}
+	// 旧密钥（PRD-admin F-KEY-05 规则 3）：生产环境只有显式 IM_ADMIN_LEGACY=1 才接受。
+	if prod {
+		a.AdminLegacyDisabled = !legacy
+		a.ReportLegacyAdmin = legacy && a.AdminKey != ""
+		if a.ReportLegacyAdmin {
+			warnings = append(warnings, "IM_ADMIN_LEGACY=1: the shared IM_ADMIN_KEY is accepted on v1.2 admin APIs; move callers to IM_ADMIN_CALLERS")
 		}
 	}
 
@@ -202,7 +232,16 @@ func productionProblems(cfg Server) []string {
 	} else {
 		checkSecret("IM_JWT_SECRET", a.JWTSecret, DevJWTSecret)
 	}
-	checkSecret("IM_ADMIN_KEY", a.AdminKey, DevAdminKey)
+	// 生产环境的管理鉴权：签名调用方（IM_ADMIN_CALLERS），或显式开启的旧密钥（IM_ADMIN_LEGACY=1 + IM_ADMIN_KEY）。
+	switch {
+	case a.AdminKey != "":
+		checkSecret("IM_ADMIN_KEY", a.AdminKey, DevAdminKey)
+	case !a.AdminLegacyDisabled:
+		out = append(out, "IM_ADMIN_LEGACY=1 requires IM_ADMIN_KEY")
+	}
+	if cfg.AdminAddr != "" && len(a.AdminCallers) == 0 && (a.AdminLegacyDisabled || a.AdminKey == "") {
+		out = append(out, "admin callers are required in production: set IM_ADMIN_CALLERS (or IM_ADMIN_KEY with IM_ADMIN_LEGACY=1)")
+	}
 	if a.JWTSecret != "" && a.JWTSecret == a.AdminKey {
 		out = append(out, "IM_JWT_SECRET and IM_ADMIN_KEY must be different")
 	}

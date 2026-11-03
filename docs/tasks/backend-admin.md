@@ -15,7 +15,9 @@
 | 任务 | 状态 | 说明 |
 |---|---|---|
 | BE-200 管理接口独立监听 | ✅ 完成 | `IM_ADMIN_ADDR`（默认 127.0.0.1:8081）+ TLS + 来源网段（只看对端地址）；地址冲突与生产 TLS 启动保护（单测 + 进程级）；对外端口上 `/admin/*` 404；e2e / 压测工具 / SDK 集成测试改走管理端口 |
-| BE-201 ～ BE-243 | ⬜ 未开始 | 2026-11-03 需求分发 |
+| BE-201 调用方、scope、旧密钥过渡 | ✅ 完成 | `IM_ADMIN_CALLERS`（0600、id 格式、密钥两两不同且不等于 JWT / 旧密钥、正文类 scope 只能在唯一的 bodyAccess 调用方上）；路由注册必须声明 scope（否则 panic）；参数化测试遍历全部路由；生产环境旧密钥需 `IM_ADMIN_LEGACY=1`，`/readyz` 告警。"旧密钥调用新接口 403"待 BE-203 有了第一个新接口后补测试 |
+| BE-202 请求签名与防重放 | ✅ 完成 | `internal/adminauth`：8 行待签名串、HMAC / Ed25519、±300 秒（[IM 钟]）、nonce 签名通过后登记（内存 100 万，满时 503）；4017 + `im_admin_auth_failures_total{reason}`；向量 `protocol/vectors/admin-sign.json` 由 Go / Node.js / Java 三种实现在 CI 校验；7 个变异全部被测试发现 |
+| BE-203 ～ BE-243 | ⬜ 未开始 | 2026-11-03 需求分发 |
 
 ## 总览
 

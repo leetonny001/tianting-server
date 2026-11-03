@@ -19,6 +19,7 @@ const (
 	CodeTokenExpired             = 4011
 	CodeTokenRevoked             = 4012
 	CodeAdminKeyInvalid          = 4013
+	CodeAdminSignatureInvalid    = 4017
 	CodeForbidden                = 4030
 	CodeMuted                    = 4031
 	CodeNotConvParticipant       = 4032
@@ -55,6 +56,7 @@ var codes = map[int]codeInfo{
 	CodeTokenExpired:             {"TOKEN_EXPIRED", 0},
 	CodeTokenRevoked:             {"TOKEN_REVOKED", 0},
 	CodeAdminKeyInvalid:          {"ADMIN_KEY_INVALID", 401},
+	CodeAdminSignatureInvalid:    {"ADMIN_SIGNATURE_INVALID", 401},
 	CodeForbidden:                {"FORBIDDEN", 403},
 	CodeMuted:                    {"MUTED", 0},
 	CodeNotConvParticipant:       {"NOT_CONV_PARTICIPANT", 0},

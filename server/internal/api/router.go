@@ -15,6 +15,8 @@ type Info struct {
 	// Ready 返回 nil 表示可以接收流量（/readyz），由负载均衡、K8s 探测（ARCH 2.4）。
 	// 为 nil 时 /readyz 总是就绪。
 	Ready func(ctx context.Context) error
+	// Details 非空时附在就绪的 /readyz 响应里（例如生产环境开启了旧管理密钥的告警）。
+	Details map[string]any
 }
 
 // NewRouter 注册客户端和运维用的 HTTP 路由；/ws、/admin 由 app 包另外挂载。
@@ -52,7 +54,11 @@ func readyz(info Info) http.HandlerFunc {
 				return
 			}
 		}
-		writeJSON(w, http.StatusOK, map[string]string{"status": "ready"})
+		resp := map[string]any{"status": "ready"}
+		for k, v := range info.Details {
+			resp[k] = v
+		}
+		writeJSON(w, http.StatusOK, resp)
 	}
 }
 

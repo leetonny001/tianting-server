@@ -1,9 +1,24 @@
 package config
 
 import (
+	"encoding/base64"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 )
+
+// callersFile 写一个调用方配置文件（权限 0600）并返回路径。
+func callersFile(t *testing.T, content string) string {
+	t.Helper()
+	p := filepath.Join(t.TempDir(), "callers.json")
+	if err := os.WriteFile(p, []byte(content), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	return p
+}
+
+var bizSecret = base64.StdEncoding.EncodeToString([]byte("biz1-hmac-secret-0123456789abcdef!"))
 
 func envOf(m map[string]string) func(string) string { return func(k string) string { return m[k] } }
 
@@ -57,10 +72,10 @@ func TestProductionRejectsUnsafeConfig(t *testing.T) {
 
 func TestProductionRequiresKeys(t *testing.T) {
 	_, _, err := Load(envOf(map[string]string{"IM_ENV": "production"}))
-	if err == nil || !strings.Contains(err.Error(), "IM_JWT_SECRET is required") || !strings.Contains(err.Error(), "IM_ADMIN_KEY is required") {
+	if err == nil || !strings.Contains(err.Error(), "IM_JWT_SECRET is required") || !strings.Contains(err.Error(), "admin callers are required in production") {
 		t.Fatalf("err = %v", err)
 	}
-	_, _, err = Load(envOf(map[string]string{"IM_ENV": "production", "IM_JWT_SECRET": strongJWT, "IM_ADMIN_KEY": strongJWT}))
+	_, _, err = Load(envOf(map[string]string{"IM_ENV": "production", "IM_JWT_SECRET": strongJWT, "IM_ADMIN_KEY": strongJWT, "IM_ADMIN_LEGACY": "1"}))
 	if err == nil || !strings.Contains(err.Error(), "must be different") {
 		t.Fatalf("same secret for jwt and admin: err = %v", err)
 	}
@@ -71,7 +86,7 @@ func TestProductionValid(t *testing.T) {
 		"IM_ENV":             "production",
 		"IM_JWT_KEYS":        "k1:" + strongJWT + ",k2:" + strongJWT + "x",
 		"IM_JWT_ACTIVE_KID":  "k2",
-		"IM_ADMIN_KEY":       strongAdmin,
+		"IM_ADMIN_CALLERS":   callersFile(t, `[{"id":"biz1","alg":"hmac-sha256","secret":"`+bizSecret+`","scopes":["token.issue"]}]`),
 		"IM_ALLOWED_ORIGINS": "https://im.example.com, *.example.com",
 	}))
 	if err != nil {
@@ -82,6 +97,9 @@ func TestProductionValid(t *testing.T) {
 	}
 	if cfg.App.AutoMigrate {
 		t.Error("production must not auto-migrate by default")
+	}
+	if len(cfg.App.AdminCallers) != 1 || !cfg.App.AdminLegacyDisabled {
+		t.Errorf("callers = %+v legacyDisabled=%v", cfg.App.AdminCallers, cfg.App.AdminLegacyDisabled)
 	}
 	if len(cfg.App.JWTKeys) != 2 || cfg.App.JWTActiveKID != "k2" {
 		t.Errorf("keys = %+v active=%q", cfg.App.JWTKeys, cfg.App.JWTActiveKID)
@@ -167,7 +185,7 @@ func TestAdminAddr(t *testing.T) {
 // AC-KEY-01-2、AC-KEY-01-3：生产环境管理地址不是回环地址时必须配置 TLS；回环地址允许明文。
 func TestProductionAdminTLS(t *testing.T) {
 	prod := func(extra map[string]string) error {
-		m := map[string]string{"IM_ENV": "production", "IM_JWT_SECRET": strongJWT, "IM_ADMIN_KEY": strongAdmin}
+		m := map[string]string{"IM_ENV": "production", "IM_JWT_SECRET": strongJWT, "IM_ADMIN_KEY": strongAdmin, "IM_ADMIN_LEGACY": "1"}
 		for k, v := range extra {
 			m[k] = v
 		}
@@ -208,5 +226,40 @@ func TestAddrConflicts(t *testing.T) {
 	// 关闭的地址不参与比较。
 	if _, _, err := Load(envOf(map[string]string{"IM_ADMIN_ADDR": "off", "IM_METRICS_ADDR": "off"})); err != nil {
 		t.Errorf("two disabled addresses: %v", err)
+	}
+}
+
+// PRD-admin F-KEY-05 规则 3：生产环境只有 IM_ADMIN_LEGACY=1 才接受旧密钥，并告警；/readyz 带 legacyAdminKey。
+func TestProductionLegacyAdminKey(t *testing.T) {
+	base := map[string]string{"IM_ENV": "production", "IM_JWT_SECRET": strongJWT, "IM_ADMIN_KEY": strongAdmin,
+		"IM_ADMIN_CALLERS": callersFile(t, `[{"id":"biz1","alg":"hmac-sha256","secret":"`+bizSecret+`","scopes":["token.issue"]}]`)}
+	cfg, warnings, err := Load(envOf(base))
+	if err != nil || !cfg.App.AdminLegacyDisabled || cfg.App.ReportLegacyAdmin || len(warnings) != 0 {
+		t.Fatalf("without IM_ADMIN_LEGACY: cfg=%+v warnings=%v err=%v", cfg.App, warnings, err)
+	}
+	base["IM_ADMIN_LEGACY"] = "1"
+	cfg, warnings, err = Load(envOf(base))
+	if err != nil || cfg.App.AdminLegacyDisabled || !cfg.App.ReportLegacyAdmin || len(warnings) != 1 {
+		t.Fatalf("with IM_ADMIN_LEGACY=1: cfg=%+v warnings=%v err=%v", cfg.App, warnings, err)
+	}
+	// 开发环境始终接受旧密钥（现有测试和 e2e 不改）。
+	if cfg, _, _ := Load(envOf(nil)); cfg.App.AdminLegacyDisabled {
+		t.Error("development must accept the legacy key")
+	}
+}
+
+// AC-KEY-02-5：调用方密钥与 JWT 密钥相同，拒绝启动；错误信息不含密钥。
+func TestCallerSecretMustDifferFromJWT(t *testing.T) {
+	jwt := "shared-secret-0123456789abcdef0123"
+	shared := base64.StdEncoding.EncodeToString([]byte(jwt))
+	_, _, err := Load(envOf(map[string]string{
+		"IM_JWT_SECRET":    jwt,
+		"IM_ADMIN_CALLERS": callersFile(t, `[{"id":"biz1","alg":"hmac-sha256","secret":"`+shared+`","scopes":["token.issue"]}]`),
+	}))
+	if err == nil || !strings.Contains(err.Error(), "must differ from IM_JWT_SECRET") || strings.Contains(err.Error(), jwt) {
+		t.Fatalf("err = %v", err)
+	}
+	if _, _, err := Load(envOf(map[string]string{"IM_C2C_BODY_ACCESS": "maybe"})); err == nil {
+		t.Error("invalid IM_C2C_BODY_ACCESS accepted")
 	}
 }

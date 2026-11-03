@@ -47,6 +47,7 @@
 | 4011 | TOKEN_EXPIRED | — | ws（关闭码） | 否 | 登录凭证已过期 | 不重连，提示「登录已过期」 |
 | 4012 | TOKEN_REVOKED | — | ws（关闭码） | 否 | 账号已被强制下线 | 不重连，提示「账号已被下线」 |
 | 4013 | ADMIN_KEY_INVALID | 401 | admin | 否 | 管理密钥无效 | 业务服务端检查配置 |
+| 4017 | ADMIN_SIGNATURE_INVALID | 401 | admin | 否 | 管理接口签名无效：缺签名头、调用方不存在或停用、签名错误、时间戳超出 5 分钟、nonce 重复、目标节点不符（PRD-admin F-KEY-03） | 业务服务端检查时钟、调用方密钥和签名 |
 | 4030 | FORBIDDEN | 403 | ws / admin | 否 | 无权限（通用） | 提示「无权限」 |
 | 4031 | MUTED | — | ws | 否 | 已被禁言（二期） | 提示禁言及解除时间 |
 | 4032 | NOT_CONV_PARTICIPANT | — | ws | 否 | 不是该单聊的参与者 | 记录日志 |

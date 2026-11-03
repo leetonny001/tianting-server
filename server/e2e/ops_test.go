@@ -40,7 +40,7 @@ func TestProductionRefusesUnsafeConfig(t *testing.T) {
 	if err == nil {
 		t.Fatalf("server started with unsafe production config:\n%s", out)
 	}
-	for _, want := range []string{"IM_JWT_SECRET must not be the development default", "IM_ADMIN_KEY is required", "IM_TEST_MODE must not be enabled"} {
+	for _, want := range []string{"IM_JWT_SECRET must not be the development default", "admin callers are required in production", "IM_TEST_MODE must not be enabled"} {
 		if !strings.Contains(out, want) {
 			t.Errorf("output does not mention %q:\n%s", want, out)
 		}
@@ -54,6 +54,7 @@ func TestProductionRequiresMigrateUp(t *testing.T) {
 	prodEnv := []string{
 		"IM_ENV=production", "IM_ADDR=127.0.0.1:0", "IM_DB=" + db,
 		"IM_JWT_SECRET=jwt-0123456789abcdef0123456789abcdef", "IM_ADMIN_KEY=adm-0123456789abcdef0123456789abcdef",
+		"IM_ADMIN_LEGACY=1", // 测试用旧密钥调用管理接口（PRD-admin F-KEY-05 规则 3）
 	}
 	if out, err := runBin(t, bin, prodEnv); err == nil || !strings.Contains(out, "migrate up") {
 		t.Fatalf("unmigrated production start: err=%v\n%s", err, out)
@@ -64,7 +65,7 @@ func TestProductionRequiresMigrateUp(t *testing.T) {
 	if out, err := runBin(t, bin, []string{"IM_DB=" + db}, "migrate", "status"); err != nil || strings.Contains(out, "pending") {
 		t.Fatalf("migrate status: %v\n%s", err, out)
 	}
-	srv := startServer(t, bin, db, prodEnv[0], prodEnv[3], prodEnv[4])
+	srv := startServer(t, bin, db, prodEnv[0], prodEnv[3], prodEnv[4], prodEnv[5])
 	srv.token(t, "alice")
 }
 
@@ -165,6 +166,7 @@ func TestAdminAddrStartupGuards(t *testing.T) {
 	prod := []string{
 		"IM_ENV=production", "IM_ADDR=127.0.0.1:0", "IM_DB=" + db, "IM_METRICS_ADDR=off",
 		"IM_JWT_SECRET=jwt-0123456789abcdef0123456789abcdef", "IM_ADMIN_KEY=adm-0123456789abcdef0123456789abcdef",
+		"IM_ADMIN_LEGACY=1",
 	}
 	// 01-2：生产环境、非回环管理地址、没有 TLS → 拒绝启动。
 	out, err := runBin(t, bin, append(prod, "IM_ADMIN_ADDR=10.0.0.5:8081"))
@@ -184,6 +186,6 @@ func TestAdminAddrStartupGuards(t *testing.T) {
 		}
 	}
 	// 01-3：回环地址允许明文，正常启动并可以签发 token。
-	srv := startServer(t, bin, db, prod[0], prod[4], prod[5])
+	srv := startServer(t, bin, db, prod[0], prod[4], prod[5], prod[6])
 	srv.token(t, "alice")
 }

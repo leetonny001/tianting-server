@@ -14,7 +14,10 @@
 //	IM_AUTO_MIGRATE       启动时自动迁移；development 默认 1，production 默认 0
 //	IM_JWT_SECRET         用户 token 签名密钥（production 至少 32 字节）
 //	IM_JWT_KEYS           多把签名密钥 "k1:secret1,k2:secret2"（密钥轮换），配合 IM_JWT_ACTIVE_KID
-//	IM_ADMIN_KEY          管理接口密钥（请求头 X-Admin-Key，production 至少 32 字节）
+//	IM_ADMIN_CALLERS      管理接口调用方配置文件（JSON，权限 0600）：每个调用方独立密钥 + scope，请求签名（见 protocol/ADMIN.md）
+//	IM_ADMIN_KEY          旧的共享管理密钥（请求头 X-Admin-Key，只能访问 v1.2 已有接口；production 至少 32 字节）
+//	IM_ADMIN_LEGACY       production 下设为 1 才接受 IM_ADMIN_KEY（启动日志和 /readyz 告警）
+//	IM_C2C_BODY_ACCESS    on | off（默认）：单聊消息正文的后台查看总开关，只能改配置重启，没有任何接口能打开
 //	IM_ADMIN_ADDR         管理接口 /admin/* 的监听地址，默认 127.0.0.1:8081；off 关闭。对外端口上没有管理接口
 //	IM_ADMIN_TLS_CERT / IM_ADMIN_TLS_KEY  管理端口的 TLS 证书和私钥；production 下管理地址不是回环地址时必须配置
 //	IM_ADMIN_ALLOWED_CIDRS 管理端口允许的来源网段（逗号分隔），只看 TCP 对端地址
