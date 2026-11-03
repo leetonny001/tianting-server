@@ -149,5 +149,40 @@ type Store interface {
 	// 不是成员的不出现在结果里。
 	GroupConversations(ctx context.Context, groupID string, userIDs []string) (map[string]ConvRow, error)
 
+	// AppendAdminAudit 追加一条管理接口审计记录（PRD-admin F-KEY-04）。审计只有追加和查询：
+	// 接口里故意没有更新 / 删除方法，契约测试断言这一点。
+	AppendAdminAudit(ctx context.Context, e AdminAudit) error
+	// QueryAdminAudit 按时间范围 [FromMs, ToMs] 和可选条件查询，按 id 倒序；Cursor 为上一页最后一条的 id（0 表示从最新开始）。
+	// 返回的 next 为下一页的游标，没有更多时为 0。
+	QueryAdminAudit(ctx context.Context, q AdminAuditQuery) (entries []AdminAudit, next int64, err error)
+
 	Close() error
+}
+
+// AdminAudit 是一条管理接口审计记录。TargetsJSON / SummaryJSON 由调用方构造（白名单字段），存储层原样保存。
+type AdminAudit struct {
+	ID          int64
+	TS          int64
+	Caller      string
+	Operator    string
+	RequestID   string
+	Route       string
+	TargetsJSON string
+	SummaryJSON string
+	Phase       string // AuditIntent | AuditResult
+	Code        int
+}
+
+// 审计记录的阶段。
+const (
+	AuditIntent = "intent"
+	AuditResult = "result"
+)
+
+// AdminAuditQuery 是审计查询条件；空字符串表示不按该字段过滤。
+type AdminAuditQuery struct {
+	FromMs, ToMs                int64
+	Caller, Operator, RequestID string
+	Cursor                      int64
+	Limit                       int
 }

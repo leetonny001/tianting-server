@@ -65,6 +65,7 @@ type RouteInfo struct {
 	Method, Pattern string
 	Scope           adminauth.Scope
 	Legacy          bool // 旧密钥也能访问
+	Audited         bool // 写 admin_audit（PRD-admin F-KEY-04 规则 1）
 }
 
 // legacyRoutes 是 v1.2 已有的 9 个接口：旧密钥只能访问它们（按"方法 + 路由"判断，不按 scope，
@@ -103,7 +104,11 @@ func (a *Admin) route(mux *http.ServeMux, method, pattern string, scope adminaut
 	}
 	key := method + " " + pattern
 	legacy := legacyRoutes[key] || scope == adminauth.ScopeTest
-	a.routes = append(a.routes, RouteInfo{Method: method, Pattern: pattern, Scope: scope, Legacy: legacy})
+	audit := audited(method, scope)
+	a.routes = append(a.routes, RouteInfo{Method: method, Pattern: pattern, Scope: scope, Legacy: legacy, Audited: audit})
+	if audit {
+		h = a.withAudit(key, h)
+	}
 	mux.Handle(key, a.authenticate(scope, legacy, h))
 }
 

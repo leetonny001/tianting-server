@@ -73,6 +73,15 @@ HMAC：`HMAC-SHA256(secret, 待签名串)`；Ed25519：私钥对待签名串签�
 
 scope：`POST /admin/users/token` → `token.issue`；`POST /admin/users/import` → `user.write`；`GET /admin/users/{userId}` → `user.read`；`POST /admin/users/{userId}/force-logout` → `user.kick`；`GET /admin/groups/{groupId}` → `group.read`；建群、改设置、加 / 移除成员 → `group.write`；`/admin/test/*` → `test`。完整 scope 目录见 PRD-admin F-KEY-02 规则 2。
 
+## 审计（PRD-admin F-KEY-04）
+
+每次写接口（以及在线设备、消息元数据、正文读取、审计查询）在执行**前**写一条 `intent`，执行后写一条 `result`（同一 `X-Request-Id`，`code` 为业务结果码，0 表示成功）；`intent` 写不进去时接口不执行，返回 503 / 5030。只读的 `user.read` / `group.read` 不记录。
+记录字段：`caller`（旧密钥为 `legacy`）、`operator`（只取签名过的 `X-IM-Operator`）、`requestId`、`route`、`targets`（`{ids: 前 50 个, count}`）、`summary`（只有请求里出现的**字段名**，不记任何字段值）、`phase`、`code`。存储层只有追加和查询，没有修改和删除。
+
+| 接口 | 请求 | 成功响应 | 说明 |
+|---|---|---|---|
+| `GET /admin/audit?from=&to=&caller=&operator=&requestId=&cursor=&limit=` | — | `{entries, nextCursor}` | scope `audit.read`（旧密钥不能调用）。`from` / `to` 为毫秒，必填，跨度 ≤ 31 天，否则 400 / 4000；按 id 倒序，`limit` 1～200（默认 50），`nextCursor` 为 0 表示没有更多 |
+
 ## 运维
 
 | 接口 | 说明 |
@@ -87,4 +96,4 @@ scope：`POST /admin/users/token` → `token.issue`；`POST /admin/users/import`
 
 ## 仅测试 / 演示环境
 
-`POST /admin/test/drop-ack`、`/admin/test/skip-delivery`、`/admin/test/clock`（`IM_TEST_MODE=1`），`POST /demo/login`（`IM_DEMO_LOGIN=1`，不需要管理密钥）。生产环境（`IM_ENV=production`）开启这两个开关会拒绝启动。
+`POST /admin/test/drop-ack`、`/admin/test/skip-delivery`、`/admin/test/clock`、`/admin/test/faults`（`{adminAuditWrite: "fail" | ""}`，模拟审计写失败）（`IM_TEST_MODE=1`），`POST /demo/login`（`IM_DEMO_LOGIN=1`，不需要管理密钥）。生产环境（`IM_ENV=production`）开启这两个开关会拒绝启动。

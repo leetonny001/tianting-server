@@ -211,6 +211,8 @@ var adminSamples = map[string]adminSample{
 	"POST /admin/test/drop-ack":               {nil, "POST", "/admin/test/drop-ack", map[string]any{"clientMsgId": "cid-00000001"}, 200},
 	"POST /admin/test/skip-delivery":          {nil, "POST", "/admin/test/skip-delivery", map[string]any{"clientMsgId": "cid-00000001"}, 200},
 	"POST /admin/test/clock":                  {nil, "POST", "/admin/test/clock", map[string]any{"nowMs": nil}, 200},
+	"POST /admin/test/faults":                 {nil, "POST", "/admin/test/faults", map[string]any{"adminAuditWrite": ""}, 200},
+	"GET /admin/audit":                        {nil, "GET", "/admin/audit?from=0&to=1000", nil, 200},
 }
 
 // AC-KEY-02-2：遍历全部管理路由 × "有该 scope / 只有其他 scope"两种调用方。
@@ -298,7 +300,7 @@ func TestSignatureWindow(t *testing.T) {
 
 // AC-KEY-03-4：原样重放成功请求，401 / 4017，业务只执行一次（强制下线只踢一次）。
 func TestSignatureReplay(t *testing.T) {
-	c := edCaller("console", adminauth.ScopeUserKick)
+	c := edCaller("console", adminauth.ScopeUserKick, adminauth.ScopeAuditRead)
 	e := newEnvWithCallers(t, c)
 	first := e.dial("alice", "web")
 	req := e.signedRequest(c, http.MethodPost, "/admin/users/alice/force-logout", map[string]any{}, signOpts{requestID: "r-1"})
@@ -313,6 +315,10 @@ func TestSignatureReplay(t *testing.T) {
 	status, body = e.send(replay)
 	expectCode(t, "replay", status, body, http.StatusUnauthorized, protocol.CodeAdminSignatureInvalid)
 	second.expectNoEvent(protocol.EventKicked, 300*time.Millisecond)
+	// 审计里这个请求只有一组 intent / result（重放在签名阶段就被拒绝，不写审计）。
+	if got := e.auditEntries(c, "requestId=r-1"); len(got) != 2 {
+		t.Errorf("audit entries for r-1 = %+v, want intent + result", got)
+	}
 }
 
 // AC-KEY-03-5：签名错误的请求不登记 nonce，之后同一 nonce 的正确请求成功。

@@ -34,7 +34,7 @@ func TestRegisteredRoutesHaveScopes(t *testing.T) {
 			legacy++
 		}
 	}
-	if legacy != len(legacyRoutes)+3 {
-		t.Errorf("legacy routes = %d, want %d (v1.2 routes + 3 test routes)", legacy, len(legacyRoutes)+3)
+	if legacy != len(legacyRoutes)+4 {
+		t.Errorf("legacy routes = %d, want %d (v1.2 routes + 4 test routes)", legacy, len(legacyRoutes)+4)
 	}
 }

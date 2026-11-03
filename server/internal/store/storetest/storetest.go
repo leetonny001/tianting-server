@@ -43,6 +43,7 @@ func Run(t *testing.T, open Opener) {
 		{"Users", testUsers},
 		{"FindByClientMsgID", testFindByClientMsgID},
 		{"BodyRoundTrip", testBodyRoundTrip},
+		{"AdminAuditAppendAndQuery", testAdminAuditAppendAndQuery},
 	} {
 		t.Run(tc.name, func(t *testing.T) { tc.fn(t, open) })
 	}
@@ -591,5 +592,43 @@ func testSpeakingMarksRead(t *testing.T, open Opener) {
 	}
 	if got, _ := s.ReadSeq(c, "b", "c2c:a:b"); got != 3 {
 		t.Errorf("other side read seq = %d, want 3 (b's own last message)", got)
+	}
+}
+
+// PRD-admin F-KEY-04：审计记录追加后可以按时间范围、调用方、操作人、请求 ID 查询，按 id 倒序分页。
+func testAdminAuditAppendAndQuery(t *testing.T, open Opener) {
+	s, ctx := open(t), context.Background()
+	for i := 1; i <= 5; i++ {
+		caller, op := "console", "admin:a1"
+		if i%2 == 0 {
+			caller, op = "legacy", ""
+		}
+		e := store.AdminAudit{TS: int64(i * 1000), Caller: caller, Operator: op, RequestID: fmt.Sprintf("r-%d", i),
+			Route: "POST /admin/users/{userId}/force-logout", TargetsJSON: `{"ids":["u1"],"count":1}`, Phase: store.AuditIntent}
+		if err := s.AppendAdminAudit(ctx, e); err != nil {
+			t.Fatal(err)
+		}
+	}
+	all, next, err := s.QueryAdminAudit(ctx, store.AdminAuditQuery{FromMs: 0, ToMs: 10_000, Limit: 2})
+	if err != nil || len(all) != 2 || all[0].RequestID != "r-5" || all[1].RequestID != "r-4" || next == 0 {
+		t.Fatalf("page 1 = %+v next=%d err=%v", all, next, err)
+	}
+	page2, next2, _ := s.QueryAdminAudit(ctx, store.AdminAuditQuery{FromMs: 0, ToMs: 10_000, Limit: 2, Cursor: next})
+	if len(page2) != 2 || page2[0].RequestID != "r-3" || next2 == 0 {
+		t.Fatalf("page 2 = %+v next=%d", page2, next2)
+	}
+	page3, next3, _ := s.QueryAdminAudit(ctx, store.AdminAuditQuery{FromMs: 0, ToMs: 10_000, Limit: 2, Cursor: next2})
+	if len(page3) != 1 || page3[0].RequestID != "r-1" || next3 != 0 {
+		t.Fatalf("page 3 = %+v next=%d", page3, next3)
+	}
+	if got, _, _ := s.QueryAdminAudit(ctx, store.AdminAuditQuery{FromMs: 2000, ToMs: 4000}); len(got) != 3 {
+		t.Errorf("time range [2000,4000] = %d entries, want 3", len(got))
+	}
+	if got, _, _ := s.QueryAdminAudit(ctx, store.AdminAuditQuery{FromMs: 0, ToMs: 10_000, Caller: "legacy"}); len(got) != 2 || got[0].Operator != "" {
+		t.Errorf("caller=legacy = %+v", got)
+	}
+	got, _, _ := s.QueryAdminAudit(ctx, store.AdminAuditQuery{FromMs: 0, ToMs: 10_000, RequestID: "r-3", Operator: "admin:a1"})
+	if len(got) != 1 || got[0].TargetsJSON != `{"ids":["u1"],"count":1}` || got[0].SummaryJSON != "{}" || got[0].Phase != store.AuditIntent {
+		t.Errorf("by requestId = %+v", got)
 	}
 }

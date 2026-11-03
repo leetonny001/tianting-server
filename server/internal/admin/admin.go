@@ -8,6 +8,7 @@ import (
 	"errors"
 	"log/slog"
 	"net/http"
+	"sync/atomic"
 	"time"
 
 	"tianting/server/internal/adminauth"
@@ -47,6 +48,8 @@ type Admin struct {
 	clock    clock.Clock
 	log      *slog.Logger
 	testMode bool
+	// auditFail 由测试接口 /admin/test/faults 打开，模拟 admin_audit 写失败（AC-KEY-04-2）。
+	auditFail atomic.Bool
 }
 
 // ConvNotifier 在群成员变动后给相关用户下发 convAdded / convRemoved（由 logic.Service 实现）。
@@ -81,6 +84,7 @@ func (a *Admin) Register(mux *http.ServeMux) {
 	a.route(mux, "PATCH", "/admin/groups/{groupId}", adminauth.ScopeGroupWrite, a.updateGroup)
 	a.route(mux, "POST", "/admin/groups/{groupId}/members", adminauth.ScopeGroupWrite, a.addMembers)
 	a.route(mux, "DELETE", "/admin/groups/{groupId}/members", adminauth.ScopeGroupWrite, a.removeMembers)
+	a.route(mux, "GET", "/admin/audit", adminauth.ScopeAuditRead, a.queryAudit)
 }
 
 // RegisterTestRoutes 注册故障注入和时钟接口，只能在测试模式下调用（PRD 6.1 节）。
@@ -100,6 +104,15 @@ func (a *Admin) RegisterTestRoutes(mux *http.ServeMux, faults *logic.Faults, clk
 		}
 		if readJSON(w, r, &req) {
 			faults.SkipDelivery(req.ClientMsgID)
+			writeJSON(w, http.StatusOK, struct{}{})
+		}
+	})
+	a.route(mux, "POST", "/admin/test/faults", adminauth.ScopeTest, func(w http.ResponseWriter, r *http.Request) {
+		var req struct {
+			AdminAuditWrite string `json:"adminAuditWrite"` // "fail" 打开，"" 关闭
+		}
+		if readJSON(w, r, &req) {
+			a.auditFail.Store(req.AdminAuditWrite == "fail")
 			writeJSON(w, http.StatusOK, struct{}{})
 		}
 	})

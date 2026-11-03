@@ -651,3 +651,65 @@ func groupConvID(groupID string) string { return "group:" + groupID }
 func isUniqueViolation(err error) bool {
 	return err != nil && strings.Contains(err.Error(), "UNIQUE constraint failed")
 }
+
+func (s *SQLite) AppendAdminAudit(ctx context.Context, e AdminAudit) error {
+	_, err := s.db.ExecContext(ctx,
+		`INSERT INTO admin_audit (ts, caller, operator, request_id, route, targets_json, summary_json, phase, code)
+		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		e.TS, e.Caller, e.Operator, e.RequestID, e.Route, cmpOr(e.TargetsJSON, "{}"), cmpOr(e.SummaryJSON, "{}"), e.Phase, e.Code)
+	return err
+}
+
+func (s *SQLite) QueryAdminAudit(ctx context.Context, q AdminAuditQuery) ([]AdminAudit, int64, error) {
+	where := []string{"ts >= ?", "ts <= ?"}
+	args := []any{q.FromMs, q.ToMs}
+	for _, f := range []struct {
+		col, val string
+	}{{"caller", q.Caller}, {"operator", q.Operator}, {"request_id", q.RequestID}} {
+		if f.val != "" {
+			where = append(where, f.col+" = ?")
+			args = append(args, f.val)
+		}
+	}
+	if q.Cursor > 0 {
+		where = append(where, "id < ?")
+		args = append(args, q.Cursor)
+	}
+	limit := q.Limit
+	if limit <= 0 {
+		limit = 50
+	}
+	args = append(args, limit+1)
+	// #nosec G202 -- where 只由上面的固定列名拼接，取值全部走占位符
+	rows, err := s.db.QueryContext(ctx,
+		`SELECT id, ts, caller, operator, request_id, route, targets_json, summary_json, phase, code
+		 FROM admin_audit WHERE `+strings.Join(where, " AND ")+` ORDER BY id DESC LIMIT ?`, args...)
+	if err != nil {
+		return nil, 0, err
+	}
+	defer rows.Close()
+	var out []AdminAudit
+	for rows.Next() {
+		var e AdminAudit
+		if err := rows.Scan(&e.ID, &e.TS, &e.Caller, &e.Operator, &e.RequestID, &e.Route, &e.TargetsJSON, &e.SummaryJSON, &e.Phase, &e.Code); err != nil {
+			return nil, 0, err
+		}
+		out = append(out, e)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, 0, err
+	}
+	var next int64
+	if len(out) > limit {
+		out = out[:limit]
+		next = out[limit-1].ID
+	}
+	return out, next, nil
+}
+
+func cmpOr(v, def string) string {
+	if v == "" {
+		return def
+	}
+	return v
+}
