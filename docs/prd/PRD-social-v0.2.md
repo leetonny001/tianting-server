@@ -1021,7 +1021,7 @@ M4：`CreateClientGroup`（含去重、提示消息）；`InviteMembers`（部�
 | `Conversation` 增加可选 `memberCount`（群） | F-SOC-11；向后兼容 | M3（待 U-4） |
 | `Conversation` 增加可选 `myRole`（群） | F-SOC-20 | M4 |
 | 新增事件 `groupChanged {groupId}` | 群资料或成员变化的提醒，同一个群至少间隔 1 秒合并发送 | M4 |
-| `convRemoved` 增加 `reason`：`removed` / `dissolved` / `left` | `removed`、`dissolved` 与 PRD-admin 第 8 节一致（随管理接口解散群在 M3 交付），新增 `left` | `removed` / `dissolved`：M3；`left`：M4 |
+| `convRemoved` 增加 `reason`：`removed` / `dissolved` / `left` | `removed`、`dissolved` 与 PRD-admin F-ADM-24、VA-06一致（随管理接口解散群在 M3 交付），新增 `left` | `removed` / `dissolved`：M3；`left`：M4 |
 | `MsgType` 增加 `tip`；`Message.from`、`LastMsg.from` 在 `type=tip` 时允许为空 | Schema 用 `if/then`（`frame.schema.json` 中 `Message` 和 `LastMsg` 两处，`LastMsg.from` 现为 `UserId` 格式，第 218 行）；`vectors/frames.json` 补用例 | M4 |
 | `Error` 增加可选 `userId` | `frame.schema.json` 的 `Error` 定义从 `{code, msg}` 扩展为 `{code: integer, msg: string, userId?: UserId}`，`additionalProperties: false` 保持；`vectors/frames.json` 补"带 userId 的错误 ack"用例。用于建群失败时指出是哪个人 | M4 |
 | 协议 README 第 3 节规则 9 补充 | 单聊发送权限 4035 / 4036 / 4137 / 4292 与判定顺序；群操作 4030 / 4046；客户端遇到不认识的事件类型必须忽略 | M3 |
@@ -1062,7 +1062,7 @@ M4：`CreateClientGroup`（含去重、提示消息）；`InviteMembers`（部�
 | 4135 | JOINED_GROUP_LIMIT_EXCEEDED | — | ws | 否 | 自己或对方加入的群数已达上限 | M4 |
 | 4136 | GROUP_ADMIN_LIMIT_EXCEEDED | — | ws | 否 | 管理员已满 10 人 | M4 |
 | 4137 | STRANGER_MSG_LIMIT | — | ws | 否 | 开放模式下对方回复前的条数用完（v0.1 的 4037，按"数量上限"归入 413x） | M3 |
-| 4292 | QUOTA_EXCEEDED | 429 | ws / admin | **否** | 配额用完：每日（好友申请、搜索、拉黑、建群、新对象被拒）或每小时（新对象）；PRD-admin 用于正文授权、在线设备、单聊元数据和运维排查的每日上限（console 通道按 PRD-admin 10.2 节） | M3 |
+| 4292 | QUOTA_EXCEEDED | 429 | ws / admin / console | **否** | 配额用完：每日（好友申请、搜索、拉黑、建群、新对象被拒）或每小时（新对象）；PRD-admin 用于正文授权、在线设备、单聊元数据和运维排查的每日上限（console 通道按 PRD-admin 10.2 节） | M3 |
 
 已有错误码扩大使用范围（只扩 `scope`、不改含义）：4130 增加 ws 通道（自建群人数上限），`message` 改为通用的"群成员已达上限"（只改说明、不改含义）；4030 用于群权限不足、托管群操作、`clientGroupEnabled=false`、X-5 的 scope 不足；4040 用于给非好友设备注；4000 用于申请自己拉黑的人、`tip-` 前缀。
 
@@ -1095,7 +1095,7 @@ M4：`CreateClientGroup`（含去重、提示消息）；`InviteMembers`（部�
 | 交接点 | 约定 |
 |---|---|
 | 解散群 | 客户端 `groupDissolve` 和 `DELETE /admin/groups/{id}`（G-ADM-11）共用实现与效果；已提前：服务端与 H5 提示在 M3，客户端命令在 M4 |
-| `convRemoved.reason` | 统一枚举 `removed` / `dissolved` / `left`，PRD-admin 第 8 节补 `left` |
+| `convRemoved.reason` | 统一枚举 `removed` / `dissolved` / `left`，PRD-admin F-ADM-24、VA-06补 `left` |
 | 群成员分页 | `groupMembers`（客户端）和 `GET /admin/groups/{id}/members`（G-ADM-10）共用存储查询；后台额外支持按 userId 前缀筛选 |
 | 群列表 | 后台群列表（G-ADM-09）增加"群主""类型（自建 / 托管）""成员数"列 |
 | 群主与管理员 | 后台群详情显示群主、管理员；后台可以指定 / 收回群主（`PATCH owner`）；后台设置管理员放 P1 |
@@ -1591,3 +1591,7 @@ v0.1 尚未冻结、也没有下游任务单和用例引用，v0.2 的 AC 按功
 | S-4 | E-07 | 9.4 节只有 ws scope 的 4035、4036、4045、4091、4133、4134、4135、4136、4137 的 HTTP 列改为"—"；4046 保持 ws / admin 并注明"PRD-admin 增加禁言、指定群主用途"；4292 通道改为 ws / admin 并注明 PRD-admin 的每日上限用途；标题和表上说明的"暂定编号"改为"已与 PRD-admin v0.2 第 10 节核对，无冲突，按本表写入 errors.json"；号段说明中 4037～4039、4291 改为 PRD-admin 已按预留使用（名称与 PRD-admin 10.1 节一致） |
 
 **统计变化**：AC 数量不变（只给 AC-SOC-26-1～26-6 加了里程碑标记），无改号。
+
+#### 冻结前核对修正（2026-11-03）
+
+按冻结前逐条核对发现的问题修正：9.4 节 4292 通道加 `console`；"PRD-admin 第 8 节"引用改为 F-ADM-24、VA-06。
