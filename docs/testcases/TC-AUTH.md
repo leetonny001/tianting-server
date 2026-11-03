@@ -1,6 +1,7 @@
 # 测试用例：账号与鉴权（AUTH）
 
-> 依据：[PRD v1.2](../prd/PRD-core-v1.2.md) F-AUTH-01～F-AUTH-05、§5 文案表、§6.1 测试环境要求、§9 C-08/C-11～C-15/C-21/C-44；[ERRORS.md](../../protocol/ERRORS.md) 第 4 节关闭码。
+> 依据：[PRD-core v1.3](../prd/PRD-core-v1.3.md) F-AUTH-01～F-AUTH-05、§5 文案表、§6.1 测试环境要求、§9 C-08/C-11～C-15/C-21/C-44；[ERRORS.md](../../protocol/ERRORS.md) 第 4 节关闭码。
+> 管理接口（PRD-core v1.3 F-AUTH-01 规则 3、C-15；VC-01）：`/admin/*`（含测试接口 `/admin/test/*`）只在内网管理地址 `IM_ADMIN_ADDR` 上提供，下文所有管理接口请求都发到该地址；e2e 继续用旧密钥 `X-Admin-Key: test-admin-key`（过渡调用方 `legacy`，非生产环境，不带 `X-IM-Caller`）；`/ws`、`/demo/login` 仍在对外端口。
 > 约定：管理密钥通过 `X-Admin-Key` 头传递，测试值 `test-admin-key`；连接地址 `ws://{host}/ws?platform={platform}`，连接后第一帧发送 `auth` 携带 token（PRD v1.2 C-52；下文“以 token=X 连接”均指这一过程）；"测试模式"指 §6.1 的测试环境（token 最短 1 秒，独立数据库）。
 > 接口路径（C-15）：强制下线接口 `POST /admin/users/{userId}/force-logout`；演示登录接口 `POST /demo/login`，body `{"username":...}`（测试模式下可带 `ttlSeconds`，C-21）。被踢后的界面行为按 C-01：停留在当前页面弹窗，点"确定"后回到登录页并清空数据。
 
@@ -77,13 +78,14 @@
 - 关联 AC：AC-AUTH-01-1
 - 优先级：P0
 - 层级：后端 e2e
-- 前置条件：服务端已启动，独立数据库。
+- 前置条件：服务端已启动，独立数据库；alice 未被封禁（AC-AUTH-01-1 v1.3 前置，默认即未封禁；封禁场景见 PRD-admin F-ADM-13）。
 - 步骤：
   1. 记录当前时间 T（毫秒）。
   2. `POST /admin/users/token`，头 `X-Admin-Key: test-admin-key`，body `{"userId":"alice"}`。
 - 预期结果：
   1. HTTP 200，body 含非空字符串 `token` 和整数 `expiresAt`。
   2. `expiresAt` 是毫秒时间戳（13 位，且 > T）。
+- 变更：v1.3（VA-03）
 
 ### TC-AUTH-01-02 签发的 token 可以直接用于连接
 - 关联 AC：AC-AUTH-01-1
@@ -108,6 +110,8 @@
 - 预期结果：
   1. 两次均 HTTP 401，body.code = 4013（不是 4010）。
   2. 响应体不含 `token` 字段。
+- 说明：验证旧密钥（`legacy`）路径——请求发到管理地址 `IM_ADMIN_ADDR`、不带 `X-IM-Caller`，非生产环境；签名路径（带 `X-IM-Caller`）的鉴权失败 4017 由 PRD-admin AC-KEY-03-* 覆盖，不在本用例。
+- 变更：v1.3（VC-01）
 
 ### TC-AUTH-01-04 管理密钥错误返回 401/4013
 - 关联 AC：AC-AUTH-01-2
@@ -120,6 +124,8 @@
   3. `X-Admin-Key: TEST-ADMIN-KEY`（大小写不同）。
 - 预期结果：
   1. 三次均 HTTP 401，body.code = 4013，无 `token`。
+- 说明：验证旧密钥（`legacy`）路径——请求发到管理地址 `IM_ADMIN_ADDR`、不带 `X-IM-Caller`，非生产环境；签名路径（带 `X-IM-Caller`）的鉴权失败 4017 由 PRD-admin AC-KEY-03-* 覆盖，不在本用例。
+- 变更：v1.3（VC-01）
 
 ### TC-AUTH-01-05 密钥错误且 userId 非法时优先返回 4013
 - 关联 AC：AC-AUTH-01-2
@@ -130,6 +136,8 @@
   1. `X-Admin-Key: wrong`，body `{"userId":"bad id"}`。
 - 预期结果：
   1. HTTP 401，body.code = 4013（先校验密钥，不泄露参数校验结果）。
+- 说明：验证旧密钥（`legacy`）路径——请求发到管理地址 `IM_ADMIN_ADDR`、不带 `X-IM-Caller`，非生产环境；签名路径（带 `X-IM-Caller`）的鉴权失败 4017 由 PRD-admin AC-KEY-03-* 覆盖，不在本用例。
+- 变更：v1.3（VC-01）
 
 ### TC-AUTH-01-06 userId 长度 1 和 64 签发成功
 - 关联 AC：AC-AUTH-01-3
@@ -668,6 +676,8 @@
 - 预期结果：
   1. 两次均 HTTP 401，body.code = 4013。
   2. alice 未收到 `kicked`，`ping` 收到 `pong`。
+- 说明：验证旧密钥（`legacy`）路径——请求发到管理地址 `IM_ADMIN_ADDR`、不带 `X-IM-Caller`，非生产环境；签名路径（带 `X-IM-Caller`）的鉴权失败 4017 由 PRD-admin AC-KEY-03-* 覆盖，不在本用例。
+- 变更：v1.3（VC-01）
 
 ### TC-AUTH-04-01 开启演示登录后输入用户名可登录并连接
 - 关联 AC：AC-AUTH-04-1
@@ -787,7 +797,8 @@
   2. 输入 ` alice `，点击登录。
 - 预期结果：
   1. 步骤 1：提示"账号格式不正确"，停留登录页。
-  2. 步骤 2：登录成功进入会话列表，右上角菜单显示当前账号 `alice`（无空格）。
+  2. 步骤 2：登录成功进入会话列表，"我"页显示当前账号 `alice`（无空格）。
+- 变更：v1.3（V-UI-01）
 
 ### TC-AUTH-04-11 演示登录 token 有效期 1 天，测试模式可传 ttlSeconds
 - 关联 AC：AC-AUTH-04-1
@@ -807,15 +818,18 @@
 - 层级：UI 自动化
 - 前置条件：alice 登录进入会话列表；可读取服务端日志。
 - 步骤：
-  1. 点击右上角菜单 → 退出登录。
-  2. 检查 `sessionStorage`。
-  3. 刷新页面。
-  4. 查看服务端日志中 alice 该连接的断开记录。
+  1. 进入"我" → 设置 → 退出登录，在确认框中点"取消"。
+  2. 再次点"退出登录"，在确认框中点"退出"。
+  3. 检查 `sessionStorage`。
+  4. 刷新页面。
+  5. 查看服务端日志中 alice 该连接的断开记录。
 - 预期结果：
-  1. 跳转登录页。
-  2. `sessionStorage` 中不再有 token。
-  3. 刷新后仍停留登录页，不发起 `/ws` 连接。
-  4. 服务端日志记录该连接以关闭码 1000 断开。
+  1. 步骤 1：确认框关闭，仍停留在设置页；WS 连接不断开（服务端日志无该连接的断开记录），token 仍在 `sessionStorage`。
+  2. 步骤 2：跳转登录页。
+  3. `sessionStorage` 中不再有 token。
+  4. 刷新后仍停留登录页，不发起 `/ws` 连接。
+  5. 服务端日志记录该连接以关闭码 1000 断开（只有一条断开记录）。
+- 变更：v1.3（V-UI-01）
 
 ### TC-AUTH-05-02 主动关闭（1000）后 SDK 不重连
 - 关联 AC：AC-AUTH-05-1
@@ -835,11 +849,12 @@
 - 层级：UI 自动化
 - 前置条件：alice 与 bob 有单聊（含消息 "secret-a"）；`zoe` 没有任何会话。
 - 步骤：
-  1. alice 在标签页中退出登录。
+  1. alice 在标签页中退出登录（"我" → 设置 → 退出登录 → 确认框点"退出"）。
   2. 同一标签页以 `zoe` 登录。
 - 预期结果：
   1. zoe 的会话列表显示空状态，不出现 `c2c:alice:bob` 会话或 "secret-a"。
   2. 直接访问 `/chat/c2c:alice:bob` 不显示 "secret-a"。
+- 变更：v1.3（V-UI-01）
 
 ### TC-AUTH-05-04 一个标签页退出不影响另一个标签页
 - 关联 AC：AC-AUTH-05-1
@@ -847,11 +862,12 @@
 - 层级：UI 自动化
 - 前置条件：同一浏览器上下文开两个标签页：标签页 1 登录 alice，标签页 2 登录 bob。
 - 步骤：
-  1. 标签页 1 退出登录。
+  1. 标签页 1 退出登录（"我" → 设置 → 退出登录 → 确认框点"退出"）。
   2. 在标签页 2 刷新页面；随后 carol 给 bob 发 "after-logout"。
 - 预期结果：
   1. 标签页 2 仍为 bob 的登录态，刷新后自动重连停留原页面。
   2. 标签页 2 收到 "after-logout"。
+- 变更：v1.3（V-UI-01）
 
 ---
 

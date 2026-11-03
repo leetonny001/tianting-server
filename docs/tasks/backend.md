@@ -2,7 +2,7 @@
 
 | 项 | 内容 |
 |---|---|
-| 依据 | [PRD v1.2](../prd/PRD-core-v1.2.md)、[错误码](../../protocol/ERRORS.md) |
+| 依据 | [PRD-core v1.3](../prd/PRD-core-v1.3.md)、[错误码](../../protocol/ERRORS.md) |
 | 负责 | 后端（AI） |
 | 起点 | M1 代码（`server/`）：鉴权、WS 网关、单聊 / 群聊、seq、去重、sync、已读位置 |
 | 完成定义 | 任务内列出的 AC 都有通过的自动化测试（后端 e2e 或单测）；`go test -race ./...` 全过；协议文档 / Schema / 用例同步更新 |
@@ -67,6 +67,7 @@
 | B4 会话 | BE-040 ～ BE-043 | 会话列表、未读、已读多端同步（P1）、昵称（P1） |
 | B5 非功能 | BE-050 ～ BE-051 | 压测工具、可观测 |
 | B6 集群化（二期） | BE-070 ～ BE-075 | Postgres 实现、数据迁移工具、NATS 投递、Redis 在线路由与限流、多节点 e2e |
+| B9 v1.3 核心同步 | BE-090 ～ BE-091 | PRD-core v1.3 第 12 节中不属于四份新 PRD 任务单的后端改动（关闭码 1011 常量、演示登录昵称） |
 
 依赖顺序：B0 → B1 → B2 → B2.5 → B3 → B4 → B5（B3 中的 BE-030 依赖 BE-010 的用户表）。前端可以在 BE-001 完成（协议定稿）后开始并行开发 SDK。
 
@@ -93,6 +94,7 @@
   2. 一致性测试：Go 常量集合与 `errors.json` 完全一致。
   3. 按 ERRORS.md 第 5 节修正 M1 的 7 处差异（4033 / 4032 / 4043 / 4090 / 4002～4008 / 4013 / 关闭码）。
   4. 管理接口的 HTTP 状态码取自 `errors.json`。
+- v1.3：`errors.json` 一次写入新码、一致性测试跳过只含 `console` scope 的码（AC-SYS-01-1 改写，VA-14）由 BE-211 承担；Go 关闭码常量 1011 和 `closeCodes` / `kickReasons` 的完整比对（VC-02）由 BE-090 承担。
 
 ### BE-003 测试模式与故障注入
 - 优先级：P0
@@ -104,6 +106,7 @@
   3. 故障注入管理接口（仅测试模式注册路由）：`POST /admin/test/drop-ack {clientMsgId}`（保存消息但不回 ack）、`POST /admin/test/skip-delivery {clientMsgId}`（保存消息但不做实时投递，用来制造 seq 缺口）、`POST /admin/test/clock {nowMs}`（注入服务端时钟，C-43）。
   4. `auth.Signer` 暴露可注入的时钟。
 - 完成标准：非测试模式下这些路由返回 404（e2e 断言）。
+- v1.3：`/admin/test/*` 随管理接口迁到 `IM_ADMIN_ADDR`（VC-01）由 BE-200 承担；社交测试接口、IM 钟（V-22）由 BE-103、BE-104 承担；`store.Ping` 与运维接口延迟注入（VO-04）由 BE-305 承担。
 
 ### BE-004 文本校验：去空白、按码点计数
 - 优先级：P0
@@ -136,12 +139,14 @@
   2. `POST /admin/users/import {users:[{userId, nickname?, avatar?}]}`：upsert；单次 ≤ 500，超出返回 4131；任意 `userId` 不合法则整批不写入，返回 4004。
   3. 签发凭证时，用户不存在则自动注册。
   4. Store 接口新增 `UserExists`、`UpsertUsers` 等方法。
+- v1.3：官方账号 `official`（V-15）由 BE-115 承担；封禁（VA-03、X-8）由 BE-222 承担。
 
 ### BE-011 凭证有效期规则
 - 优先级：P0
 - 依赖：BE-003、BE-010
 - AC：AC-AUTH-01-1、AC-AUTH-01-2、AC-AUTH-01-3、AC-AUTH-01-4、AC-AUTH-01-5
 - 内容：`ttlSeconds` 不传、0 或负数按 7 天，上限 30 天，测试模式下最小 1 秒；密钥错误返回 401 / 4013；`userId` 不合法返回 400 / 4004；补充边界 e2e（长度 0 / 1 / 64 / 65，含空格、中文、`.`、`@`）。
+- v1.3：AC-AUTH-01-2 改写（内网管理地址、调用方分密钥 + 签名、旧密钥 `legacy` 过渡与 4013 / 4017 判定，VC-01）由 BE-200、BE-201、BE-202 承担；AC-AUTH-01-1 的"未被封禁"前置（封禁时签发返回 4034，VA-03）由 BE-222 承担。
 
 ### BE-012 凭证错误改为"先升级、再踢"，校验平台标识
 - 优先级：P0
@@ -152,6 +157,7 @@
   2. platform 缺失或不在 android / ios / web / pc 中：以 4009 关闭。
   3. `kicked` 帧**写完后**再关闭（同步写，不走异步队列）。
   4. `auth.Verify` 区分"无效"和"过期"两种错误，并返回过期时间。
+- v1.3：握手阶段被拒（4401、4009、4010～4012、1011）计入断开日志和指标（VO-01，F-AUTH-02 规则 8）由 BE-300、BE-303 承担。
 
 ### BE-013 连接期间到期踢下线与强制下线
 - 优先级：P0
@@ -162,12 +168,14 @@
   2. `POST /admin/users/{userId}/force-logout`：把 `users.tokens_valid_after` 更新为当前时间；该用户所有在线连接下发 `kicked/banned` 并以 4012 关闭。
   3. 鉴权时：token 的签发时间早于 `tokens_valid_after` → `kicked/banned`，以 4012 关闭。
   4. hub 增加"按用户关闭所有连接"的能力。
+- v1.3：强制下线接口迁到管理地址、旧密钥可继续调用（VC-01）由 BE-200、BE-201 承担；封禁踢线 `kicked {reason: "suspended", until}` / 4012（VA-10）由 BE-222 承担。
 
 ### BE-014 演示登录服务
 - 优先级：P0
 - 依赖：BE-010
 - AC：AC-AUTH-04-1、AC-AUTH-04-3、AC-AUTH-04-4
 - 内容：`IM_DEMO_LOGIN=1` 时注册 `POST /demo/login {username}` → 校验格式（不合法返回 400 / 4004）→ 自动注册 → 返回 token；默认不注册该路由（返回 404）；允许 H5 开发服务器跨域访问（仅限演示模式）。
+- v1.3：`/demo/login` 留在对外端口、转调的管理接口走内网管理地址（F-AUTH-04 规则 2）由 BE-200 承担；可选 `nickname`（V-UI-15，C-21）由 BE-091 承担；封禁期间返回 403 / 4034（VA-04）由 BE-222 承担。
 
 ### BE-015 空闲超时与慢连接的关闭码
 - 优先级：P0
@@ -184,6 +192,7 @@
 - 依赖：BE-010
 - AC：AC-MSG-01-7、AC-MSG-01-8、AC-CONV-03-3
 - 内容：发送单聊前校验对方用户存在，不存在返回 4042，不保存消息、不生成会话；给自己发消息照常成功。
+- v1.3：单聊发送判定顺序（V-03，AC-MSG-01-8 结果不变）由 BE-111 承担；禁言 4031（VA-08）由 BE-226、BE-227 承担。
 
 ### BE-021 去重校验会话一致性
 - 优先级：P0
@@ -205,6 +214,7 @@
 - 依赖：BE-002
 - AC：AC-MSG-07-1
 - 内容：按用户维度（所有连接合计）做令牌桶限流，每秒 20 条，超出返回 4290；e2e 验证"25 条中 20 条成功、5 条返回 4290，1 秒后恢复"。
+- v1.3：C-29 措辞补充（被哪一项拒绝就不扣哪一项，V-06、VA-08）由 BE-111（4292 等）和 BE-226（4031 在限流之前、不扣）承担；本任务的现有行为不变。
 
 ### BE-024 消息字段补齐
 - 优先级：P0
@@ -247,6 +257,7 @@
 - 依赖：—
 - AC：AC-AUTH-02-10、AC-AUTH-02-11（原 BE-051 的安全部分提前）
 - 内容：S3、S4、S6——`IM_ENV=production` 时缺少密钥、密钥短于 32 字节、等于开发默认值、开启测试模式或演示登录都拒绝启动；`IM_ALLOWED_ORIGINS`（未配置时只允许本机；没有 Origin 头的原生端放行）；HTTP `ReadTimeout` / `WriteTimeout` / `IdleTimeout`；单用户最多 10 个连接，超出时踢掉最早的连接（踢线原因 `tooManyConnections`、关闭码 4429，C-53）。
+- v1.3：管理地址的生产启动保护（非回环必须 TLS、端口不能重复）由 BE-200 承担；旧密钥生产默认关闭（`IM_ADMIN_LEGACY`）由 BE-201 承担；配置检查重构由 BE-304 承担。
 
 ### BE-065 WS 鉴权改为首帧 auth
 - 优先级：P0
@@ -259,6 +270,7 @@
 - 依赖：BE-062、BE-065
 - AC：（架构：S7、S9）
 - 内容：按 IP 的新建连接令牌桶和鉴权失败计数（连续失败临时封禁）；只信任 `IM_TRUSTED_PROXIES` 传来的 `X-Forwarded-For`；日志脱敏测试：发送带特征串的 token 和消息正文，断言整个测试过程的日志输出里都不出现。
+- v1.3：日志中不出现 userId 以外的个人信息、IP 只保存脱敏值（VO-02）由 BE-303 承担。
 
 ### BE-067 JWT 密钥轮换
 - 优先级：P0
@@ -277,6 +289,7 @@
 - 依赖：BE-062
 - AC：（架构：ARCH 2.4）
 - 内容：`/readyz`（数据库可用才就绪）；SIGTERM 时先把就绪状态置为失败，再给在线连接下发 `kicked/serverShutdown`，最后关闭。
+- v1.3：`/readyz` 与端口划分（VO-03）由 BE-200、BE-300、BE-301 承担。
 
 ---
 
@@ -290,6 +303,7 @@
   1. `chat_groups` 增加 `history_visible`（默认 false）；`group_members` 增加 `join_seq`（入群时读取当前会话的 maxSeq）。
   2. 群名 1～50 字；成员可以为空；按加完后的总人数校验 ≤ 2000（超出返回 4130）；单次 ≤ 500（超出返回 4131）；成员不存在返回 4042，整批不生效；冲突返回 4090。
   3. 发送 / 拉取时先查群是否存在：不存在返回 4043，非成员返回 4033（修正 M1 中空群误报 4040 的问题）。
+- v1.3：已解散群的 ID 不复用（4090）、已解散按不存在处理（4043，C-08，VA-05）由 BE-122 / BE-209 承担（两份任务单已约定 `DissolveGroup` 只实现一次）；`ug-` 前缀 4004 与群类型（V-09，M4）由 BE-130 承担。
 
 ### BE-031 群管理接口补齐
 - 优先级：P0
@@ -300,6 +314,7 @@
   - `PATCH /admin/groups/{groupId}` 修改 `name` / `historyVisible`；
   - `GET /admin/groups/{groupId}` 查询群名、设置和成员列表。
   - 被移除的成员不再收到新消息，发送和拉取都返回 4033。
+- v1.3：管理接口解散群 `DELETE /admin/groups/{groupId}`（VA-05）由 BE-122 / BE-209 承担；管理接口的成员变动不产生群提示消息（V-08，AC-GRP-01-6 / 01-7 / 01-12 改写，结果不变），本任务行为不变。
 
 ### BE-032 群历史可见性
 - 优先级：P0
@@ -318,6 +333,7 @@
 - 依赖：BE-031、BE-040
 - AC：AC-GRP-03-1、AC-GRP-03-2、AC-CONN-01-7
 - 内容：加成员时，向被加入用户的在线连接下发 `convAdded`（会话信息结构与 `convs` 的单项相同）；移除时下发 `convRemoved {convId}`。
+- v1.3：`convRemoved.reason`（`removed` / `dissolved`，V-11、VA-06）由 BE-122 / BE-209 承担，Schema 变更由 BE-211 承担；`left`（M4）由 BE-134 承担。
 
 ---
 
@@ -332,6 +348,7 @@
   2. 新表 `conv_last(conv_id, last_msg_id, last_from, last_text, last_ts)`：在 send 事务里更新（每个会话一行）。
   3. `convs` 命令返回 `{convId, type, name, maxSeq, readSeq, minSeq, unread, lastMsg, updatedAt}`，按 `updatedAt` 倒序、`convId` 升序排列，上限 500 个，超出时带 `truncated: true`（C-03）；`lastMsg` 摘要截断为 100 个码点，没有消息时为 `null`。
   4. 对已有数据做迁移：从 `messages` 和 `group_members` 回填这两张表。
+- v1.3：可选字段 `memberCount`（V-07）、`myGroups` 不受 500 上限（V-23）由 BE-113 承担；已解散的群不出现（VA-05）由 BE-122 / BE-209 承担；`lastMsg.deleted`（VA-11，第二批）由 BE-223 承担；`mutedUntil` 等禁言字段（VA-09）由 BE-226 承担。
 
 ### BE-041 未读数与已读规则
 - 优先级：P0
@@ -350,6 +367,7 @@
 - 依赖：BE-040、BE-010
 - AC：AC-USER-02-1
 - 内容：单聊会话的 `name` 优先取对方昵称；群消息的发送者信息附带昵称（需要同步补充协议）。
+- v1.3：显示名来源改为 `users` 命令批量查资料（F-USER-02 规则 2，V-14）由 BE-113 承担；本任务只保留单聊会话名取昵称。
 
 ---
 
@@ -366,6 +384,7 @@
 - 依赖：BE-015
 - AC：AC-AUTH-05-1
 - 内容：连接断开日志记录关闭码和原因；Prometheus 指标（在线连接数、收发消息速率、ack 延迟、错误码分布）。Origin 白名单和生产启动保护已提前到 BE-064。
+- v1.3：握手阶段被拒计入断开（VO-01）由 BE-300、BE-303 承担；日志个人信息与 IP 脱敏（VO-02）由 BE-303 承担。
 
 ---
 
@@ -381,7 +400,29 @@
 | BE-073 Redis 在线路由与限流 | Presence（TTL 续期）；Lua 原子令牌桶 |
 | BE-074 去重表拆分 | `client_msg_dedup` 按 `from_uid` 分片（ARCH 2.3） |
 | BE-075 多节点 e2e | docker compose 起 3 个节点 + Postgres + NATS + Redis，跨节点收发、踢线、杀掉一个节点后客户端自动重连且不丢不重 |
-| 安全 P1 | S8 管理接口签名与审计、S10 备份加密与字段加密、S13 保留期与注销、S14 内容审核回调 |
+| 安全 P1 | S8 管理接口签名与审计、S10 备份加密与字段加密、S13 保留期与注销、S14 内容审核回调（v1.3：S8 已提前到第一批，由 BE-200 ～ BE-203 承担） |
+
+---
+
+## B9 v1.3 核心同步
+
+> 只放 PRD-core v1.3 第 12 节里**没有被四份新 PRD 任务单（`backend-social.md`、`backend-admin.md`、`backend-ops.md`、`console*.md`）承担**的后端改动；其余在上面各任务下用"v1.3：由 xxx 承担"一行指向。
+
+### BE-090 关闭码 1011 落地为常量，关闭码与踢线原因一致性测试补全
+- 优先级：P0
+- 依赖：BE-002；与 BE-211 协调（`errors.json` 的 `closeCodes` 增加 1011、`kickReasons` 增加 `suspended` 由 BE-211 写入，本任务负责 Go 侧）
+- AC：AC-SYS-01-1
+- 内容：
+  1. `server/internal/protocol/errors.go` 增加 `CloseInternalError = 1011`（名称 `INTERNAL_ERROR`）并加入关闭码表；`internal/gateway` 中直接使用 `websocket.StatusInternalError` 的关闭路径改用该常量（VC-02、RECHECK E-06）。
+  2. `TestCodesMatchErrorsJSON` 的关闭码、踢线原因比较改为集合完全相等：`closeCodes` 12 个（含 1011、4401、4429），`kickReasons` 含 `tooManyConnections → 4429`、`serverShutdown → 1001`、`replaced → null`；第二批 `suspended → 4012` 随 BE-222 加常量。
+  3. 测试：TC-SYS-01-02 按 v1.3 改写后的断言通过；变异验证（临时删掉 1011 常量，测试必须失败）。
+
+### BE-091 演示登录接受可选昵称
+- 优先级：P0
+- 依赖：BE-014、BE-010
+- AC：AC-AUTH-04-1
+- 内容：`POST /demo/login {username, nickname?}`：`nickname` 去首尾空白后 1～32 个码点（按 F-USER-01 校验，不合法返回 400 / 4000），登录（自动注册）时写入该用户昵称，覆盖原值；不传或为空时不改昵称；只影响演示模式（F-AUTH-04 规则 4、C-21，V-UI-15 / PRD-ui G-UI-23）。同步更新 `protocol/ADMIN.md` 的 `/demo/login`。前端登录页见 FE-223。
+- 测试：e2e 带昵称登录后 `GET /admin/users/{userId}` 昵称一致；33 个码点返回 4000 且不签发；不带昵称时原昵称不变。
 
 ---
 

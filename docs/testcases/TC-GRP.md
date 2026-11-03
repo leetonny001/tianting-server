@@ -1,6 +1,6 @@
 # 测试用例：群聊（GRP）
 
-> 依据：[PRD v1.2](../prd/PRD-core-v1.2.md) F-GRP-01～F-GRP-03 及 §9 补充规则（C-04、C-08、C-35～C-38）、[需求澄清](../review/CLARIFY-core-v1.0.md)、[ERRORS.md](../../protocol/ERRORS.md)。
+> 依据：[PRD-core v1.3](../prd/PRD-core-v1.3.md) F-GRP-01～F-GRP-03 及 §9 补充规则（C-04、C-08、C-35～C-38）、[需求澄清](../review/CLARIFY-core-v1.0.md)、[ERRORS.md](../../protocol/ERRORS.md)。
 >
 > 未读数 = maxSeq − max(readSeq, joinSeq)，与 historyVisible 无关（C-02）。群管理多错误优先级：格式（4004 / 4000）→ 4043 → 4131 → 4042 → 4130（C-08）。
 >
@@ -8,6 +8,7 @@
 > - 每个用例使用独立数据库，服务端测试模式。
 > - 用户 `alice`、`bob`、`carol`、`dave` 已导入；`ghost` 不存在。批量用户 `u0001`～`u2001` 在需要时预先分批（每批 500）导入。
 > - 群会话 ID 为 `group:{groupId}`。管理接口均携带正确的管理密钥。
+> - 管理接口（PRD-core v1.3 F-AUTH-01 规则 3、C-15；VC-01）：`/admin/*`（含测试接口 `/admin/test/*`）只在内网管理地址 `IM_ADMIN_ADDR` 上提供，下文所有管理接口请求都发到该地址；e2e 继续用旧密钥 `X-Admin-Key: test-admin-key`（过渡调用方 `legacy`，非生产环境，不带 `X-IM-Caller`）；`/ws`、`/demo/login` 仍在对外端口。
 > - "建群 / 加成员 / 移除成员 / 修改设置 / 查询群"指 PRD §8 新增的管理接口（具体路径以 `protocol/` 落地为准）。
 
 | 用例 | 标题 | 关联 AC | 层级 | 优先级 |
@@ -45,6 +46,9 @@
 | TC-GRP-01-31 | 未读从 joinSeq 算起：改回 false、重新入群、historyVisible=true 入群均不计入群前消息 | AC-GRP-01-12 | 后端 e2e | P0 |
 | TC-GRP-01-32 | 重复添加已有成员：幂等成功，不重置 joinSeq | AC-GRP-01-6 | 后端 e2e | P0 |
 | TC-GRP-01-33 | 移除不是成员的用户：幂等成功 | AC-GRP-01-4 | 后端 e2e | P0 |
+| TC-GRP-01-34 | 管理接口解散托管群：在线成员收到 convRemoved（dissolved），群从 convs 中消失 | AC-SOC-26-6 | 后端 e2e | P0 |
+| TC-GRP-01-35 | 已解散的群：send / sync / read 和管理接口查询、加成员、改设置返回 4043 | AC-SOC-26-6、AC-SOC-26-2 | 后端 e2e | P0 |
+| TC-GRP-01-36 | 已解散群的 ID 不能复用：建群返回 409 / 4090 | AC-GRP-01-2、AC-SOC-26-6 | 后端 e2e | P0 |
 | TC-GRP-02-01 | 成员发群消息：其他在线成员都收到，发送设备不重复收到（界面） | AC-GRP-02-1 | UI 自动化 | P0 |
 | TC-GRP-02-02 | 群消息投递：其他成员和发送者其他端收到，发送连接只收 ack | AC-GRP-02-1 | 后端 e2e | P0 |
 | TC-GRP-02-03 | 群消息同一 clientMsgId 重发，成员只收到一条 | AC-GRP-02-1 | 后端 e2e | P0 |
@@ -390,6 +394,50 @@
 - 步骤：移除 `["carol"]`；再移除 `["bob"]` 两次；查询 g1。
 - 预期结果：三次都返回 HTTP 200（C-36）；成员只剩 alice；carol 仍不能发群消息（4033）。
 
+### TC-GRP-01-34 管理接口解散托管群：在线成员收到 convRemoved（dissolved），群从 convs 中消失
+- 关联 AC：AC-SOC-26-6
+- 优先级：P0
+- 层级：后端 e2e
+- 前置条件：用管理接口建托管群 g2（name="解散群"，成员 alice、bob、carol），已有 3 条消息；alice（web、pc 两个连接）、bob 在线，carol 离线。解散接口 `DELETE /admin/groups/{groupId}` 是 v1.3 新增接口：旧密钥（`legacy`）调用返回 403 / 4030（PRD-admin F-KEY-05、AC-KEY-05-2），本用例的解散请求用测试调用方（具备 scope `group.dissolve`，带 `X-IM-Caller` 签名）发到 `IM_ADMIN_ADDR`；其余管理接口照常用旧密钥。
+- 步骤：
+  1. 解散 g2：`DELETE /admin/groups/g2`。
+  2. 观察 alice 两个连接和 bob 1 秒内收到的帧。
+  3. alice、bob 执行 `convs`；carol 上线后执行 `convs`。
+- 预期结果：
+  1. 解散返回 HTTP 200。
+  2. alice 的两个连接和 bob 都在 1 秒内收到 `event/convRemoved`，`convId`=`group:g2`、`reason`=`dissolved`。
+  3. alice、bob、carol 的 `convs` 中都没有 `group:g2`（F-CONV-01 规则 2）。
+  4. 解散不产生群提示消息：解散前后 g2 的 maxSeq 不变（仍为 3），任何成员都没有收到 `msg` 帧（F-GRP-01 规则 10）。
+- 变更：v1.3（VA-05，新增；对应 PRD-social AC-SOC-26-6【M3】、PRD-admin F-ADM-24）
+
+### TC-GRP-01-35 已解散的群：send / sync / read 和管理接口查询、加成员、改设置返回 4043
+- 关联 AC：AC-SOC-26-6、AC-SOC-26-2
+- 优先级：P0
+- 层级：后端 e2e
+- 前置条件：同 TC-GRP-01-34，g2 已解散；dave 已导入、不是 g2 成员。
+- 步骤：
+  1. alice 发 `send`（`convId`=`group:g2`，text "还在吗"）；alice `sync` `group:g2` afterSeq=0；alice `read {convId:"group:g2", seq:3}`。
+  2. 管理接口：查询 g2（`GET /admin/groups/g2`）；向 g2 加成员 `["dave"]`；修改 g2 的群名为"新名字"。
+  3. 加成员时同时带格式错误的群 ID（如 `bad id`）调用一次。
+- 预期结果：
+  1. 步骤 1：三个请求都返回 `ack.error.code`=4043（不是 4033），`send` 不保存消息。
+  2. 步骤 2：三个请求都返回 HTTP 404 / 4043，dave 未加入，群名未改。
+  3. 步骤 3：返回 400 / 4004（格式错误先于 4043，C-08）。
+- 变更：v1.3（VA-05，新增）
+
+### TC-GRP-01-36 已解散群的 ID 不能复用：建群返回 409 / 4090
+- 关联 AC：AC-GRP-01-2、AC-SOC-26-6
+- 优先级：P0
+- 层级：后端 e2e
+- 前置条件：同 TC-GRP-01-34，g2 已解散。
+- 步骤：
+  1. `POST /admin/groups {groupId:"g2", name:"复用", members:["dave"]}`。
+  2. dave 执行 `convs`；alice 再 `sync` `group:g2`。
+- 预期结果：
+  1. HTTP 409，`code`=4090（已解散群的 ID 不能复用，F-GRP-01 规则 5、10）。
+  2. dave 的 `convs` 中没有 `group:g2`；alice 的 `sync` 仍返回 4043（没有建出新群）。
+- 变更：v1.3（VA-05，新增）
+
 ## F-GRP-02 群消息收发
 
 ### TC-GRP-02-01 成员发群消息：其他在线成员都收到，发送设备不重复收到（界面）
@@ -440,9 +488,10 @@
 - 关联 AC：AC-GRP-02-4
 - 优先级：P0
 - 层级：UI 自动化
-- 前置条件：g1 成员 alice、bob、carol；alice 设置了昵称"小A"，bob 没有昵称；carol 打开 `/chat/group:g1`。
+- 前置条件：g1 成员 alice、bob、carol；alice 设置了昵称"小A"，bob 没有昵称；carol 没有给 alice、bob 设置备注（显示名 = 备注 > 昵称 > `userId`，F-USER-02 规则 1）；carol 打开 `/chat/group:g1`。
 - 步骤：alice、bob 各发一条消息。
-- 预期结果：carol 页面中 alice 的消息显示发送者"小A"（若 F-USER-02 尚未交付则显示 `alice`），bob 的消息显示 `bob`；单聊页面不显示发送者名称不作要求。
+- 预期结果：carol 页面中 alice 的消息显示发送者"小A"，bob 的消息显示 `bob`（昵称经 `users` 命令获取，F-USER-02 规则 2）；单聊页面不显示发送者名称不作要求。
+- 变更：v1.3（V-UI-09、V-14）
 
 ### TC-GRP-02-07 发群消息收到 4033：提示"你已不在该群"并禁用输入框
 - 关联 AC：AC-GRP-02-5
@@ -493,11 +542,12 @@
 - 关联 AC：AC-GRP-03-3
 - 优先级：P0
 - 层级：UI 自动化
-- 前置条件：dave 是 g1 成员，在会话列表页；另一组：dave 正停留在 `/chat/group:g1` 页。
+- 前置条件：dave 是 g1 成员，在会话列表页；另一组：dave 正停留在 `/chat/group:g1` 页。用管理接口移除成员（dave 收到的 `convRemoved.reason` = `removed`）。
 - 步骤：
-  1. 移除 dave，然后 dave 点击会话列表中的 g1（若列表已移除该项，则直接访问 `/chat/group:g1`）。
-  2. 另一组：停留在聊天页时移除 dave。
-- 预期结果：两种情况下都显示"你已不在该群"，输入框和发送按钮禁用；不出现"加载失败，点击重试"等其他错误提示。
+  1. 用管理接口移除 dave，然后 dave 点击会话列表中的 g1（若列表已移除该项，则直接访问 `/chat/group:g1`）。
+  2. 另一组：停留在聊天页时用管理接口移除 dave。
+- 预期结果：两种情况下都显示"你已不在该群"，输入框和发送按钮禁用；不显示"群聊已解散"；不出现"加载失败，点击重试"等其他错误提示。`reason = dissolved` 的界面（"群聊已解散"）由 PRD-ui AC-UI-33-14（UI）、AC-UI-33-12（SDK 单测）覆盖，不在本用例（PRD-core 13.1 节写的 AC-UI-33-9 实为"离线期间被移出、重连后显示你已不在该群"，此处按实际 AC 改引用）。
+- 变更：v1.3（V-11、V-UI-13）
 
 ### TC-GRP-03-06 幂等的加 / 删成员不下发 convAdded / convRemoved
 - 关联 AC：AC-GRP-03-1
@@ -522,7 +572,7 @@
 | AC | 覆盖用例 |
 |---|---|
 | AC-GRP-01-1 | TC-GRP-01-01、TC-GRP-01-02 |
-| AC-GRP-01-2 | TC-GRP-01-03 |
+| AC-GRP-01-2 | TC-GRP-01-03、TC-GRP-01-36 |
 | AC-GRP-01-3 | TC-GRP-01-04、TC-GRP-01-05、TC-GRP-01-06、TC-GRP-01-07、TC-GRP-01-08、TC-GRP-01-26 |
 | AC-GRP-01-4 | TC-GRP-01-09、TC-GRP-01-33 |
 | AC-GRP-01-5 | TC-GRP-01-10、TC-GRP-01-11 |
@@ -543,6 +593,8 @@
 | AC-GRP-03-3 | TC-GRP-03-04、TC-GRP-03-05、TC-GRP-03-07 |
 
 共 20 条 AC，全部覆盖。
+
+v1.3 新增的解散群用例（TC-GRP-01-34～36，PRD-core 第 13.3 节）另关联 PRD-social 的 AC-SOC-26-6、AC-SOC-26-2；TC-GRP-01-36 同时关联 AC-GRP-01-2。
 
 ## 已澄清
 

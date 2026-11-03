@@ -1,6 +1,6 @@
 # 测试用例：多端同步（SYNC）
 
-> 依据：[PRD v1.2](../prd/PRD-core-v1.2.md) F-SYNC-01、F-SYNC-02（含 `event/readUpdated`，C-06）及 §9 补充规则（C-34、C-44），[protocol/README.md](../../protocol/README.md) 交互规则 8。
+> 依据：[PRD-core v1.3](../prd/PRD-core-v1.3.md) F-SYNC-01、F-SYNC-02（含 `event/readUpdated`，C-06）及 §9 补充规则（C-34、C-44），[protocol/README.md](../../protocol/README.md) 交互规则 8。
 >
 > 通用约定：
 > - 每个用例使用独立数据库，服务端测试模式。

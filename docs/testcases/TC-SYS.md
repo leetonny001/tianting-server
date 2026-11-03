@@ -1,6 +1,8 @@
 # 测试用例：统一错误码（SYS）
 
-> 依据：[PRD v1.2](../prd/PRD-core-v1.2.md) F-SYS-01、§9 C-05/C-09/C-10、[ERRORS.md](../../protocol/ERRORS.md)、`protocol/errors.json`。
+> 依据：[PRD-core v1.3](../prd/PRD-core-v1.3.md) F-SYS-01、§9 C-05/C-09/C-10、[ERRORS.md](../../protocol/ERRORS.md)、`protocol/errors.json`。
+> 管理接口（PRD-core v1.3 F-AUTH-01 规则 3、C-15；VC-01）：`/admin/*`（含测试接口 `/admin/test/*`）只在内网管理地址 `IM_ADMIN_ADDR` 上提供，下文所有管理接口请求都发到该地址；e2e 继续用旧密钥 `X-Admin-Key: test-admin-key`（过渡调用方 `legacy`，非生产环境，不带 `X-IM-Caller`）；`/ws`、`/demo/login` 仍在对外端口。
+> 错误码集合（v1.3，VA-14 / RECHECK E-05）：只含 `console` scope 的码（console-server 专用：4014～4016、4037～4039、4092、4093、4291、5031、5040）不进入 im-server 常量和 TS SDK 枚举的一致性比较，由 console-server 仓库自己核对。下文"非 console 码"指 `errors.json` 中 scope 不只是 `console` 的码。
 
 | 用例 | 标题 | 关联 AC | 层级 | 优先级 |
 |---|---|---|---|---|
@@ -28,12 +30,15 @@
 - 层级：后端 e2e
 - 前置条件：仓库内存在 `protocol/errors.json`；服务端以 Go 常量形式定义全部错误码（`server/internal/protocol`）。
 - 步骤：
-  1. 一致性测试读取 `protocol/errors.json` 的 `errors[].code`，得到集合 J。
+  1. 一致性测试读取 `protocol/errors.json` 的 `errors[]`，取 `scope` 不只是 `["console"]` 的条目的 `code`，得到集合 J（非 console 码）。
   2. 通过反射或服务端导出的错误码列表得到集合 G。
   3. 比较 J 与 G。
+  4. 取 `errors.json` 中只含 `console` scope 的码，检查它们不在 G 中。
 - 预期结果：
-  1. J 与 G 完全相等（无多、无少）；当前 J 共 28 个码：4000～4013、4030～4033、4040～4043、4090、4130、4131、4290、5000、5030。
-  2. 在 errors.json 中临时加入一个码（如 4099）后测试失败，证明测试有效（变异验证，执行后还原）。
+  1. J 与 G 完全相等（无多、无少）。四份 PRD 的新码写入 `errors.json` 后，J 共 43 个码：v1.2 已有 28 个（4000～4013、4030～4033、4040～4043、4090、4130、4131、4290、5000、5030）+ PRD-social 9.4 节 12 个（4035、4036、4045、4046、4091、4132～4137、4292）+ PRD-admin 10.1 节中非 console 的 3 个（4017、4034、4044）；即 4000～4013、4017、4030～4036、4040～4046、4090、4091、4130～4137、4290、4292、5000、5030。写入前按当时 `errors.json` 的实际内容比较。
+  2. 只含 `console` scope 的码（4014～4016、4037～4039、4092、4093、4291、5031、5040）不在 G 中，也不算失败（im-server 不为它们定义 Go 常量）。
+  3. 在 errors.json 中临时加入一个非 console 码（如 4099，scope `["ws"]`）后测试失败；临时加入一个只含 `console` 的码（如 4094）测试仍通过，证明过滤有效（变异验证，执行后还原）。
+- 变更：v1.3（VA-14、RECHECK E-05）
 
 ### TC-SYS-01-02 服务端常量的名称与 HTTP 映射与 errors.json 一致
 - 关联 AC：AC-SYS-01-1
@@ -41,18 +46,21 @@
 - 层级：后端 e2e
 - 前置条件：同 TC-SYS-01-01。
 - 步骤：
-  1. 对 errors.json 中每个条目，取 `code`、`name`、`http`。
+  1. 对 errors.json 中每个非 console 条目，取 `code`、`name`、`http`。
   2. 与服务端常量名、服务端内部 code→HTTP 映射表逐条比较。
+  3. 读取 errors.json 的 `closeCodes`（`code`、`name`）和 `kickReasons`（`reason`、`closeCode`），与服务端关闭码常量、kicked 原因常量逐条比较。
 - 预期结果：
-  1. 每个 code 的名称一致（如 4013 ↔ ADMIN_KEY_INVALID，4131 ↔ BATCH_LIMIT_EXCEEDED）。
-  2. `http` 非 null 的条目，服务端映射的 HTTP 状态码相同（如 4013→401、4042→404、4090→409、4130→400、4290→429、5030→503）；`http` 为 null 的码不会被用于管理接口。
-  3. errors.json 的 `closeCodes`（1000、1001、1009、4009～4012、4400、4408）和 `kickReasons`（tokenInvalid→4010、tokenExpired→4011、banned→4012）与服务端常量一致。
+  1. 每个 code 的名称一致（如 4013 ↔ ADMIN_KEY_INVALID，4131 ↔ BATCH_LIMIT_EXCEEDED，写入后 4017 ↔ ADMIN_SIGNATURE_INVALID、4292 ↔ QUOTA_EXCEEDED）。
+  2. `http` 非 null 的条目，服务端映射的 HTTP 状态码相同（如 4013→401、4042→404、4090→409、4130→400、4290→429、5030→503；写入后 4017→401、4034→403、4007→400）；`http` 为 null 的码不会被用于管理接口。
+  3. `closeCodes` 集合完全相等，共 12 个：1000 NORMAL、1001 GOING_AWAY、1009 MESSAGE_TOO_BIG、**1011 INTERNAL_ERROR**（v1.3 新增）、4009～4012、4400 SLOW_CONSUMER、4401 AUTH_REQUIRED、4408 IDLE_TIMEOUT、4429 TOO_MANY_CONNECTIONS。
+  4. `kickReasons` 集合完全相等：tokenInvalid→4010、tokenExpired→4011、banned→4012、tooManyConnections→4429、serverShutdown→1001、replaced→null（保留，一期不实现）；第二批写入后增加 **suspended→4012**（封禁，带 `until`）。
+- 变更：v1.3（VC-02、VA-10）
 
 ### TC-SYS-01-03 管理接口错误的 HTTP 状态码与 errors.json 的 http 字段一致
 - 关联 AC：AC-SYS-01-2
 - 优先级：P0
 - 层级：后端 e2e
-- 前置条件：服务端测试模式启动，独立数据库；管理密钥为 `test-admin-key`，通过 `X-Admin-Key` 头传递。
+- 前置条件：服务端测试模式启动，独立数据库；管理密钥为 `test-admin-key`，通过 `X-Admin-Key` 头传递（旧密钥路径，请求发到 `IM_ADMIN_ADDR`，不带 `X-IM-Caller`）。
 - 步骤：
   1. 不带密钥调用 `POST /admin/users/token`，body `{"userId":"alice"}`。
   2. 带密钥调用 `POST /admin/users/token`，body `{"userId":"bad id"}`。
@@ -68,6 +76,7 @@
   5. 步骤 5：HTTP 404，body.code = 4043。
   6. 步骤 6：HTTP 404，body.code = 4042。
   7. 每一步的 HTTP 状态码都等于 errors.json 中该 code 的 `http` 字段（测试代码从 errors.json 查表断言，而不是写死）。
+- 变更：v1.3（VC-01）
 
 ### TC-SYS-01-04 管理接口错误响应体格式为 {code,msg}
 - 关联 AC：AC-SYS-01-2
@@ -126,12 +135,14 @@
 - 层级：SDK 单测
 - 前置条件：`sdk-ts` 中定义了错误码枚举。
 - 步骤：
-  1. 单测读取 `protocol/errors.json`。
+  1. 单测读取 `protocol/errors.json`，取非 console 码（scope 不只是 `["console"]`）。
   2. 遍历 TS SDK 错误枚举，比较 code 集合与名称。
+  3. 比较 SDK 关闭码表与 `closeCodes`。
 - 预期结果：
-  1. code 集合完全相等（28 个），名称一一对应（如 `TOKEN_REVOKED = 4012`）。
-  2. 若 SDK 中带有 `retryable` 属性，与 errors.json 的 `retryable` 一致（4290、5000、5030 为 true，其余为 false）。
-  3. SDK 的关闭码表与 `closeCodes` 一致，包括 `reconnect` 标志（1000、4009～4012 为 false，1001、1009、4400、4408 为 true）。
+  1. code 集合与非 console 码集合完全相等（写入后 43 个，清单同 TC-SYS-01-01），名称一一对应（如 `TOKEN_REVOKED = 4012`）；只含 `console` 的码（4014～4016、4037～4039、4092、4093、4291、5031、5040）不在 SDK 枚举中。
+  2. 若 SDK 中带有 `retryable` 属性，与 errors.json 的 `retryable` 一致（4290、5000、5030 为 true，其余为 false）；其中 4292 是 429x 的例外，`retryable=false`、SDK 不自动重试。4291、5040 同样不可自动重试，但它们是 console 码，SDK 不含，不在本用例比较。
+  3. SDK 的关闭码表与 `closeCodes` 一致，包括 `reconnect` 标志（1000、4009～4012、4429 为 false；1001、1009、**1011**、4400、4401、4408 为 true，1011 按退避重连）。
+- 变更：v1.3（VA-14、VC-02）
 
 ### TC-SYS-01-09 未定义错误码 4999 按 4xx 区段兜底
 - 关联 AC：AC-SYS-01-4
@@ -229,6 +240,6 @@
 
 ## 已澄清
 
-1. KMP SDK 枚举一致性是否纳入一期 → C-10：不纳入，放到 M5；本文件不设 KMP 用例。
+1. Kotlin、Swift SDK 枚举一致性 → C-10（v1.3 改：V-16）：不用 KMP，Kotlin SDK、Swift SDK 的一致性测试分别放到 M5、M6，不纳入 M3；本文件不设原生 SDK 用例。
 2. 未定义码落在已知子区段 / 未定义 5xxx 如何兜底 → C-09：按前三位兜底，未定义 5xxx 可重试；新增 TC-SYS-01-12、TC-SYS-01-13、TC-SYS-01-15，修订 TC-SYS-01-09。
 3. 4009 是否先发 kicked → C-05（PRD v1.1 F-SYS-01 规则 2）：不发，直接以 4009 关闭；新增 TC-SYS-01-14。

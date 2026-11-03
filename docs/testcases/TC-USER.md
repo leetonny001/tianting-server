@@ -1,7 +1,8 @@
 # 测试用例：用户（USER）
 
-> 依据：[PRD v1.2](../prd/PRD-core-v1.2.md) F-USER-01、F-USER-02，§3.1 通用约定，§9 C-15～C-20。
+> 依据：[PRD-core v1.3](../prd/PRD-core-v1.3.md) F-USER-01、F-USER-02，§3.1 通用约定，§9 C-15～C-20。
 > 接口路径（C-15）：导入用户 `POST /admin/users/import`，body `{"users":[{"userId":...,"nickname":...,"avatar":...}]}`；查询用户 `GET /admin/users/{userId}`，用于核对导入结果（返回 `userId`、`nickname`、`avatar`）。管理密钥通过 `X-Admin-Key` 头传递，测试值 `test-admin-key`。
+> 管理接口（PRD-core v1.3 F-AUTH-01 规则 3、C-15；VC-01）：`/admin/*`（含测试接口 `/admin/test/*`）只在内网管理地址 `IM_ADMIN_ADDR` 上提供，下文所有管理接口请求都发到该地址；e2e 继续用旧密钥 `X-Admin-Key: test-admin-key`（过渡调用方 `legacy`，非生产环境，不带 `X-IM-Caller`）；`/ws`、`/demo/login` 仍在对外端口。
 
 | 用例 | 标题 | 关联 AC | 层级 | 优先级 |
 |---|---|---|---|---|
@@ -27,7 +28,7 @@
 | TC-USER-02-03 | 群消息发送者显示昵称或 userId | AC-USER-02-1 | UI 自动化 | P1 |
 | TC-USER-02-04 | 头像为空时显示首字母占位 | AC-USER-02-1 | UI 自动化 | P1 |
 | TC-USER-02-05 | 昵称修改后下次拉 convs 时生效 | AC-USER-02-1 | UI 自动化 | P1 |
-| TC-USER-02-06 | 占位取第一个码点、背景色按 userId 稳定 | AC-USER-02-1 | UI 自动化 | P1 |
+| TC-USER-02-06 | 占位取第一个码点、背景色下标 = FNV-1a-32(userId) mod 8 | AC-USER-02-1 | UI 自动化 | P1 |
 
 ---
 
@@ -145,6 +146,8 @@
 - 预期结果：
   1. 步骤 1、2：HTTP 401，body.code = 4013。
   2. 步骤 3：返回 4042（未写入）。
+- 说明：验证旧密钥（`legacy`）路径——请求发到管理地址 `IM_ADMIN_ADDR`、不带 `X-IM-Caller`，非生产环境；签名路径（带 `X-IM-Caller`）的鉴权失败 4017 由 PRD-admin AC-KEY-03-* 覆盖，不在本用例。
+- 变更：v1.3（VC-01）
 
 ### TC-USER-01-10 签发凭证自动注册用户
 - 关联 AC：AC-USER-01-5
@@ -243,6 +246,8 @@
 - 预期结果：
   1. HTTP 200，`userId`="u-q"、`nickname`="查询"、`avatar`="https://example.com/q.png"。
   2. HTTP 401 / 4013。
+- 说明：验证旧密钥（`legacy`）路径——请求发到管理地址 `IM_ADMIN_ADDR`、不带 `X-IM-Caller`，非生产环境；签名路径（带 `X-IM-Caller`）的鉴权失败 4017 由 PRD-admin AC-KEY-03-* 覆盖，不在本用例。
+- 变更：v1.3（VC-01）
 
 ### TC-USER-02-01 有昵称的用户在会话列表和聊天页显示昵称
 - 关联 AC：AC-USER-02-1
@@ -306,17 +311,21 @@
   1. 步骤 2：仍显示"小红"属于预期（一期不做实时推送，C-19），页面不报错。
   2. 步骤 3：会话列表和聊天页顶栏显示"红红"。
 
-### TC-USER-02-06 占位取第一个码点、背景色按 userId 稳定
+### TC-USER-02-06 占位取第一个码点、背景色下标 = FNV-1a-32(userId) mod 8
 - 关联 AC：AC-USER-02-1
 - 优先级：P1
 - 层级：UI 自动化
-- 前置条件：`u-emoji` 昵称"😀abc"、无头像；`dave2` 无昵称、无头像；两人都与 alice 有单聊。
+- 前置条件：`u-emoji` 昵称"😀abc"、无头像；`dave2` 无昵称、无头像；两人都与 alice 有单聊。另按 `protocol/vectors/avatar.json` 的每条用例导入对应用户（`userId` + 昵称、无头像），并都与 alice 有单聊。
 - 步骤：
-  1. alice 查看会话列表，记录两人头像占位的文字和背景色。
+  1. alice 查看会话列表，记录两人头像占位的文字和背景色（调色板下标）。
   2. 刷新页面后再次记录；在另一个浏览器上下文以 alice 登录再次记录。
+  3. 对 `avatar.json` 的每条用例，读取会话列表中该用户头像占位的首字和背景色下标，与用例的期望值逐条比对。
 - 预期结果：
   1. `u-emoji` 占位为"😀"（完整一个码点，不是半个代理对）；`dave2` 占位为"D"。
-  2. 三次记录中，同一 userId 的背景色完全相同（按 userId 哈希，C-20）。
+  2. 背景色为 8 色调色板的第 `FNV-1a-32(UTF-8(userId)) mod 8` 个（C-20）；三次记录中，同一 userId 的背景色下标完全相同。
+  3. `avatar.json` 每条用例的首字和颜色下标都与期望值一致。
+  4. 群头像用 `groupId` 计算，另见 PRD-ui F-UI-21，不在本用例。
+- 变更：v1.3（V-UI-12）
 
 ---
 
