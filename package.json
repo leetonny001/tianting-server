@@ -1,0 +1,24 @@
+{
+  "name": "im-mvp",
+  "private": true,
+  "description": "IM MVP monorepo：TypeScript 部分（sdk-ts，之后的 web 和两个后台）用 npm workspaces 管理",
+  "workspaces": [
+    "sdk-ts"
+  ],
+  "scripts": {
+    "test": "npm run test --workspaces",
+    "lint": "npm run lint --workspaces",
+    "typecheck": "npm run typecheck --workspaces",
+    "format": "prettier --write .",
+    "format:check": "prettier --check ."
+  },
+  "engines": {
+    "node": ">=22.12"
+  },
+  "devDependencies": {
+    "prettier": "^3.9.10"
+  },
+  "overrides": {
+    "minimatch": "^11.0.1"
+  }
+}

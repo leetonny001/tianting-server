@@ -50,6 +50,6 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
-          python-version: "3.12"
+          python-version: '3.12'
       - name: 每条 AC 都有任务和测试用例
         run: python3 tools/trace.py --check

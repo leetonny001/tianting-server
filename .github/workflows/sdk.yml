@@ -1,0 +1,38 @@
+# TypeScript SDK 的 CI（FE-001）：格式、代码检查、类型检查、错误码生成文件、单元测试、对真实服务端的集成测试、依赖漏洞。
+name: sdk
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  sdk:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 26
+          cache: npm
+      - uses: actions/setup-go@v5 # 集成测试要编译并启动真实的 im-server
+        with:
+          go-version-file: server/go.mod
+          cache-dependency-path: server/go.sum
+      - run: npm ci
+      - name: 依赖漏洞（中危及以上阻断）
+        run: npm audit --audit-level=moderate
+      - run: npm run format:check
+      - run: npm run lint
+      - run: npm run typecheck
+      - name: errors.gen.ts 与 protocol/errors.json 一致
+        run: node sdk-ts/scripts/gen-errors.mjs --check
+      - name: 单元测试（假传输层 + 假时钟）
+        run: npm test
+      - name: 集成测试（真实 im-server）
+        run: npm run test:integration -w sdk-ts
+      - name: 构建
+        run: npm run build -w sdk-ts

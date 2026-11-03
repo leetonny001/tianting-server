@@ -10,6 +10,31 @@
 
 格式说明：每个任务的 `- AC：` 一行列出它负责满足的验收标准，追溯矩阵由脚本从这一行生成。
 
+## 进度
+
+| 任务 | 状态 | 说明 |
+|---|---|---|
+| FE-001 工程脚手架 | 🟡 SDK 部分完成 | npm workspaces（FE-IMP-1）、TypeScript 6、Vitest、ESLint、Prettier、CI（`.github/workflows/sdk.yml`）；`web/` 和 Playwright 推迟到 Q13 页面开发时（FE-IMP-2） |
+| FE-002 传输层、帧编解码、错误码 | ✅ 完成 | `errors.gen.ts` 由 `errors.json` 生成并校验；区段兜底（C-09）；标准 WebSocket 不限制下行帧大小 |
+| FE-003 连接管理 | ✅ 完成 | 首帧 auth、心跳与 pong 超时、退避 + 抖动、online 立即重连、按关闭码 / kicked 决定是否重连、退出 1000、日志不含 token；连接提示 1 秒延迟（`banner` 事件） |
+| FE-004 同步引擎 | ✅ 完成 | convs → 补拉（起点 max(local, minSeq−1)、超过 200 只取最新 20）、500ms 缺口检测、msgId 去重、clientMsgId 合并、历史翻页、会话事件、临时会话刷新（FE-IMP-4） |
+| FE-005 发送队列 | ✅ 完成 | 状态机、10 秒超时、离线排队自动补发一次、手动重发原 clientMsgId、晚到 ack（C-30）、被踢全部失败、错误码透传 |
+| FE-006 已读与未读 | ✅ 完成 | 可见 + 停在会话才报、1 秒节流、本地未读与服务端公式一致（已读基线） |
+| FE-007 测试替身 | ✅ 完成 | `FakeTransport`、`FakeClock`，从 `@im-mvp/sdk/testing` 导出 |
+| FE-008 文本校验 | ✅ 完成 | 与服务端共用 `protocol/vectors/text.json`（37 条） |
+
+测试：单元 82 个（假传输层 + 假时钟）、集成 6 个（真实 im-server）；变异测试验证退避上限、缺口等待。设计说明见 [docs/sdk/README.md](../sdk/README.md)。
+
+## 实现约定（前端）
+
+| # | 问题 | 约定 |
+|---|---|---|
+| FE-IMP-1 | 任务单写的是 pnpm workspace | 本机没有 pnpm / corepack，全局安装属于系统级改动（需授权），改用 Node 自带的 npm workspaces，功能等价 |
+| FE-IMP-2 | FE-001 包含 `web/` 和 Playwright 双上下文 | 推迟到 Q13（H5 页面）时一起搭：现在没有页面，Playwright 还要下载浏览器 |
+| FE-IMP-3 | 首次登录是否为每个会话补拉 | 不补拉；只补拉本地已经加载过消息的会话，其他会话打开时 `loadHistory`。否则 500 个会话首次登录就要拉 10 万条 |
+| FE-IMP-4 | 收到本地没有的会话的消息（第一次和某人聊、群消息比 convAdded 先到） | 先补临时会话，200ms 后重新拉 convs 用服务端数据替换（昵称、minSeq、未读）；集成测试发现首次聊天的会话名显示 userId 而不是昵称后加上 |
+| FE-IMP-5 | 开发依赖 minimatch（eslint 间接依赖）有中危漏洞 | 用 npm `overrides` 升到已修复的 11.x，验证 eslint 正常；npm 建议的"降级 eslint 到 4.0.0"不采用 |
+
 ## 总览
 
 | 阶段 | 任务 | 说明 |
