@@ -7,8 +7,8 @@ COPY . .
 RUN CGO_ENABLED=0 go build -ldflags "-X main.version=${VERSION}" -o /im-server ./cmd/im-server
 
 FROM alpine:3.22
-RUN adduser -D -u 10001 im && mkdir /data && chown im /data
+# compose 用宿主 uid 运行（TLS 私钥 0600 才读得到），所以数据目录谁都能写。只用于测试环境。
+RUN mkdir /data && chmod 777 /data
 COPY --from=build /im-server /usr/local/bin/im-server
-USER im
 # exec：PID 1 必须是 im-server 本身，kill -STOP、kill -9 才打到它。
 ENTRYPOINT ["sh", "-c", "im-server migrate up && exec im-server"]

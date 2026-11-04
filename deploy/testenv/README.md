@@ -31,7 +31,7 @@ deploy/testenv/tt bootstrap eng1
 | MinIO | 从源码构建；桶和两份最小权限凭证由 `minio-init` 创建，策略文件和生产相同 |
 | Postgres、console-server | profile `console`，`CON_TEST_MODE=1`，只开运维空间 |
 
-抓取清单由生产的 `gen-targets` 从节点表（`.run/nodes/nodes.json`）生成。密钥都是 `tt` 随机生成的，放在 `.run/`（不进仓库）。
+抓取清单由生产的 `gen-targets` 从节点表（`.run/nodes/nodes.json`）生成。节点运维接口走 TLS，证书由生产的 `deploy/pki/issue-node-cert.sh` 签发（console-server 不接受非回环地址走明文）；CA 私钥留在 `.run/pki/`，不挂载给任何容器。密钥都是 `tt` 随机生成的，放在 `.run/`（不进仓库）。
 
 ## 注意
 
@@ -54,5 +54,4 @@ deploy/testenv/tt bootstrap eng1
 ## 没有覆盖
 
 - **邮件 receiver**：配置里的 SMTP 是占位地址，这里不发信，Alertmanager 日志里会有发信失败。邮件要等 F-1 定下接收人和 SMTP。
-- **节点运维接口的 mTLS**：E1、E2a 是 development，节点接口走明文（`deploy/pki` 的证书流程单独测）。
 - **防火墙**（`firewall.nft`）：容器网络里不适用。

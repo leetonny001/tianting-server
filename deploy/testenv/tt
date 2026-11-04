@@ -91,17 +91,26 @@ IM_JWT_SECRET=$JWT_SECRET
 IM_ALLOWED_ORIGINS=*
 ENV
   local rows="" n seed pub pair
+  [ -f "$RUN/pki/ca.pem" ] || "$HERE/../pki/issue-node-cert.sh" ca "$RUN/pki" >/dev/null
+  cp "$RUN/pki/ca.pem" "$RUN/nodes/ca.pem"
   for n in n1 n2; do
     if [ ! -f "$RUN/$n.env" ]; then
       pair="$(cd "$HERE" && go run genkey.go)"
       seed="${pair% *}"
       pub="${pair#* }"
-      printf 'IM_NODE_ID=%s\nIM_OPS_PUBKEYS=k1:%s\n' "$n" "$pub" >"$RUN/$n.env"
+      {
+        printf 'IM_NODE_ID=%s\nIM_OPS_PUBKEYS=k1:%s\n' "$n" "$pub"
+        printf 'IM_OPS_TLS_CERT=/run/tianting/tls/%s.pem\nIM_OPS_TLS_KEY=/run/tianting/tls/%s.key\n' "$n" "$n"
+      } >"$RUN/$n.env"
       printf '%s' "$seed" >"$RUN/nodes/$n.key"
+      # 节点证书用生产的签发脚本。节点只挂载自己那一对（tls/<node>），CA 私钥留在 pki/，不挂载给任何容器。
+      "$HERE/../pki/issue-node-cert.sh" node "$RUN/pki" "$n" >/dev/null
+      mkdir -p "$RUN/tls/$n"
+      cp "$RUN/pki/$n.pem" "$RUN/pki/$n.key" "$RUN/tls/$n/"
     fi
   done
   for n in $(nodes); do
-    rows="$rows{\"nodeId\":\"$n\",\"addr\":\"$n:9091\",\"kid\":\"k1\",\"keyFile\":\"/run/tianting/nodes/$n.key\",\"metricsAddr\":\"$n:9464\"},"
+    rows="$rows{\"nodeId\":\"$n\",\"addr\":\"$n:9091\",\"tlsServerName\":\"$n.ops.internal\",\"kid\":\"k1\",\"keyFile\":\"/run/tianting/nodes/$n.key\",\"metricsAddr\":\"$n:9464\"},"
   done
   echo "[${rows%,}]" >"$RUN/nodes/nodes.json"
 
@@ -131,6 +140,7 @@ CON_DATABASE_URL=postgres://console_app:$PG_APP@postgres:5432/console?sslmode=di
 CON_DATA_KEYS=k1:$DATA_KEY
 CON_HASH_PEPPER=$PEPPER
 CON_OPS_NODES=/run/tianting/nodes/nodes.json
+CON_OPS_CA_FILE=/run/tianting/nodes/ca.pem
 CON_OPS_PROMETHEUS_URL=http://127.0.0.1:9090
 CON_OPS_ALERTMANAGER_URL=http://127.0.0.1:9093
 CON_OPS_BACKUP_STORE=s3://tianting-backups

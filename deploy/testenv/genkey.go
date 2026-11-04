@@ -1,6 +1,6 @@
 //go:build ignore
 
-// 生成一对 Ed25519 密钥：输出 "base64种子 base64公钥"。macOS 自带的 openssl 不支持 ed25519，这里不依赖它。
+// 生成一对 Ed25519 密钥：输出 "base64种子 base64公钥"（console-server 和 IM_OPS_PUBKEYS 要的是原始密钥，不是 PEM）。
 package main
 
 import (

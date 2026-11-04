@@ -190,6 +190,16 @@ class Testenv(unittest.TestCase):
             # 节点表和抓取清单同源。
             rows = json.loads((r / "nodes/nodes.json").read_text())
             self.assertEqual([x["nodeId"] for x in rows], ["n1", "n2"])
+            # 非回环地址必须走 TLS，服务名和证书一致；节点拿不到 CA 私钥和别的节点的私钥。
+            self.assertEqual([x["tlsServerName"] for x in rows], ["n1.ops.internal", "n2.ops.internal"])
+            self.assertEqual(n1["IM_OPS_TLS_KEY"], "/run/tianting/tls/n1.key")
+            self.assertEqual(sorted(p.name for p in (r / "tls/n1").iterdir()), ["n1.key", "n1.pem"])
+            self.assertEqual(stat.S_IMODE((r / "tls/n1/n1.key").stat().st_mode), 0o600)
+            self.assertIn("CON_OPS_CA_FILE", parse("console.env"))
+            self.assertFalse((r / "nodes/ca.key").exists())
+            self.assertIn("-----BEGIN CERTIFICATE-----", (r / "nodes/ca.pem").read_text())
+            out = run("openssl", "x509", "-in", r / "tls/n2/n2.pem", "-noout", "-ext", "subjectAltName").stdout
+            self.assertIn("DNS:n2.ops.internal", out)
             targets = json.loads((r / "targets/im.json").read_text())
             self.assertEqual([t["labels"]["node_id"] for t in targets], ["n1", "n2"])
             # 再跑一次（e1 升 e2a 的路径）：密钥不换。

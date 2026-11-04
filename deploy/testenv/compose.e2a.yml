@@ -9,7 +9,11 @@ services:
     image: tianting-testenv/im:0.3.1
     env_file: [.run/im.env, .run/n2.env]
     restart: "no"
-    volumes: [n2-data:/data]
+    # 和宿主用户同一个 uid：TLS 私钥是 0600，不放宽权限。
+    user: ${TT_UID:-1000}:${TT_GID:-1000}
+    volumes:
+      - n2-data:/data
+      - ./.run/tls/n2:/run/tianting/tls:ro
     ports:
       - 127.0.0.1:18180:8080
       - 127.0.0.1:18181:8081
