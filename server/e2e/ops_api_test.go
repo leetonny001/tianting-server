@@ -329,8 +329,12 @@ func TestOPS16NodeNoSTW(t *testing.T) {
 func TestOPS05Node(t *testing.T) {
 	e := newOpsEnv(t, nil)
 	web1, _, pc := e.dial("u1", "web"), e.dial("u2", "web"), e.dial("u3", "pc")
+	// auth 的 ack 先发、再登记到在线表（保证客户端先收到 ack），所以拨号返回后要等一下。
 	var n opsapi.NodeInfo
-	e.mustJSON("GET", "/internal/v1/node", nil, &n)
+	waitFor(t, "three connections", func() bool {
+		e.mustJSON("GET", "/internal/v1/node", nil, &n)
+		return n.TotalConns == 3
+	})
 	if n.NodeID != "n1" || n.Version != "v-test" || !n.Ready || n.Draining || n.StartedAt == 0 || n.Goroutines == 0 || n.LiveBytes == 0 {
 		t.Errorf("node = %+v", n)
 	}
@@ -353,6 +357,18 @@ func TestOPS05Node(t *testing.T) {
 	e.waitMetric(`im_ready`, "0")
 }
 
+// waitConns 等连接登记到在线表（auth 的 ack 先于登记发出）。
+func (e *opsEnv) waitConns(uid string, want int) {
+	e.t.Helper()
+	waitFor(e.t, uid+" connections", func() bool {
+		var res struct {
+			Connections []map[string]any `json:"connections"`
+		}
+		e.mustJSON("POST", "/internal/v1/connections:query", map[string]any{"userId": uid}, &res)
+		return len(res.Connections) == want
+	})
+}
+
 func waitFor(t *testing.T, what string, cond func() bool) {
 	t.Helper()
 	deadline := time.Now().Add(3 * time.Second)
@@ -370,6 +386,7 @@ func TestOPS08Connections(t *testing.T) {
 	e.users("u1", "u2")
 	e.dial("u1", "web")
 	e.dial("u1", "pc")
+	e.waitConns("u1", 2)
 	code, raw := e.call("POST", "/internal/v1/connections:query", map[string]any{"userId": "u1"}, opsReq{operator: "ops:a1", requestID: "req-conn-1"})
 	if code != 200 {
 		t.Fatalf("%d %s", code, raw)
@@ -483,6 +500,7 @@ func TestOPS09TooManyConnections(t *testing.T) {
 	for range 10 {
 		conns = append(conns, e.dial("u1", "web"))
 	}
+	e.waitConns("u1", 10)
 	var first []map[string]any
 	var res struct {
 		Connections []map[string]any `json:"connections"`

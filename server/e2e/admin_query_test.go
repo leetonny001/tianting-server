@@ -169,8 +169,23 @@ func TestTCADM14Sessions(t *testing.T) {
 	}
 	web, pc := dial("web"), dial("pc")
 
+	// auth 的 ack 先发、再登记到在线表，拨号返回后要等一下。
 	var u struct {
 		Online bool `json:"online"`
+	}
+	deadlineUp := time.Now().Add(3 * time.Second)
+	for {
+		var q struct {
+			Sessions []any `json:"sessions"`
+		}
+		e.post("/admin/users/sessions/query", map[string]any{"userId": "u1"}, &q)
+		if len(q.Sessions) == 2 {
+			break
+		}
+		if time.Now().After(deadlineUp) {
+			t.Fatalf("sessions = %d", len(q.Sessions))
+		}
+		time.Sleep(10 * time.Millisecond)
 	}
 	e.get("/admin/users/u1", &u)
 	if !u.Online {
