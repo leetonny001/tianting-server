@@ -38,6 +38,7 @@ type socialState struct {
 	ops         *ratelimit.TokenBucket // social:{uid}，每秒 5、突发 20
 	full        *ratelimit.TokenBucket // socialFull:{uid}，每分钟 10 轮、突发 10（勘误 E-24：按 AC-SOC-06-13）
 	groupRead   *ratelimit.TokenBucket // 每秒 10、突发 30
+	groupOp     *ratelimit.TokenBucket // 每秒 5、突发 20（M4）
 
 	// 随配置变化的配额：配置变化时 Reconfigure（立即生效，5.2 节规则 3）。
 	mu             sync.Mutex
@@ -48,6 +49,7 @@ type socialState struct {
 	searchDay      *ratelimit.TokenBucket
 	newPeerHour    *ratelimit.TokenBucket
 	newPeerReject  *ratelimit.TokenBucket
+	groupCreateDay *ratelimit.TokenBucket
 
 	cursorKey []byte // 同步游标的 HMAC 密钥，启动时生成
 }
@@ -66,6 +68,8 @@ func newSocialState(st store.Store, clk clock.Clock, inv cache.Invalidator) *soc
 		ops:            ratelimit.New(5, 20, clk),
 		full:           ratelimit.NewPer(6*time.Second, 10, clk),
 		groupRead:      ratelimit.New(10, 30, clk),
+		groupOp:        ratelimit.New(5, 20, clk),
+		groupCreateDay: ratelimit.NewDaily(d.GroupCreateDailyLimit, clk),
 		applied:        d,
 		applyDay:       ratelimit.NewDaily(d.ApplyDailyLimit, clk),
 		applyTargetDay: ratelimit.NewDaily(d.ApplyPerTargetDailyLimit, clk),
@@ -78,7 +82,7 @@ func newSocialState(st store.Store, clk clock.Clock, inv cache.Invalidator) *soc
 }
 
 func (ss *socialState) buckets() []*ratelimit.TokenBucket {
-	return []*ratelimit.TokenBucket{ss.friendApply, ss.search, ss.users, ss.ops, ss.full, ss.groupRead,
+	return []*ratelimit.TokenBucket{ss.friendApply, ss.search, ss.users, ss.ops, ss.full, ss.groupRead, ss.groupOp, ss.groupCreateDay,
 		ss.applyDay, ss.applyTargetDay, ss.blockDay, ss.searchDay, ss.newPeerHour, ss.newPeerReject}
 }
 
@@ -100,6 +104,7 @@ func (ss *socialState) apply(s social.Settings) {
 	daily(ss.blockDay, old.BlockDailyLimit, s.BlockDailyLimit)
 	daily(ss.searchDay, old.SearchDailyLimit, s.SearchDailyLimit)
 	daily(ss.newPeerReject, old.NewPeerRejectDailyLimit, s.NewPeerRejectDailyLimit)
+	daily(ss.groupCreateDay, old.GroupCreateDailyLimit, s.GroupCreateDailyLimit)
 	if old.NewPeerHourlyLimit != s.NewPeerHourlyLimit {
 		n := max(s.NewPeerHourlyLimit, 1) // 0 表示不检查，桶照常保留
 		ss.newPeerHour.Reconfigure(time.Hour/time.Duration(n), n)
@@ -169,7 +174,7 @@ func (s *Service) handleSocial(ctx context.Context, c delivery.Session, in proto
 	case protocol.CmdMyGroups:
 		data, err = s.myGroups(ctx, c, in.Data)
 	default:
-		return nil, nil, false
+		return s.handleGroup(ctx, c, in)
 	}
 	return data, err, true
 }
@@ -710,7 +715,7 @@ func (s *Service) myGroups(ctx context.Context, c delivery.Session, raw json.Raw
 	}
 	out := protocol.MyGroupsAck{Groups: make([]protocol.MyGroupItem, 0, len(gs))}
 	for _, g := range gs {
-		out.Groups = append(out.Groups, protocol.MyGroupItem{GroupID: g.GroupID, Name: g.Name, MemberCount: g.MemberCount, JoinedAt: g.JoinedAt})
+		out.Groups = append(out.Groups, protocol.MyGroupItem{GroupID: g.GroupID, Name: g.Name, MemberCount: g.MemberCount, JoinedAt: g.JoinedAt, MyRole: g.MyRole})
 	}
 	if more {
 		out.NextCursor = gs[len(gs)-1].GroupID
@@ -821,6 +826,10 @@ func (s *Service) RunSocialPurge(stop <-chan struct{}) {
 				s.log.Error("purge social", "err", err)
 			} else if n > 0 {
 				s.log.Info("purged social rows", "rows", n)
+			}
+			// 建群去重记录保留 7 天（F-SOC-21 规则 1）。
+			if err := s.store.PurgeGroupReqs(context.Background(), s.clock.Now().Add(-7*24*time.Hour).UnixMilli()); err != nil {
+				s.log.Error("purge group requests", "err", err)
 			}
 		}
 	}

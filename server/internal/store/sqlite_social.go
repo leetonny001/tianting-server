@@ -24,9 +24,9 @@ type socialTx struct {
 
 // 加锁对象的种类，按 8.3 节全局顺序：群 → 用户 → conv_seq。
 const (
-	lockGroup = 1
-	lockUser  = 2
-	lockConv  = 3
+	lockKindGroup = 1
+	lockKindUser  = 2
+	lockKindConv  = 3
 )
 
 type lockEvent struct {
@@ -70,7 +70,7 @@ func (t *socialTx) lockUsers(ids ...string) error {
 	ids = slices.Clone(ids)
 	slices.Sort(ids)
 	for _, id := range slices.Compact(ids) {
-		t.lock(lockUser, id)
+		t.lock(lockKindUser, id)
 		if _, err := t.exec(`INSERT INTO user_social (user_id, updated_at) VALUES (?, ?) ON CONFLICT DO NOTHING`, id, t.now); err != nil {
 			return err
 		}
@@ -1095,7 +1095,7 @@ func (s *SQLite) Profiles(ctx context.Context, ids []string) (map[string]User, e
 
 func (s *SQLite) MyGroups(ctx context.Context, uid, after string, limit int) ([]MyGroup, bool, error) {
 	rows, err := s.db.QueryContext(ctx,
-		`SELECT g.group_id, g.name, g.member_count, gm.joined_at FROM group_members gm JOIN chat_groups g ON g.group_id = gm.group_id
+		`SELECT g.group_id, g.name, g.member_count, gm.joined_at, gm.role FROM group_members gm JOIN chat_groups g ON g.group_id = gm.group_id
 		 WHERE gm.user_id = ? AND gm.group_id > ? AND g.dissolved_at = 0 ORDER BY gm.group_id LIMIT ?`, uid, after, limit+1)
 	if err != nil {
 		return nil, false, err
@@ -1104,7 +1104,7 @@ func (s *SQLite) MyGroups(ctx context.Context, uid, after string, limit int) ([]
 	var out []MyGroup
 	for rows.Next() {
 		var g MyGroup
-		if err := rows.Scan(&g.GroupID, &g.Name, &g.MemberCount, &g.JoinedAt); err != nil {
+		if err := rows.Scan(&g.GroupID, &g.Name, &g.MemberCount, &g.JoinedAt, &g.MyRole); err != nil {
 			return nil, false, err
 		}
 		out = append(out, g)

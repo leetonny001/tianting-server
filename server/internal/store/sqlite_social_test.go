@@ -2,8 +2,10 @@ package store
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -238,7 +240,7 @@ func TestGroupDissolveNoReuse(t *testing.T) {
 	check("GetGroup", err == ErrNotFound)
 	_, err = s.AddGroupMembers(ctx, "g1", []string{"alice"}, 2000, 7)
 	check("AddGroupMembers", err == ErrNotFound)
-	_, err = s.RemoveGroupMembers(ctx, "g1", []string{"alice"})
+	_, _, err = s.RemoveGroupMembers(ctx, "g1", []string{"alice"}, 1)
 	check("RemoveGroupMembers", err == ErrNotFound)
 	name := "x"
 	check("UpdateGroup", s.UpdateGroup(ctx, "g1", GroupUpdate{Name: &name}) == ErrNotFound)
@@ -290,9 +292,9 @@ func TestSocialLockOrder(t *testing.T) {
 	}
 
 	tx := &socialTx{}
-	tx.lock(lockUser, "kim")
-	tx.lock(lockUser, "amy") // 反序
-	tx.lock(lockGroup, "g1") // 用户之后再锁群
+	tx.lock(lockKindUser, "kim")
+	tx.lock(lockKindUser, "amy") // 反序
+	tx.lock(lockKindGroup, "g1") // 用户之后再锁群
 	if len(violations) != 2 {
 		t.Fatalf("mutation not detected: %v", violations)
 	}
@@ -309,5 +311,70 @@ func TestCounterDrift(t *testing.T) {
 	s.db.Exec(`UPDATE user_social SET friend_count = 9`)
 	if n, _ := s.CounterDrift(ctx, 100); n != 1 {
 		t.Fatalf("drift = %d, want 1", n)
+	}
+}
+
+// TipSameTx（AC-SOC-29-8）：提示消息写入失败时，邀请整体回滚：成员表、member_count、会话 seq 都不变。
+func TestTipSameTx(t *testing.T) {
+	ctx := context.Background()
+	s := openTestSQLite(t)
+	if err := s.UpsertUsers(ctx, []User{{UserID: "a"}, {UserID: "b"}, {UserID: "c"}, {UserID: "d"}}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.SeedSocial(ctx, SocialSeed{Friends: []SeedEdge{{"a", "b"}, {"b", "a"}, {"a", "c"}, {"c", "a"}, {"a", "d"}, {"d", "a"}}, UpdatedAt: 1}); err != nil {
+		t.Fatal(err)
+	}
+	gid, _, _, _, err := s.CreateClientGroup(ctx, CreateClientGroupParams{UserID: "a", ClientReqID: "r1", GroupID: "ug-1", Members: []string{"b", "c"}, MaxMembers: 500, MaxJoined: 500, Now: 1})
+	if err != nil {
+		t.Fatal(err)
+	}
+	boom := errors.New("tip write failed")
+	failTipWrite = func() error { return boom }
+	defer func() { failTipWrite = nil }()
+	if _, _, _, err := s.InviteMembers(ctx, gid, "a", []string{"d"}, 500, 2); !errors.Is(err, boom) {
+		t.Fatalf("invite err = %v", err)
+	}
+	if _, _, _, _, err := s.CreateClientGroup(ctx, CreateClientGroupParams{UserID: "a", ClientReqID: "r2", GroupID: "ug-2", Members: []string{"b", "c"}, MaxMembers: 500, MaxJoined: 500, Now: 3}); !errors.Is(err, boom) {
+		t.Fatalf("create err = %v", err)
+	}
+	failTipWrite = nil
+	g, _ := s.GetGroup(ctx, gid)
+	ms, _ := s.GroupMembers(ctx, gid)
+	var seq int64
+	s.db.QueryRow(`SELECT max_seq FROM conv_seq WHERE conv_id = ?`, "group:"+gid).Scan(&seq)
+	if g.MemberCount != 3 || len(ms) != 3 || seq != 1 {
+		t.Fatalf("not rolled back: count=%d members=%d seq=%d", g.MemberCount, len(ms), seq)
+	}
+	if ok, _ := s.GroupExists(ctx, "ug-2"); ok {
+		t.Fatal("create not rolled back")
+	}
+	// 失败的建群不记录 clientReqId，可以重试（AC-SOC-21-11）
+	if _, dup, _, _, err := s.CreateClientGroup(ctx, CreateClientGroupParams{UserID: "a", ClientReqID: "r2", GroupID: "ug-3", Members: []string{"b", "c"}, MaxMembers: 500, MaxJoined: 500, Now: 4}); err != nil || dup {
+		t.Fatalf("retry dup=%v err=%v", dup, err)
+	}
+}
+
+// 8.5 节第 4 条：已有群 ID 占用 ug- 前缀时迁移中止并列出。
+func TestMigrationGroupRolesPrecheck(t *testing.T) {
+	ctx := context.Background()
+	db := rawDB(t)
+	all, err := SQLiteMigrations()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := Migrate(ctx, db, all[:6]); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.Exec(`INSERT INTO chat_groups (group_id, name, created_at) VALUES ('ug-old', 'x', 1)`); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := Migrate(ctx, db, all); err == nil || !strings.Contains(err.Error(), "ug-old") {
+		t.Fatalf("err = %v", err)
+	}
+	if _, err := db.Exec(`UPDATE chat_groups SET group_id = 'renamed'`); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := Migrate(ctx, db, all); err != nil {
+		t.Fatal(err)
 	}
 }

@@ -106,6 +106,9 @@ var knownCmds = map[string]bool{
 	// PRD-social M3（与 protocol.SocialCmds 一致，metrics 不依赖 protocol 包）
 	"friendApply": true, "friendRespond": true, "friendDelete": true, "friendRemark": true, "friendRequestsSeen": true,
 	"socialSync": true, "block": true, "unblock": true, "userSearch": true, "setPrivacy": true, "users": true, "myGroups": true,
+	// PRD-social M4
+	"groupCreate": true, "groupInvite": true, "groupLeave": true, "groupKick": true, "groupTransfer": true, "groupSetAdmin": true,
+	"groupDissolve": true, "groupUpdate": true, "groupInfo": true, "groupMembers": true,
 }
 
 // CmdLabel 把客户端传来的命令名规整成有限的标签值。

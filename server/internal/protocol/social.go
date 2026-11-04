@@ -18,6 +18,29 @@ const (
 	CmdMyGroups           = "myGroups"
 )
 
+// 群命令（M4）。
+const (
+	CmdGroupCreate   = "groupCreate"
+	CmdGroupInvite   = "groupInvite"
+	CmdGroupLeave    = "groupLeave"
+	CmdGroupKick     = "groupKick"
+	CmdGroupTransfer = "groupTransfer"
+	CmdGroupSetAdmin = "groupSetAdmin"
+	CmdGroupDissolve = "groupDissolve"
+	CmdGroupUpdate   = "groupUpdate"
+	CmdGroupInfo     = "groupInfo"
+	CmdGroupMembers  = "groupMembers"
+)
+
+// 群相关固定上限（5.1 节）。
+const (
+	MaxGroupOpBatch     = 50
+	MaxNoticeLen        = 1000
+	MaxGroupNameLen     = 50
+	DefaultMembersLimit = 50
+	MaxMembersLimit     = 100
+)
+
 // SocialCmds 是全部社交命令（指标标签白名单用）。
 var SocialCmds = []string{
 	CmdFriendApply, CmdFriendRespond, CmdFriendDelete, CmdFriendRemark, CmdFriendRequestsSeen, CmdSocialSync,
@@ -241,6 +264,7 @@ type MyGroupItem struct {
 	Name        string `json:"name"`
 	MemberCount int    `json:"memberCount"`
 	JoinedAt    int64  `json:"joinedAt"`
+	MyRole      string `json:"myRole"`
 }
 
 // MyGroupsAck：nextCursor 为空字符串表示没有更多。
@@ -258,4 +282,96 @@ type SocialSettingsChangedEvent struct {
 	Type             string `json:"type"`
 	Mode             string `json:"mode"`
 	StrangerMsgLimit int    `json:"strangerMsgLimit"`
+}
+
+type GroupCreateReq struct {
+	ClientReqID string   `json:"clientReqId"`
+	Name        *string  `json:"name"`
+	Members     []string `json:"members"`
+}
+
+type GroupCreateAck struct {
+	GroupID string       `json:"groupId"`
+	Conv    Conversation `json:"conv"`
+}
+
+type GroupMembersReq struct {
+	GroupID string   `json:"groupId"`
+	Members []string `json:"members"`
+}
+
+type InviteFailed struct {
+	UserID string `json:"userId"`
+	Code   int    `json:"code"`
+}
+
+type GroupInviteAck struct {
+	Added  []string       `json:"added"`
+	Failed []InviteFailed `json:"failed"`
+}
+
+type GroupKickAck struct {
+	Removed []string `json:"removed"`
+}
+
+type GroupIDReq struct {
+	GroupID string `json:"groupId"`
+}
+
+type GroupTransferReq struct {
+	GroupID string `json:"groupId"`
+	To      string `json:"to"`
+}
+
+type GroupSetAdminReq struct {
+	GroupID string `json:"groupId"`
+	UserID  string `json:"userId"`
+	Admin   *bool  `json:"admin"`
+}
+
+type GroupUpdateReq struct {
+	GroupID string  `json:"groupId"`
+	Name    *string `json:"name"`
+	Notice  *string `json:"notice"`
+}
+
+// GroupInfoAck 是 groupInfo 的应答（F-SOC-20 规则 3）。owner 为空字符串表示没有群主；managed=true 表示托管群。
+type GroupInfoAck struct {
+	GroupID        string `json:"groupId"`
+	Name           string `json:"name"`
+	Notice         string `json:"notice"`
+	NoticeBy       string `json:"noticeBy"`
+	NoticeAt       int64  `json:"noticeAt"`
+	Owner          string `json:"owner"`
+	Managed        bool   `json:"managed"`
+	MyRole         string `json:"myRole"`
+	MemberCount    int    `json:"memberCount"`
+	MaxMembers     int    `json:"maxMembers"`
+	HistoryVisible bool   `json:"historyVisible"`
+	CreatedAt      int64  `json:"createdAt"`
+}
+
+type GroupMembersPageReq struct {
+	GroupID string  `json:"groupId"`
+	Cursor  *string `json:"cursor"`
+	Limit   *int    `json:"limit"`
+}
+
+type GroupMemberItem struct {
+	UserID   string `json:"userId"`
+	Role     string `json:"role"`
+	JoinedAt int64  `json:"joinedAt"`
+	Nickname string `json:"nickname"`
+	Avatar   string `json:"avatar"`
+	Official bool   `json:"official"`
+}
+
+type GroupMembersAck struct {
+	Members    []GroupMemberItem `json:"members"`
+	NextCursor string            `json:"nextCursor"`
+}
+
+type GroupChangedEvent struct {
+	Type    string `json:"type"`
+	GroupID string `json:"groupId"`
 }

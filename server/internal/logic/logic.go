@@ -33,12 +33,13 @@ type Service struct {
 	inv     cache.Invalidator
 	metrics *metrics.Metrics
 	newID   func() string
+	changed *groupChangedMerger
 }
 
 // New 创建 Service。limiter 按用户限制发送速率（所有连接合计，PRD F-MSG-07）。
 // inv 用于订阅群成员缓存的失效通知（TopicGroupMembers）。
 func New(st store.Store, router delivery.Router, clk clock.Clock, faults *Faults, limiter ratelimit.Limiter, inv cache.Invalidator, m *metrics.Metrics, log *slog.Logger) *Service {
-	return &Service{
+	s := &Service{
 		store:   st,
 		router:  router,
 		log:     log,
@@ -52,6 +53,8 @@ func New(st store.Store, router delivery.Router, clk clock.Clock, faults *Faults
 		// UUIDv7 按时间递增，作为主键插入时对 B 树更友好。
 		newID: func() string { return uuid.Must(uuid.NewV7()).String() },
 	}
+	s.changed = newGroupChangedMerger(s.deliverGroupChanged)
+	return s
 }
 
 // Handle 分发一条上行帧，返回要回给客户端的 ack；返回 nil 表示不回复（仅故障注入时）。
@@ -315,6 +318,7 @@ func toConversation(r store.ConvRow) protocol.Conversation {
 		n := r.MemberCount
 		out.MemberCount = &n
 		out.MinSeq = groupMinSeq(store.Group{HistoryVisible: r.HistoryVisible}, store.GroupMember{JoinSeq: r.JoinSeq})
+		out.MyRole = r.MyRole
 	default:
 		// 单聊名称：对方有昵称用昵称，否则用 userId（BE-043；昵称修改后下次拉取生效，C-19）。
 		out.Name = cmp.Or(r.PeerNickname, r.PeerID)

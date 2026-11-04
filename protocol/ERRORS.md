@@ -41,6 +41,10 @@
 | `friendRespond` / `friendApply` | 4133 | 对方好友数量已达上限 |
 | `friendRespond` | 4045 | 该申请已过期（刷新列表） |
 | `block` | 4134 | 黑名单已满 |
+| `groupCreate` / `groupInvite` | 4035 | {昵称} 不是你的好友，无法邀请（按 `error.userId` / `failed[].userId`） |
+| `groupCreate` / `groupInvite` | 4135 | {昵称} 加入的群聊已达上限 |
+| `groupTransfer` / `groupSetAdmin` | 4046 | 对方已不在群里（刷新成员列表） |
+| `groupSetAdmin` | 4136 | 管理员最多 10 人 |
 | `friendApply` / `userSearch` / `block` / `unblock` | 4292 | 今天的次数已用完，明天再试 |
 
 **4292 是 429x 的例外**：`retryable=false`，带社交功能的 SDK 都认识它、不自动重试。老版本 SDK 只会在 `send` 上遇到 4292（新对象配额），按兜底重试同样返回 4292，受现有重试上限约束，不会放大。
@@ -78,7 +82,7 @@
 | 4046 | TARGET_NOT_GROUP_MEMBER | 404 | ws / admin | 否 | 操作对象不是群成员（M4：转让、设管理员、指定群主） | 提示「对方已不在群里」 |
 | 4090 | GROUP_EXISTS | 409 | admin | 否 | 群 ID 已存在 | 换一个群 ID |
 | 4091 | FRIEND_REQUEST_HANDLED | — | ws | 否 | 申请已同意，不能再拒绝 | 已经是好友，改用删除好友 |
-| 4130 | GROUP_MEMBER_LIMIT_EXCEEDED | 400 | admin | 否 | 群成员超过 2000 人 | 减少成员 |
+| 4130 | GROUP_MEMBER_LIMIT_EXCEEDED | 400 | ws / admin | 否 | 群成员已达上限 | 提示「群成员已达上限」 |
 | 4131 | BATCH_LIMIT_EXCEEDED | 400 | admin | 否 | 单次批量操作数量超限 | 分批调用 |
 | 4132 | FRIEND_LIMIT_EXCEEDED | 400 | ws / admin | 否 | 自己的好友数已达上限；管理接口导入时 `msg` 写出 userId | 提示「你的好友数量已达上限」 |
 | 4133 | PEER_FRIEND_LIMIT_EXCEEDED | — | ws | 否 | 对方的好友数已达上限 | 提示「对方好友数量已达上限」 |

@@ -278,7 +278,16 @@ func (s *SQLite) DissolveGroup(ctx context.Context, groupID string, now int64) (
 	if err := groupExistsTx(ctx, tx, groupID); err != nil { // L5：Postgres 实现在这里 SELECT … FOR UPDATE
 		return nil, err
 	}
-	rows, err := tx.QueryContext(ctx, `DELETE FROM group_members WHERE group_id = ? RETURNING user_id`, groupID)
+	members, err := dissolveMembersTx(ctx, tx, groupID, now)
+	if err != nil {
+		return nil, err
+	}
+	return members, tx.Commit()
+}
+
+// dissolveMembersTx 解散并返回被移出的成员（按 userId 排序）。
+func dissolveMembersTx(ctx context.Context, tx *sql.Tx, groupID string, now int64) ([]string, error) {
+	rows, err := tx.QueryContext(ctx, `SELECT user_id FROM group_members WHERE group_id = ? ORDER BY user_id`, groupID)
 	if err != nil {
 		return nil, err
 	}
@@ -295,11 +304,7 @@ func (s *SQLite) DissolveGroup(ctx context.Context, groupID string, now int64) (
 	if err := rows.Err(); err != nil {
 		return nil, err
 	}
-	if _, err := tx.ExecContext(ctx, `UPDATE chat_groups SET dissolved_at = ?, member_count = 0 WHERE group_id = ?`, max(now, 1), groupID); err != nil {
-		return nil, err
-	}
-	slices.Sort(members)
-	return members, tx.Commit()
+	return members, dissolveTx(ctx, tx, groupID, now)
 }
 
 func (s *SQLite) CreateGroup(ctx context.Context, g Group, members []string) error {
@@ -364,37 +369,48 @@ func (s *SQLite) AddGroupMembers(ctx context.Context, groupID string, members []
 	return added, tx.Commit()
 }
 
-func (s *SQLite) RemoveGroupMembers(ctx context.Context, groupID string, members []string) ([]string, error) {
+func (s *SQLite) RemoveGroupMembers(ctx context.Context, groupID string, members []string, now int64) ([]string, *Message, error) {
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	defer tx.Rollback()
 
-	if err := groupExistsTx(ctx, tx, groupID); err != nil {
-		return nil, err
+	g, err := lockGroup(ctx, tx, groupID)
+	if err != nil {
+		return nil, nil, err
 	}
 	var removed []string
+	ownerGone := false
 	for _, uid := range members {
 		res, err := tx.ExecContext(ctx, `DELETE FROM group_members WHERE group_id = ? AND user_id = ?`, groupID, uid)
 		if err != nil {
-			return nil, err
+			return nil, nil, err
 		}
 		if n, _ := res.RowsAffected(); n > 0 {
 			removed = append(removed, uid)
+			ownerGone = ownerGone || uid == g.OwnerID
 		}
 	}
 	if err := updateMemberCount(ctx, tx, groupID); err != nil {
-		return nil, err
+		return nil, nil, err
 	}
-	return removed, tx.Commit()
+	var tip *Message
+	if ownerGone {
+		res, err := afterOwnerGone(ctx, tx, g, now)
+		if err != nil {
+			return nil, nil, err
+		}
+		tip = res.Tip
+	}
+	return removed, tip, tx.Commit()
 }
 
 func (s *SQLite) GetGroup(ctx context.Context, groupID string) (Group, error) {
 	var g Group
 	err := s.db.QueryRowContext(ctx,
-		`SELECT group_id, name, history_visible, created_at, member_count FROM chat_groups WHERE group_id = ? AND dissolved_at = 0`, groupID).
-		Scan(&g.GroupID, &g.Name, &g.HistoryVisible, &g.CreatedAt, &g.MemberCount)
+		`SELECT `+groupColumns+` FROM chat_groups WHERE group_id = ? AND dissolved_at = 0`, groupID).
+		Scan(&g.GroupID, &g.Name, &g.HistoryVisible, &g.CreatedAt, &g.MemberCount, &g.OwnerID, &g.CreatedBy, &g.Notice, &g.NoticeBy, &g.NoticeAt, &g.MaxMembers)
 	if errors.Is(err, sql.ErrNoRows) {
 		return Group{}, ErrNotFound
 	}
@@ -417,6 +433,11 @@ func (s *SQLite) UpdateGroup(ctx context.Context, groupID string, u GroupUpdate)
 	}
 	if u.HistoryVisible != nil {
 		if _, err := tx.ExecContext(ctx, `UPDATE chat_groups SET history_visible = ? WHERE group_id = ?`, *u.HistoryVisible, groupID); err != nil {
+			return err
+		}
+	}
+	if u.Notice != nil {
+		if _, err := tx.ExecContext(ctx, `UPDATE chat_groups SET notice = ?, notice_by = '', notice_at = ? WHERE group_id = ?`, *u.Notice, u.Now, groupID); err != nil {
 			return err
 		}
 	}
@@ -580,7 +601,7 @@ func (s *SQLite) ReadSeq(ctx context.Context, userID, convID string) (int64, err
 const (
 	c2cConvSelect = `
 	SELECT uc.user_id, uc.conv_id, cs.max_seq, COALESCE(rs.seq, 0) AS read_seq, 0 AS join_seq,
-	       '' AS group_name, 0 AS history_visible, uc.peer_id, COALESCE(u.nickname, '') AS peer_nickname, 0 AS member_count,
+	       '' AS group_name, 0 AS history_visible, uc.peer_id, COALESCE(u.nickname, '') AS peer_nickname, 0 AS member_count, '' AS my_role,
 	       cs.max_seq > 0 AS last_visible, uc.created_at AS joined_at,
 	       cs.last_msg_id, cs.last_from, cs.last_type, cs.last_text, cs.last_ts
 	FROM user_conv uc
@@ -592,7 +613,7 @@ const (
 	groupConvSelect = `
 	SELECT gm.user_id, 'group:' || gm.group_id AS conv_id, COALESCE(cs.max_seq, 0) AS max_seq,
 	       COALESCE(rs.seq, 0) AS read_seq, gm.join_seq,
-	       g.name AS group_name, g.history_visible, '' AS peer_id, '' AS peer_nickname, g.member_count,
+	       g.name AS group_name, g.history_visible, '' AS peer_id, '' AS peer_nickname, g.member_count, gm.role AS my_role,
 	       COALESCE(cs.max_seq, 0) >= CASE WHEN g.history_visible THEN 1 ELSE gm.join_seq + 1 END AS last_visible,
 	       gm.joined_at,
 	       COALESCE(cs.last_msg_id, '') AS last_msg_id, COALESCE(cs.last_from, '') AS last_from,
@@ -605,7 +626,7 @@ const (
 	WHERE %s`
 
 	// convColumns 是外层统一选出的列，顺序与 scanConv 一致（第一列 user_id）。
-	convColumns = `user_id, conv_id, max_seq, read_seq, join_seq, group_name, history_visible, peer_id, peer_nickname, member_count,
+	convColumns = `user_id, conv_id, max_seq, read_seq, join_seq, group_name, history_visible, peer_id, peer_nickname, member_count, my_role,
 	       last_visible, CASE WHEN last_visible THEN last_ts ELSE joined_at END AS updated_at,
 	       last_msg_id, last_from, last_type, last_text, last_ts`
 )
@@ -677,7 +698,7 @@ func (s *SQLite) GroupConversations(ctx context.Context, groupID string, userIDs
 
 func scanConv(r rowScanner) (ConvRow, error) {
 	var c ConvRow
-	err := r.Scan(&c.UserID, &c.ConvID, &c.MaxSeq, &c.ReadSeq, &c.JoinSeq, &c.GroupName, &c.HistoryVisible, &c.PeerID, &c.PeerNickname, &c.MemberCount,
+	err := r.Scan(&c.UserID, &c.ConvID, &c.MaxSeq, &c.ReadSeq, &c.JoinSeq, &c.GroupName, &c.HistoryVisible, &c.PeerID, &c.PeerNickname, &c.MemberCount, &c.MyRole,
 		&c.LastVisible, &c.UpdatedAt, &c.Last.MsgID, &c.Last.From, &c.Last.Type, &c.Last.Text, &c.Last.TS)
 	return c, err
 }

@@ -126,6 +126,11 @@ func Migrate(ctx context.Context, db *sql.DB, ms []Migration) ([]int, error) {
 	}
 	var done []int
 	for _, m := range st.Pending {
+		if m.Name == "group_roles" {
+			if err := checkNoReservedGroupIDs(ctx, db); err != nil {
+				return done, err
+			}
+		}
 		tx, err := db.BeginTx(ctx, nil)
 		if err != nil {
 			return done, err
@@ -146,4 +151,28 @@ func Migrate(ctx context.Context, db *sql.DB, ms []Migration) ([]int, error) {
 		done = append(done, m.Version)
 	}
 	return done, nil
+}
+
+// checkNoReservedGroupIDs：ug- 前缀保留给自建群，已有群占用时中止迁移并列出，由运维处理后再升级（PRD-social 8.5 节第 4 条）。
+func checkNoReservedGroupIDs(ctx context.Context, db *sql.DB) error {
+	rows, err := db.QueryContext(ctx, `SELECT group_id FROM chat_groups WHERE group_id LIKE 'ug-%' ORDER BY group_id`)
+	if err != nil {
+		return err
+	}
+	defer rows.Close()
+	var ids []string
+	for rows.Next() {
+		var id string
+		if err := rows.Scan(&id); err != nil {
+			return err
+		}
+		ids = append(ids, id)
+	}
+	if err := rows.Err(); err != nil {
+		return err
+	}
+	if len(ids) > 0 {
+		return fmt.Errorf("migration group_roles: group IDs %v use the reserved ug- prefix; rename them before upgrading", ids)
+	}
+	return nil
 }

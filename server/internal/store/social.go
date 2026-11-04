@@ -168,6 +168,7 @@ type MyGroup struct {
 	Name        string
 	MemberCount int
 	JoinedAt    int64
+	MyRole      string
 }
 
 // SocialSeed 是测试接口 /admin/test/social/seed 的数据（PRD-social 5.6 节）：不经限流和配额，

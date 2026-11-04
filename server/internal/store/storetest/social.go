@@ -31,6 +31,9 @@ func socialConcurrencyCases() []struct {
 		{"MemberCountRace", testMemberCountRace},
 		{"AdminImportVsApplyNoDeadlock", testAdminImportVsApplyNoDeadlock},
 		{"SocialVerConcurrent", testSocialVerConcurrent},
+		{"GroupInviteVsDissolveRace", testGroupInviteVsDissolveRace},
+		{"GroupLastTwoLeaveRace", testGroupLastTwoLeaveRace},
+		{"GroupOwnerLeaveVsTransferRace", testGroupOwnerLeaveVsTransferRace},
 	}
 }
 
@@ -248,7 +251,7 @@ func testMemberCountRace(t *testing.T, open Opener) {
 		}()
 		go func() {
 			defer wg.Done()
-			if _, err := s.RemoveGroupMembers(ctx, "g1", []string{initial[i]}); err != nil {
+			if _, _, err := s.RemoveGroupMembers(ctx, "g1", []string{initial[i]}, 1); err != nil {
 				t.Error(err)
 			}
 		}()
@@ -333,6 +336,134 @@ func testSocialVerConcurrent(t *testing.T, open Opener) {
 	for v := int64(1); v <= 1000; v++ {
 		if !seen[v] {
 			t.Fatalf("ver %d missing", v)
+		}
+	}
+}
+
+// ---- M4 并发（BE-137，B6 前置）----
+
+func friendsAll(t *testing.T, s store.Store, users ...string) {
+	t.Helper()
+	var es []store.SeedEdge
+	for _, a := range users {
+		for _, b := range users {
+			if a != b {
+				es = append(es, store.SeedEdge{Owner: a, Peer: b})
+			}
+		}
+	}
+	mustUsers(t, s, users...)
+	if _, err := s.SeedSocial(context.Background(), store.SocialSeed{Friends: es, UpdatedAt: 1}); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func newClientGroup(t *testing.T, s store.Store, gid, owner string, members ...string) {
+	t.Helper()
+	if _, _, _, _, err := s.CreateClientGroup(context.Background(), store.CreateClientGroupParams{
+		UserID: owner, ClientReqID: "req-" + gid, GroupID: gid, Members: members, MaxMembers: 500, MaxJoined: 500, Now: 1,
+	}); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// AC-SOC-22-7：邀请与解散并发：要么邀请 ErrNotFound，要么邀请成功后被解散；不会有"已解散但还有成员"。
+func testGroupInviteVsDissolveRace(t *testing.T, open Opener) {
+	s, ctx := open(t), context.Background()
+	friendsAll(t, s, "a", "b", "c", "d")
+	for i := range 50 {
+		gid := fmt.Sprintf("ug-%d", i)
+		newClientGroup(t, s, gid, "a", "b", "c")
+		var wg sync.WaitGroup
+		wg.Add(2)
+		go func() {
+			defer wg.Done()
+			if _, _, _, err := s.InviteMembers(ctx, gid, "b", []string{"d"}, 500, 2); err != nil && !errors.Is(err, store.ErrNotFound) {
+				t.Error(err)
+			}
+		}()
+		go func() {
+			defer wg.Done()
+			if _, err := s.ClientDissolveGroup(ctx, gid, "a", 2); err != nil {
+				t.Error(err)
+			}
+		}()
+		wg.Wait()
+		if ms, _ := s.GroupMembers(ctx, gid); len(ms) != 0 {
+			t.Fatalf("dissolved group %s still has members %v", gid, ms)
+		}
+	}
+}
+
+// AC-SOC-23-8：自建群最后两人同时退群，每轮都解散。
+func testGroupLastTwoLeaveRace(t *testing.T, open Opener) {
+	s, ctx := open(t), context.Background()
+	friendsAll(t, s, "a", "b", "c")
+	for i := range 50 {
+		gid := fmt.Sprintf("ug-%d", i)
+		newClientGroup(t, s, gid, "a", "b", "c")
+		if _, err := s.LeaveGroup(ctx, gid, "c", 2); err != nil {
+			t.Fatal(err)
+		}
+		var wg sync.WaitGroup
+		for _, u := range []string{"a", "b"} {
+			wg.Add(1)
+			go func() {
+				defer wg.Done()
+				if _, err := s.LeaveGroup(ctx, gid, u, 3); err != nil {
+					t.Error(err)
+				}
+			}()
+		}
+		wg.Wait()
+		if ok, _ := s.GroupExists(ctx, gid); ok {
+			t.Fatalf("%s not dissolved", gid)
+		}
+	}
+}
+
+// AC-SOC-23-9：群主退群与转让并发：恰好一个群主，且是成员。
+func testGroupOwnerLeaveVsTransferRace(t *testing.T, open Opener) {
+	s, ctx := open(t), context.Background()
+	friendsAll(t, s, "a", "b", "c")
+	for i := range 50 {
+		gid := fmt.Sprintf("ug-%d", i)
+		newClientGroup(t, s, gid, "a", "b", "c")
+		var wg sync.WaitGroup
+		wg.Add(2)
+		go func() {
+			defer wg.Done()
+			if _, err := s.LeaveGroup(ctx, gid, "a", 2); err != nil {
+				t.Error(err)
+			}
+		}()
+		go func() {
+			defer wg.Done()
+			_, err := s.TransferOwner(ctx, gid, "a", "b", 2)
+			if err != nil && !errors.Is(err, store.ErrNotGroupMember) && !errors.Is(err, store.ErrGroupForbidden) {
+				t.Error(err)
+			}
+		}()
+		wg.Wait()
+		g, err := s.GetGroup(ctx, gid)
+		if err != nil {
+			t.Fatal(err)
+		}
+		rows, _, err := s.ListGroupMembers(ctx, gid, nil, 100)
+		if err != nil {
+			t.Fatal(err)
+		}
+		owners := 0
+		for _, r := range rows {
+			if r.Role == store.RoleOwner {
+				owners++
+				if r.UserID != g.OwnerID {
+					t.Fatalf("owner row %s, chat_groups.owner_id %s", r.UserID, g.OwnerID)
+				}
+			}
+		}
+		if owners != 1 {
+			t.Fatalf("%s has %d owners: %+v", gid, owners, rows)
 		}
 	}
 }

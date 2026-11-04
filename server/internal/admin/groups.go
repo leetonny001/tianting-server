@@ -1,8 +1,13 @@
 package admin
 
 import (
+	"encoding/json"
 	"errors"
 	"net/http"
+	"slices"
+	"strings"
+
+	"tianting/server/internal/adminauth"
 
 	"tianting/server/internal/logic"
 	"tianting/server/internal/protocol"
@@ -21,6 +26,16 @@ type createGroupReq struct {
 	Name           string   `json:"name"`
 	Members        []string `json:"members"`
 	HistoryVisible bool     `json:"historyVisible"`
+	Owner          string   `json:"owner"` // 托管群交给用户（PRD-social F-SOC-30），需要 social.settings
+}
+
+// reservedGroupPrefix 保留给客户端建的群（F-SOC-21 规则 5）。
+const reservedGroupPrefix = "ug-"
+
+// hasScope 报告当前调用方是否有 scope（旧密钥只有 v1.2 能力，一律没有）。用于同一路由里按字段判 scope（勘误 E-18）。
+func (a *Admin) hasScope(r *http.Request, scope adminauth.Scope) bool {
+	c := a.callers[AuthFrom(r.Context()).Caller]
+	return c != nil && c.Scopes[scope]
 }
 
 func (a *Admin) createGroup(w http.ResponseWriter, r *http.Request) {
@@ -28,8 +43,12 @@ func (a *Admin) createGroup(w http.ResponseWriter, r *http.Request) {
 	if !readJSON(w, r, &req) {
 		return
 	}
-	if !protocol.ValidID(req.GroupID) {
+	if !protocol.ValidID(req.GroupID) || strings.HasPrefix(req.GroupID, reservedGroupPrefix) {
 		writeErr(w, protocol.Errorf(protocol.CodeInvalidID, "invalid groupId"))
+		return
+	}
+	if req.Owner != "" && !a.hasScope(r, adminauth.ScopeSocialSettings) {
+		writeErr(w, protocol.Errorf(protocol.CodeForbidden, "owner requires scope social.settings"))
 		return
 	}
 	members, perr := normalizeMembers(req.Members, true)
@@ -53,6 +72,10 @@ func (a *Admin) createGroup(w http.ResponseWriter, r *http.Request) {
 	if !a.checkUsersExist(w, r, members) {
 		return
 	}
+	if req.Owner != "" && !slices.Contains(members, req.Owner) {
+		writeErr(w, protocol.Errorf(protocol.CodeTargetNotGroupMember, "owner must be a member"))
+		return
+	}
 	if len(members) > maxGroupMembers {
 		writeErr(w, protocol.Errorf(protocol.CodeGroupMemberLimitExceeded, "a group can have at most %d members", maxGroupMembers))
 		return
@@ -65,8 +88,17 @@ func (a *Admin) createGroup(w http.ResponseWriter, r *http.Request) {
 	case err != nil:
 		a.internal(w, "create group", err)
 	default:
-		a.inv.Invalidate(logic.TopicGroupMembers, req.GroupID)                      // 之前可能缓存过"群不存在"
+		a.inv.Invalidate(logic.TopicGroupMembers, req.GroupID) // 之前可能缓存过"群不存在"
+		var tip *store.Message
+		if req.Owner != "" {
+			var err error
+			if tip, err = a.store.SetGroupOwner(ctx, req.GroupID, req.Owner, a.clock.Now().UnixMilli()); err != nil {
+				a.internal(w, "set group owner", err)
+				return
+			}
+		}
 		a.notifier.NotifyConvAdded(ctx, protocol.GroupConvID(req.GroupID), members) // 在线的初始成员收到 convAdded（C-35）
+		a.notifier.DeliverTip(ctx, tip)
 		writeJSON(w, http.StatusCreated, struct{}{})
 	}
 }
@@ -95,6 +127,7 @@ func (a *Admin) addMembers(w http.ResponseWriter, r *http.Request) {
 		if len(added) > 0 {
 			a.inv.Invalidate(logic.TopicGroupMembers, gid)
 			a.notifier.NotifyConvAdded(r.Context(), protocol.GroupConvID(gid), added) // 只通知新加入的（C-36）
+			a.notifier.NotifyGroupChanged(gid)
 		}
 		writeJSON(w, http.StatusOK, struct {
 			Added []string `json:"added"`
@@ -107,7 +140,7 @@ func (a *Admin) removeMembers(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	removed, err := a.store.RemoveGroupMembers(r.Context(), gid, members)
+	removed, tip, err := a.store.RemoveGroupMembers(r.Context(), gid, members, a.clock.Now().UnixMilli())
 	switch {
 	case errors.Is(err, store.ErrNotFound):
 		writeErr(w, protocol.Errorf(protocol.CodeGroupNotFound, "group not found"))
@@ -117,6 +150,8 @@ func (a *Admin) removeMembers(w http.ResponseWriter, r *http.Request) {
 		if len(removed) > 0 {
 			a.inv.Invalidate(logic.TopicGroupMembers, gid)
 			a.notifier.NotifyConvRemoved(protocol.GroupConvID(gid), removed, protocol.RemovedByAdmin)
+			a.notifier.DeliverTip(r.Context(), tip) // 移除的是群主：自动转让 / 回到无群主（F-SOC-30 规则 4）
+			a.notifier.NotifyGroupChanged(gid)
 		}
 		writeJSON(w, http.StatusOK, struct {
 			Removed []string `json:"removed"`
@@ -157,6 +192,9 @@ func (a *Admin) membersRequest(w http.ResponseWriter, r *http.Request) (gid stri
 type updateGroupReq struct {
 	Name           *string `json:"name"`
 	HistoryVisible *bool   `json:"historyVisible"`
+	Notice         *string `json:"notice"`
+	// Owner：字符串指定 / 更换群主，null 收回（F-SOC-30 规则 2）；需要 social.settings（勘误 E-18）。
+	Owner json.RawMessage `json:"owner"`
 }
 
 func (a *Admin) updateGroup(w http.ResponseWriter, r *http.Request) {
@@ -169,11 +207,34 @@ func (a *Admin) updateGroup(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, protocol.Errorf(protocol.CodeInvalidID, "invalid groupId"))
 		return
 	}
-	if req.Name == nil && req.HistoryVisible == nil {
+	if req.Name == nil && req.HistoryVisible == nil && req.Notice == nil && req.Owner == nil {
 		writeErr(w, protocol.Errorf(protocol.CodeBadRequest, "nothing to update"))
 		return
 	}
-	upd := store.GroupUpdate{HistoryVisible: req.HistoryVisible}
+	var owner *string
+	if req.Owner != nil {
+		if !a.hasScope(r, adminauth.ScopeSocialSettings) {
+			writeErr(w, protocol.Errorf(protocol.CodeForbidden, "owner requires scope social.settings"))
+			return
+		}
+		v := ""
+		if string(req.Owner) != "null" {
+			if err := json.Unmarshal(req.Owner, &v); err != nil || !protocol.ValidID(v) {
+				writeErr(w, protocol.Errorf(protocol.CodeInvalidID, "invalid owner"))
+				return
+			}
+		}
+		owner = &v
+	}
+	upd := store.GroupUpdate{HistoryVisible: req.HistoryVisible, Now: a.clock.Now().UnixMilli()}
+	if req.Notice != nil {
+		n := protocol.TrimText(*req.Notice)
+		if protocol.TextLen(n) > protocol.MaxNoticeLen {
+			writeErr(w, protocol.Errorf(protocol.CodeBadRequest, "notice longer than %d", protocol.MaxNoticeLen))
+			return
+		}
+		upd.Notice = &n
+	}
 	if req.Name != nil {
 		name, perr := groupName(*req.Name)
 		if perr != nil {
@@ -183,13 +244,26 @@ func (a *Admin) updateGroup(w http.ResponseWriter, r *http.Request) {
 		upd.Name = &name
 	}
 	// historyVisible 在查询时生效（每次 sync 现算 minSeq），不需要失效任何缓存。
-	err := a.store.UpdateGroup(r.Context(), gid, upd)
+	var err error
+	if upd.Name != nil || upd.HistoryVisible != nil || upd.Notice != nil {
+		err = a.store.UpdateGroup(r.Context(), gid, upd)
+	} else if _, gerr := a.store.GetGroup(r.Context(), gid); gerr != nil {
+		err = gerr
+	}
+	var tip *store.Message
+	if err == nil && owner != nil {
+		tip, err = a.store.SetGroupOwner(r.Context(), gid, *owner, upd.Now)
+	}
 	switch {
 	case errors.Is(err, store.ErrNotFound):
 		writeErr(w, protocol.Errorf(protocol.CodeGroupNotFound, "group not found"))
+	case errors.Is(err, store.ErrTargetNotMember):
+		writeErr(w, protocol.Errorf(protocol.CodeTargetNotGroupMember, "owner must be a member"))
 	case err != nil:
 		a.internal(w, "update group", err)
 	default:
+		a.notifier.DeliverTip(r.Context(), tip)
+		a.notifier.NotifyGroupChanged(gid)
 		writeJSON(w, http.StatusOK, struct{}{})
 	}
 }
@@ -201,6 +275,11 @@ type groupResp struct {
 	CreatedAt      int64    `json:"createdAt"`
 	MemberCount    int      `json:"memberCount"`
 	Members        []string `json:"members"`
+	Owner          string   `json:"owner"`
+	Admins         []string `json:"admins"`
+	Notice         string   `json:"notice"`
+	CreatedBy      string   `json:"createdBy"`
+	Managed        bool     `json:"managed"`
 }
 
 func (a *Admin) getGroup(w http.ResponseWriter, r *http.Request) {
@@ -223,8 +302,20 @@ func (a *Admin) getGroup(w http.ResponseWriter, r *http.Request) {
 		a.internal(w, "get group members", err)
 		return
 	}
+	head, _, err := a.store.ListGroupMembers(r.Context(), gid, nil, store.MaxGroupAdmins+1) // 群主 → 管理员排在最前
+	if err != nil {
+		a.internal(w, "list group admins", err)
+		return
+	}
+	admins := []string{}
+	for _, m := range head {
+		if m.Role == store.RoleAdmin {
+			admins = append(admins, m.UserID)
+		}
+	}
 	writeJSON(w, http.StatusOK, groupResp{
 		GroupID: g.GroupID, Name: g.Name, HistoryVisible: g.HistoryVisible, CreatedAt: g.CreatedAt, MemberCount: g.MemberCount, Members: nonNil(members),
+		Owner: g.OwnerID, Admins: admins, Notice: g.Notice, CreatedBy: g.CreatedBy, Managed: g.Managed(),
 	})
 }
 

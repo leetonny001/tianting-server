@@ -25,7 +25,7 @@
 | BE-120（防枚举、日志扫描） | ✅ 2026-11-03 | `social_enum_test.go`：11.2 节逐路径同构比较、每日确认上限 100 + 100、四个特征串扫描服务端日志和审计全部字段（含变异测试）；零帧断言在 BE-118 逐行表里 |
 | BE-121（性能） | ✅ 2026-11-03 | `im-loadtest` 新场景 `social-full`、`c2c-friends`；默认配置下 TC-PERF-00-01～07 重跑，报告 [perf-social-2026-11-03.md](../reports/perf-social-2026-11-03.md) |
 | BE-122（M3，解散群） | ✅ 2026-11-03 | `Store.DissolveGroup`（删除全部成员、写 `dissolved_at`、消息保留）、`DELETE /admin/groups/{groupId}`（scope `group.dissolve`，审计）、`convRemoved.reason`（管理接口移出 `removed`、解散 `dissolved`）；规则 3 的查询全部按"不存在"处理，群 ID 不复用（4090）；契约测试 `GroupDissolveNoReuse`、e2e（AC-SOC-26-2、26-4、26-5、26-6） |
-| BE-130 ～ BE-138（M4） | ⬜ 未开始 | 开工条件：M3 后端全部完成 |
+| BE-130 ～ BE-138（M4） | ✅ 2026-11-04 | 迁移 `0007_group_roles.sql` + `ug-` 预检；10 个群命令（权限表 `store.GroupCan`、提示消息与修改同事务 `TestTipSameTx`、`groupChanged` 1 秒合并、建群判重只记成功、成员分页游标 HMAC）；托管群交接（`owner`、`notice`、移除群主自动转让 / 回到无群主、`ug-` 保留）。e2e `group_m4_test.go`：权限矩阵 35 格（数据从 PRD 手抄，与实现分开）、群主变化全场景、公告日志扫描；并发 `GroupInviteVsDissolveRace`、`GroupLastTwoLeaveRace`、`GroupOwnerLeaveVsTransferRace`、`TestTCSOC2009`。现有 TC-GRP 用例不改代码全过。加锁顺序：群方法只拿群锁再分配 seq，由结构保证，Postgres 实现时接入 `lock()` 记录（BE-070） |
 | BE-113 第 3 条（`member_count`） | ✅ 提前完成 | 2026-11-03 为 H5 群标题提前做：迁移 0005、加 / 减成员同事务维护、`convs` 群会话和 `GET /admin/groups/{id}` 带 `memberCount`（契约测试 `MemberCountMaintained`、e2e）。第 1、2 条（`users` 可见范围、`myGroups`）仍待社交关系表 |
 
 ## 总览

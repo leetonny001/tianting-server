@@ -20,7 +20,7 @@ const noFrameWindow = 300 * time.Millisecond
 
 type socEnv struct {
 	*env
-	soc testCaller // 持有 social.settings、social.friends、user.read、audit.read
+	soc testCaller // 持有 social.settings、social.friends、user.read、audit.read、group.write
 	dis testCaller // 持有 group.dissolve
 	now int64      // 测试时钟（管理接口签名的时间戳要落在服务端时钟 ±300 秒内）
 }
@@ -33,7 +33,7 @@ func newSocEnvCfg(t *testing.T, mutate func(*app.Config)) *socEnv {
 	if socialMatrixMode() != "" {
 		t.Skip("社交用例自己设置好友模式，不参加 IM_E2E_SOCIAL_MODE 矩阵")
 	}
-	soc := hmacCaller("soc", adminauth.ScopeSocialSettings, adminauth.ScopeSocialFriends, adminauth.ScopeUserRead, adminauth.ScopeAuditRead)
+	soc := hmacCaller("soc", adminauth.ScopeSocialSettings, adminauth.ScopeSocialFriends, adminauth.ScopeUserRead, adminauth.ScopeAuditRead, adminauth.ScopeGroupWrite)
 	dis := hmacCaller("dis", adminauth.ScopeGroupDissolve)
 	e := newEnvCfg(t, func(c *app.Config) {
 		c.AdminCallers = append(c.AdminCallers, soc.cfg, dis.cfg)

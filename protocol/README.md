@@ -38,13 +38,18 @@ ws(s)://{host}/ws?platform={android|ios|web|pc}
 | `read` | 上行 | 上报已读位置 | `{}` |
 | `ping` | 上行 | 心跳 | 回 `pong`（不是 ack） |
 | `msg` | 下行 | 新消息 | — |
-| `event` | 下行 | `kicked`；`convAdded`（被拉进群，内容与 convs 的一项相同）、`convRemoved {convId, reason?}`（被移出群 `removed` / 群被解散 `dissolved`）；`readUpdated`（自己在其他端的已读位置前进了，包括发言即已读）；`socialChanged {ver}`（关系数据变了，只发给 ver 变化的用户，排除发起连接）、`socialSettingsChanged {mode, strangerMsgLimit}`（业务方改了社交配置） | — |
+| `event` | 下行 | `kicked`；`convAdded`（被拉进群，内容与 convs 的一项相同）、`convRemoved {convId, reason?}`（被移出群 `removed` / 群被解散 `dissolved` / 自己在其他端退群 `left`）；`readUpdated`（自己在其他端的已读位置前进了，包括发言即已读）；`socialChanged {ver}`（关系数据变了，只发给 ver 变化的用户，排除发起连接）、`socialSettingsChanged {mode, strangerMsgLimit}`（业务方改了社交配置）；`groupChanged {groupId}`（群资料或成员变了，同一个群至少间隔 1 秒合并，收到后重新 `groupInfo`） | — |
 | `friendApply` / `friendRespond` / `friendDelete` / `friendRemark` | 上行 | 好友申请、处理申请、单向删除、备注（PRD-social F-SOC-02、03、05） | `{status?, ver, changed, items}` |
 | `block` / `unblock` | 上行 | 拉黑、取消拉黑（F-SOC-07） | `{ver, changed, items}` |
 | `friendRequestsSeen` | 上行 | "新的朋友"标记已读（F-SOC-04） | `{requestSeenVer, ver, changed}` |
 | `socialSync` | 上行 | 关系同步：第一页 `{sinceVer}`，之后 `{cursor}`（F-SOC-06） | `{full, untilVer, latestVer, hasMore, cursor, restart?, friends, requests, blocks, requestSeenVer, settings, mode, strangerMsgLimit, official}` |
 | `userSearch` / `setPrivacy` | 上行 | 精确搜索 userId；"可被搜索"开关（F-SOC-09） | `{user}`；`{ver, changed}` |
 | `users` / `myGroups` | 上行 | 批量查资料（只返回可见范围内的人）；我的群聊分页（F-SOC-10、11） | `{users}`；`{groups, nextCursor}` |
+| `groupCreate` | 上行 | 建群：`{clientReqId, name?, members}`，同一 `clientReqId` 只建一次（PRD-social F-SOC-21） | `{groupId, conv}` |
+| `groupInvite` / `groupKick` | 上行 | 邀请（部分成功）/ 移出，单次 ≤ 50 人 | `{added, failed:[{userId, code}]}`；`{removed}` |
+| `groupLeave` / `groupTransfer` / `groupSetAdmin` / `groupDissolve` / `groupUpdate` | 上行 | 退群、转让群主、设置管理员、解散、改群名 / 公告 | `{}` |
+| `groupInfo` | 上行 | 群资料 | `{groupId, name, notice, noticeBy, noticeAt, owner, managed, myRole, memberCount, maxMembers, historyVisible, createdAt}` |
+| `groupMembers` | 上行 | 成员分页：群主 → 管理员 → 成员，`limit` 1～100 | `{members, nextCursor}` |
 | `joinRoom` / `leaveRoom` / `push` | — | 二期（聊天室、系统推送） | — |
 
 ## 3. 交互规则
@@ -58,6 +63,7 @@ ws(s)://{host}/ws?platform={android|ios|web|pc}
 7. **实时下发的 `msg` 不保证按 `seq` 顺序到达**（多人同时发言时，投递和落库不在同一把锁里）。客户端必须按 `seq` 排序插入；发现缺口后等 500ms，还没补上就 `sync`。
 8. 同一用户多端在线时，自己发出的消息会以 `msg` 下发到自己的**其他**端，发送的那个连接只收到 `ack`。
 9. 权限：单聊非参与方 4032；群不存在 4043；非群成员 4033。单聊发送权限（PRD-social F-SOC-08 规则 7）按顺序判定：格式 → 去重命中直接返回第一次的 ack → 发送限流 4290 → 新对象（会话里还没有消息）预扣 `newPeerReject`，扣不到 4292 → 新对象且开了 `newPeerHourlyLimit`（官方账号发送方豁免）4292 → 对方不存在 4042 → 好友制下不互为好友（任一方官方账号豁免）4035 → 对方拉黑了我 4036 → 陌生人限额 4137（保存事务内判定）。给自己发永远允许。**客户端遇到不认识的事件类型必须忽略。**
+11. 群提示消息：`type=tip`，由服务端生成、占用 seq、计入未读，`body.tip = {kind, actor, targets, count?, text}`；`kind` 为 `created`、`joined`、`ownerChanged`、`adminSet`、`adminUnset`、`renamed`、`noticeUpdated`，不认识的显示"[群通知]"。系统操作的 `from`、`actor` 为空字符串。客户端不能发送 `type=tip`，`clientMsgId` 不能以 `tip-` 开头（4000）。权限不足 4030；操作对象不是成员 4046。建群失败时 `error.userId` 指出是哪个人。
 10. 关系同步：每个用户一个 `ver`；修改类命令的 ack 带 `{ver, changed, items}`，`changed=true` 时 `items` 是本次改动的全部行；收到 `socialChanged {ver}` 且 `ver > 本地 ver` 时从本地 ver 开始一轮 `socialSync`，直到 `hasMore=false`；`restart=true` 时用同一个 `sinceVer` 重新开始；全量轮收齐后整体替换本地数据。
 
 ## 4. 变更规则

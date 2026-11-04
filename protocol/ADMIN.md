@@ -59,9 +59,9 @@ HMAC：`HMAC-SHA256(secret, 待签名串)`；Ed25519：私钥对待签名串签�
 
 | 接口 | 请求 | 成功响应 | 说明 |
 |---|---|---|---|
-| `POST /admin/groups` | `{groupId, name, members?, historyVisible?}` | 201 `{}` | 建群。初始成员 ≤ 2000（不受 500 批量限制） |
-| `GET /admin/groups/{groupId}` | — | `{groupId, name, historyVisible, createdAt, memberCount, members}` | 查询群 |
-| `PATCH /admin/groups/{groupId}` | `{name?, historyVisible?}` | `{}` | 修改设置；至少传一项。`historyVisible` 在查询时生效 |
+| `POST /admin/groups` | `{groupId, name, members?, historyVisible?, owner?}` | 201 `{}` | 建群（托管群，默认没有群主）。初始成员 ≤ 2000（不受 500 批量限制）。`ug-` 前缀保留给客户端建的群：400 / 4004。`owner` 需要 `social.settings`，必须在 `members` 里（否则 404 / 4046） |
+| `GET /admin/groups/{groupId}` | — | `{groupId, name, historyVisible, createdAt, memberCount, members, owner, admins, notice, createdBy, managed}` | 查询群；`managed=true` 表示托管群，`owner` 为空表示没有群主 |
+| `PATCH /admin/groups/{groupId}` | `{name?, historyVisible?, notice?, owner?}` | `{}` | 修改设置；至少传一项。`historyVisible` 在查询时生效。`owner`：字符串指定 / 更换群主（必须是成员，否则 404 / 4046），`null` 收回；需要同时有 `group.write` 和 `social.settings`，旧密钥 403 / 4030；生成 `ownerChanged` 提示消息（`from=""`）。其他字段不产生提示消息 |
 | `POST /admin/groups/{groupId}/members` | `{members}` | `{added}` | 加成员，单次 ≤ 500；已经是成员的忽略（不重置入群位置） |
 | `DELETE /admin/groups/{groupId}/members` | `{members}` | `{removed}` | 移除成员，单次 ≤ 500；不是成员的忽略。被移出的人收到 `convRemoved {reason: "removed"}` |
 | `DELETE /admin/groups/{groupId}` | — | `{}` | 解散群（PRD-social F-SOC-26、PRD-admin G-ADM-11）：删除全部成员，消息保留；全部在线成员收到 `convRemoved {reason: "dissolved"}`。之后对该群的查询、加成员、改设置都是 404 / 4043，成员的 `send` / `sync` / `read` 返回 4043；**群 ID 不能复用**（再建 409 / 4090）。不存在或已解散：404 / 4043 |
@@ -70,6 +70,7 @@ HMAC：`HMAC-SHA256(secret, 待签名串)`；Ed25519：私钥对待签名串签�
 - 群名去首尾空白后 1～50 个字符（按 Unicode 码点）；群 ID、userId 为字母、数字、`_`、`-`，1～64 位。
 - 成员中有不存在的用户：404 / 4042，**整批不生效**。同一请求里重复的 userId 按 1 个计。
 - 多个错误同时出现时的优先级：ID 格式 4004 → 其他参数 4000 → 群不存在 4043（建群为已存在 4090）→ 单次超过 500 人 4131 → 用户不存在 4042 → 总人数超过 2000 4130。
+- 管理接口对所有群（包括客户端建的群）保留全部能力，不受好友、`max_members`、`maxJoinedGroups` 限制（仍受 2000）；除群主变化外不产生提示消息。移除的人是群主时：自建群自动转让给最早的管理员 / 最早入群的成员，托管群回到无群主。
 - `historyVisible=false`（默认）：新成员只能看到入群之后的消息；`true`：可以看到全部历史。被移除后再加入，按重新加入的时刻计算。
 
 scope：`POST /admin/users/token` → `token.issue`；`POST /admin/users/import` → `user.write`；`GET /admin/users/{userId}` → `user.read`；`POST /admin/users/{userId}/force-logout` → `user.kick`；`GET /admin/groups/{groupId}` → `group.read`；建群、改设置、加 / 移除成员 → `group.write`；解散 → `group.dissolve`（旧密钥不能调用）；`/admin/test/*` → `test`。完整 scope 目录见 PRD-admin F-KEY-02 规则 2。

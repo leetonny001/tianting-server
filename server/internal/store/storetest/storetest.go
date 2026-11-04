@@ -180,11 +180,11 @@ func testGroups(t *testing.T, open Opener) {
 		t.Error("z should not be member")
 	}
 
-	removed, err := s.RemoveGroupMembers(ctx, "g1", []string{"b", "z"})
+	removed, _, err := s.RemoveGroupMembers(ctx, "g1", []string{"b", "z"}, 1)
 	if err != nil || fmt.Sprint(removed) != "[b]" {
 		t.Fatalf("remove: removed=%v err=%v (z is not a member)", removed, err)
 	}
-	if _, err := s.RemoveGroupMembers(ctx, "nope", []string{"a"}); !errors.Is(err, store.ErrNotFound) {
+	if _, _, err := s.RemoveGroupMembers(ctx, "nope", []string{"a"}, 1); !errors.Is(err, store.ErrNotFound) {
 		t.Errorf("remove from missing group: %v", err)
 	}
 	if members, _ := s.GroupMembers(ctx, "g1"); fmt.Sprint(members) != "[a c]" {
@@ -249,7 +249,7 @@ func testGroupJoinSeq(t *testing.T, open Opener) {
 	if joinSeq("d") != 10 {
 		t.Errorf("re-adding an existing member reset joinSeq to %d", joinSeq("d"))
 	}
-	s.RemoveGroupMembers(ctx, "g1", []string{"d"})
+	s.RemoveGroupMembers(ctx, "g1", []string{"d"}, 1)
 	send(2, "o")
 	s.AddGroupMembers(ctx, "g1", []string{"d"}, 2000, nowMs())
 	if joinSeq("d") != 17 {
@@ -512,7 +512,7 @@ func testConversations(t *testing.T, open Opener) {
 	}
 
 	// 被移除后不再出现在列表里。
-	s.RemoveGroupMembers(c, "g2", []string{"a"})
+	s.RemoveGroupMembers(c, "g2", []string{"a"}, 1)
 	if _, ok, _ := s.GetConversation(c, "a", "group:g2"); ok {
 		t.Error("removed member still has the group conversation")
 	}
@@ -664,7 +664,7 @@ func testMemberCountMaintained(t *testing.T, open Opener) {
 		t.Fatalf("over limit: %v", err)
 	}
 	check(4) // 超过上限整批回滚，成员数不变
-	if _, err := s.RemoveGroupMembers(ctx, "g1", []string{"b", "x"}); err != nil {
+	if _, _, err := s.RemoveGroupMembers(ctx, "g1", []string{"b", "x"}, 1); err != nil {
 		t.Fatal(err)
 	}
 	check(3)

@@ -57,6 +57,9 @@ type Admin struct {
 type ConvNotifier interface {
 	NotifyConvAdded(ctx context.Context, convID string, userIDs []string)
 	NotifyConvRemoved(convID string, userIDs []string, reason string)
+	// NotifyGroupChanged 提醒在线成员群资料或成员变了（M4，合并发送）；DeliverTip 投递管理接口产生的 ownerChanged。
+	NotifyGroupChanged(groupID string)
+	DeliverTip(ctx context.Context, tip *store.Message)
 }
 
 // inv 用于在群成员变动后通知各节点的成员缓存失效（logic.TopicGroupMembers）；

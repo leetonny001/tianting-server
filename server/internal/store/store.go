@@ -41,6 +41,11 @@ type Group struct {
 	HistoryVisible bool // 新成员能否看到入群前的历史（D2），查询时生效
 	CreatedAt      int64
 	MemberCount    int // 成员数，加 / 减成员时在同一个事务里维护（只读，CreateGroup 忽略传入值）
+	// 以下 M4（PRD-social F-SOC-20）。OwnerID 为空 = 无群主；CreatedBy 为空 = 托管群（业务方建的）。只读，用 SetGroupOwner 等修改。
+	OwnerID, CreatedBy string
+	Notice, NoticeBy   string
+	NoticeAt           int64
+	MaxMembers         int
 }
 
 // GroupMember 是群成员。JoinSeq 是入群时会话的 maxSeq。
@@ -53,6 +58,8 @@ type GroupMember struct {
 type GroupUpdate struct {
 	Name           *string
 	HistoryVisible *bool
+	Notice         *string // 管理接口改公告（不产生提示消息，F-SOC-30 规则 3）
+	Now            int64   // 改公告时记录 notice_at
 }
 
 // ConvRow 是会话列表里的一项（原始数据，由 logic 计算 minSeq、未读数等）。
@@ -67,6 +74,7 @@ type ConvRow struct {
 	PeerID         string // 单聊对方；群为空
 	PeerNickname   string // 单聊对方的昵称，可能为空
 	MemberCount    int    // 群成员数；单聊为 0
+	MyRole         string // 群里我的角色（M4）；单聊为空
 	// UpdatedAt 是排序依据：最后一条**该用户可见**的消息的时间；没有可见消息的群用入群时间。
 	UpdatedAt int64
 	// LastVisible 为 false 时没有可展示的最后一条消息（群里没有消息，或者只有入群前、且历史不可见的消息）。
@@ -95,6 +103,7 @@ type User struct {
 // Store 是 IM 服务端用到的全部持久化操作。
 type Store interface {
 	SocialStore
+	GroupStore
 
 	// SaveMessage 为消息分配会话内递增 seq 并保存。
 	// 同一发送者重复提交同一 ClientMsgID 时不新建，返回第一次保存的消息且 dup=true。
@@ -118,7 +127,8 @@ type Store interface {
 	// joinedAt 是入群时间（没有消息的群在会话列表里按它排序）。
 	AddGroupMembers(ctx context.Context, groupID string, members []string, maxTotal int, joinedAt int64) (added []string, err error)
 	// RemoveGroupMembers 移除成员，返回实际被移除的（不是成员的忽略，C-36）。群不存在返回 ErrNotFound。
-	RemoveGroupMembers(ctx context.Context, groupID string, members []string) (removed []string, err error)
+	// 被移除的人里有群主时按 F-SOC-30 规则 4 处理：自建群自动转让，托管群回到无群主，tip 是这条 ownerChanged；其他情况 tip 为 nil。
+	RemoveGroupMembers(ctx context.Context, groupID string, members []string, now int64) (removed []string, tip *Message, err error)
 	// DissolveGroup 解散群（PRD-social F-SOC-26 规则 2～4）：一个事务里删除全部成员行、写 dissolved_at、member_count=0，
 	// 消息保留；返回被移出的成员。群不存在或已解散返回 ErrNotFound。客户端解散、最后一人退群（M4）共用这个方法。
 	// 解散之后：GroupExists / GetGroup / 加减成员 / 改设置都按"不存在"处理，CreateGroup 同一个 ID 返回 ErrExists（不复用）。
