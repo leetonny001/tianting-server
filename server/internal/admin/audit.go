@@ -2,6 +2,7 @@ package admin
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"io"
 	"net/http"
@@ -57,8 +58,12 @@ func (a *Admin) withAudit(route string, next http.HandlerFunc) http.HandlerFunc 
 			return
 		}
 		rec := &codeRecorder{ResponseWriter: w, status: http.StatusOK}
-		next(rec, r)
+		note := &auditNote{}
+		next(rec, r.WithContext(context.WithValue(r.Context(), auditNoteKey{}, note)))
 		entry.TS, entry.Phase, entry.Code = a.clock.Now().UnixMilli(), store.AuditResult, rec.code()
+		if note.count != nil {
+			entry.SummaryJSON = summaryWithCount(entry.SummaryJSON, *note.count)
+		}
 		if err := a.appendAudit(r, entry); err != nil {
 			// 业务已经执行完，不能再回滚：记日志告警，对账（console-server F-CON-09）会发现缺失的 result。
 			a.log.Error("admin audit result write failed", "route", route, "requestId", info.RequestID, "err", err)
@@ -90,6 +95,9 @@ func auditDigest(r *http.Request, body []byte) (targets, summary string) {
 		add(s)
 	}
 	if json.Unmarshal(fields["groupId"], &s) == nil {
+		add(s)
+	}
+	if json.Unmarshal(fields["convId"], &s) == nil { // 消息元数据查询：单聊的会话 ID 是审计目标（BE-210）
 		add(s)
 	}
 	var members []string

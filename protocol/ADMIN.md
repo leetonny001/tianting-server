@@ -2,7 +2,7 @@
 
 管理接口**只在单独的管理端口上提供**（`IM_ADMIN_ADDR`，默认 `127.0.0.1:8081`，`off` 关闭）；对外端口（`IM_ADDR`）上请求 `/admin/*` 返回 404。生产环境管理地址不是回环地址时必须配置 TLS（`IM_ADMIN_TLS_CERT` / `IM_ADMIN_TLS_KEY`），可以用 `IM_ADMIN_ALLOWED_CIDRS` 限制来源网段（只看 TCP 对端地址，不解析 `X-Forwarded-For`），见 PRD-admin F-KEY-01。
 
-请求和响应都是 JSON。错误统一返回 `{"code": 4xxx, "msg": "..."}`，HTTP 状态码由错误码前三位决定（见 [ERRORS.md](ERRORS.md)）。
+请求和响应都是 JSON。错误统一返回 `{"code": 4xxx, "msg": "..."}`，HTTP 状态码取 `errors.json` 的 `http` 字段（见 [ERRORS.md](ERRORS.md)）。
 密钥只能放在业务服务端 / console-server，**不能下发到任何客户端或浏览器**。
 
 ## 鉴权：调用方签名（PRD-admin F-KEY-02、F-KEY-03）
@@ -52,7 +52,7 @@ HMAC：`HMAC-SHA256(secret, 待签名串)`；Ed25519：私钥对待签名串签�
 |---|---|---|---|
 | `POST /admin/users/token` | `{userId, ttlSeconds?}` | `{userId, token, expiresAt}` | 签发 token（对应腾讯 `userSig`），用户不存在时自动注册。有效期默认 7 天，范围 60 秒～30 天 |
 | `POST /admin/users/import` | `{users:[{userId, nickname?, avatar?}]}` | `{imported}` | 批量导入 / 更新，单次 ≤ 500；任何一项不合法整批不写入 |
-| `GET /admin/users/{userId}` | — | `{userId, nickname, avatar, createdAt, official}` | 不存在：404 / 4042 |
+| `GET /admin/users/{userId}` | — | `{userId, nickname, avatar, createdAt, official, online}` | 不存在：404 / 4042。`online` 来自在线路由（单节点是本机），不缓存 |
 | `POST /admin/users/{userId}/force-logout` | `{}` | `{}` | 踢下线全部连接，此前签发的 token 全部作废；重新签发即可解封 |
 
 ## 群
@@ -74,6 +74,18 @@ HMAC：`HMAC-SHA256(secret, 待签名串)`；Ed25519：私钥对待签名串签�
 - `historyVisible=false`（默认）：新成员只能看到入群之后的消息；`true`：可以看到全部历史。被移除后再加入，按重新加入的时刻计算。
 
 scope：`POST /admin/users/token` → `token.issue`；`POST /admin/users/import` → `user.write`；`GET /admin/users/{userId}` → `user.read`；`POST /admin/users/{userId}/force-logout` → `user.kick`；`GET /admin/groups/{groupId}` → `group.read`；建群、改设置、加 / 移除成员 → `group.write`；解散 → `group.dissolve`（旧密钥不能调用）；`/admin/test/*` → `test`。完整 scope 目录见 PRD-admin F-KEY-02 规则 2。
+
+## 后台查询（PRD-admin 第一批）
+
+| 接口 | 请求 / 查询参数 | 响应 | scope 与说明 |
+|---|---|---|---|
+| `GET /admin/users` | `q`、`official=true`、`cursor`、`limit` | `{users:[{userId, nickname?, avatar?, createdAt?, official, online}], nextCursor}` | `user.read`，不写审计。`q` 去首尾空白后 1～64 字符：userId 前缀（区分大小写）或昵称前缀（ASCII 不区分大小写，其他字符按码点精确）；`%`、`_` 不是通配符。没有 `q` 时必须 `official=true`。按 userId 升序 |
+| `POST /admin/users/sessions/query` | `{userId}` | `{sessions:[{connId, platform, connectedAt, node, ip, queueLen}], partial, scope}` | `user.sessions`，写审计（result 的 summary 带 `count`）。`ip` 已脱敏（IPv4 `a.b.*.*`，IPv6 前 3 组），完整 IP 拿不到。B6 之前 `partial: true, scope: "localNode"`：只覆盖接收请求的节点，**不能据此下"不在线"的结论**。用户不存在 404 / 4042 |
+| `GET /admin/groups` | `q`、`includeDissolved=true`、`cursor`、`limit` | `{groups:[{groupId, name, type, owner, memberCount, historyVisible, createdAt, dissolvedAt?}], nextCursor}` | `group.read`，不写审计。`q` 可选：groupId 前缀或群名前缀。`type` 为 `managed`（托管）/ `user`（客户端自建）；`owner` 没有时为 `null`。按创建时间倒序，默认不含已解散的群 |
+| `GET /admin/groups/{groupId}/members` | `cursor`、`limit`、`prefix` | `{members:[{userId, role, joinedAt}], nextCursor}` | `group.read`。按 userId 升序（和客户端 `groupMembers` 的顺序不同），`prefix` 是 userId 前缀。已解散或不存在 404 / 4043 |
+| `POST /admin/convs/messages/query` | `{convId, beforeSeq?, limit?, from?, sinceTs?, untilTs?}` | `{messages:[{seq, msgId, from, type, bodyLength, ts}], hasMore}` | `msg.meta`，写审计。**响应没有正文**；`bodyLength` 是文本的码点数（非文本消息是 body JSON 的码点数）。`limit` 1～50，默认 50；按 seq 倒序；时间是闭区间。不受成员关系和 `historyVisible` 限制，已解散的群照常返回；会话不存在返回空列表；`convId` 格式错误 400 / 4007 |
+
+`limit`（前四个接口）只接受 20 / 50 / 100，默认 50；`cursor` 是上一页响应里的 `nextCursor`，对调用方不透明，空字符串表示没有更多，解不开 400 / 4000。这些接口旧密钥都不能调用（403 / 4030）。
 
 ## 社交（PRD-social 9.3 节，M3）
 

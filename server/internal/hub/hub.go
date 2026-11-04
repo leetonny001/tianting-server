@@ -6,6 +6,7 @@ import (
 	"sync"
 
 	"tianting/server/internal/delivery"
+	"tianting/server/internal/sessions"
 )
 
 // Client 是一个在线连接。Send、Kick 都不能阻塞。
@@ -13,6 +14,8 @@ type Client interface {
 	delivery.Session
 	Send(frame []byte) bool // 发不出去时返回 false
 	Kick(reason string)     // 下发 kicked 并关闭连接
+	// SessionInfo 返回连接元数据（IP 已脱敏，PRD-admin F-ADM-14 规则 2）。
+	SessionInfo() sessions.Conn
 }
 
 // Hub 是并发安全的在线表。
@@ -120,6 +123,18 @@ func (h *Hub) ConnCount(userID string) int {
 	h.mu.RLock()
 	defer h.mu.RUnlock()
 	return len(h.users[userID])
+}
+
+// ListUserConns 返回用户在本节点的连接元数据（sessions.Source）。持锁时不碰连接的发送队列以外的东西，不会阻塞。
+func (h *Hub) ListUserConns(userID string) []sessions.Conn {
+	h.mu.RLock()
+	defer h.mu.RUnlock()
+	conns := h.users[userID]
+	out := make([]sessions.Conn, 0, len(conns))
+	for _, e := range conns {
+		out = append(out, e.c.SessionInfo())
+	}
+	return out
 }
 
 // DeliverToAll 实现 delivery.Broadcaster：发给本节点上的全部连接。

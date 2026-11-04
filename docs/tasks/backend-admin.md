@@ -18,7 +18,9 @@
 | BE-201 调用方、scope、旧密钥过渡 | ✅ 完成 | `IM_ADMIN_CALLERS`（0600、id 格式、密钥两两不同且不等于 JWT / 旧密钥、正文类 scope 只能在唯一的 bodyAccess 调用方上）；路由注册必须声明 scope（否则 panic）；参数化测试遍历全部路由；生产环境旧密钥需 `IM_ADMIN_LEGACY=1`，`/readyz` 告警。"旧密钥调用新接口 403"待 BE-203 有了第一个新接口后补测试 |
 | BE-202 请求签名与防重放 | ✅ 完成 | `internal/adminauth`：8 行待签名串、HMAC / Ed25519、±300 秒（[IM 钟]）、nonce 签名通过后登记（内存 100 万，满时 503）；4017 + `im_admin_auth_failures_total{reason}`；向量 `protocol/vectors/admin-sign.json` 由 Go / Node.js / Java 三种实现在 CI 校验；7 个变异全部被测试发现 |
 | BE-203 im-server 侧审计 `admin_audit` | ✅ 完成 | 迁移 0004（PRD-social 的迁移顺延到 0005 起）；intent 写失败 503 不执行；summary 只记字段名；`GET /admin/audit`；Store 只有追加和查询（契约测试反射断言）；`/admin/test/faults`；6 个变异全部被测试发现。AC-KEY-04-3 的好友备注 / 推送 data 部分随 PRD-social 好友导入和 BE-229 补测；AC-KEY-05-2 其余接口随 BE-205、BE-209、BE-210 和 PRD-social 补测 |
-| BE-205 ～ BE-243 | ⬜ 未开始 | 2026-11-03 需求分发 |
+| BE-205 ～ BE-210 第一批查询接口 | ✅ 2026-11-04 | 用户搜索、在线设备（`internal/sessions.Query` 唯一入口，连接只存脱敏 IP）、群列表、成员分页、解散收口、消息元数据（响应类型没有正文字段）；迁移 0008（虚拟生成列 `nickname_fold` / `name_fold`，写路径不用改）；存储契约 5 组、e2e `TestTCADM*`；SQLite 规模压测见 [perf-admin-2026-11-04](../reports/perf-admin-2026-11-04.md)。**未验收**：AC-ADM-90-1、90-2 的 Postgres 规模（随 BE-070）、AC-ADM-14-6（依赖 B6） |
+| BE-211 第一批协议 | ✅ 2026-11-04 | errors.json 新增 13 个码（4017 已在 X-5 加入）、10.2 节扩展、`closeCodes` 1011、`kickReasons` suspended；im-server 跳过只含 console 的码，SDK 生成器同样跳过；ERRORS.md、ADMIN.md、Schema `Error.details` 同步 |
+| BE-220 ～ BE-243 | ⬜ 未开始 | 第二批及 P1 / P2 |
 
 ## 总览
 

@@ -23,6 +23,11 @@ func Run(t *testing.T, open Opener) {
 		name string
 		fn   func(*testing.T, Opener)
 	}{
+		{"AdminSearchUsers", testAdminSearchUsers},
+		{"AdminSearchUsersPaging", testAdminSearchUsersPaging},
+		{"AdminSearchGroups", testAdminSearchGroups},
+		{"AdminListMembers", testAdminListMembers},
+		{"AdminMessageMeta", testAdminMessageMeta},
 		{"SaveMessageAssignsSeqPerConversation", testSaveMessageAssignsSeqPerConversation},
 		{"SaveMessageDeduplicates", testSaveMessageDeduplicates},
 		{"SaveMessageConcurrentSeqIsContiguous", testSaveMessageConcurrentSeqIsContiguous},

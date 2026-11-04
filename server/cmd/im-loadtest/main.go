@@ -13,6 +13,8 @@
 //	group     TC-PERF-00-07  200 人群扩散（P1）
 //	capacity  TC-PERF-00-02/03/05  1 万连接在线 + 500～600 条/秒 + 保持
 //	kill9     TC-PERF-00-06  压测中强杀，已 ack 的消息不丢
+//	admin-search  AC-ADM-90-1   用户搜索：10 万用户、10 并发（SQLite 规模；Postgres 100 万随 BE-070）
+//	admin-meta    AC-ADM-90-2   消息元数据：单会话 1 万条（SQLite 规模；Postgres 10 万条随 BE-070）
 //	social-full   TC-SOC-06-18  全量同步：5000 好友 + 1000 黑名单 + 200 申请（PRD-social AC-SOC-06-12）
 //	c2c-friends   PRD-social 1.3 节：好友制下私聊发送 P99 比开放模式增加 ≤ 2ms
 package main
@@ -75,6 +77,10 @@ func main() {
 			results = append(results, scenarioSocialFull(cfg))
 		case "c2c-friends":
 			results = append(results, scenarioC2CFriends(cfg))
+		case "admin-search":
+			results = append(results, scenarioAdminSearch(cfg))
+		case "admin-meta":
+			results = append(results, scenarioAdminMeta(cfg))
 		default:
 			fmt.Fprintf(os.Stderr, "unknown scenario %q\n", name)
 			os.Exit(2)

@@ -18,6 +18,7 @@ import (
 	"tianting/server/internal/delivery"
 	"tianting/server/internal/logic"
 	"tianting/server/internal/protocol"
+	"tianting/server/internal/sessions"
 	"tianting/server/internal/store"
 )
 
@@ -46,6 +47,7 @@ type Admin struct {
 	inv      cache.Invalidator
 	notifier ConvNotifier
 	social   SocialService // nil 时不注册社交路由
+	sessions sessions.Source
 	clock    clock.Clock
 	log      *slog.Logger
 	testMode bool
@@ -91,6 +93,7 @@ func (a *Admin) Register(mux *http.ServeMux) {
 	a.route(mux, "DELETE", "/admin/groups/{groupId}", adminauth.ScopeGroupDissolve, a.dissolveGroup)
 	a.route(mux, "GET", "/admin/audit", adminauth.ScopeAuditRead, a.queryAudit)
 	a.registerSocial(mux)
+	a.registerQueries(mux)
 }
 
 // RegisterTestRoutes 注册故障注入和时钟接口，只能在测试模式下调用（PRD 6.1 节）。
@@ -202,6 +205,7 @@ type userJSON struct {
 	Avatar    string `json:"avatar,omitempty"`
 	CreatedAt int64  `json:"createdAt,omitempty"`
 	Official  bool   `json:"official"` // PRD-social F-SOC-13；导入时忽略
+	Online    bool   `json:"online"`   // 只出现在响应里：来自 hub（B6 之后是 Presence），不缓存（F-ADM-10 规则 3）
 }
 
 // importUsers 批量导入用户（PRD F-USER-01、C-16、C-17）。任何一项不合法则整批不写入。
@@ -265,7 +269,7 @@ func (a *Admin) getUser(w http.ResponseWriter, r *http.Request) {
 	case err != nil:
 		a.internal(w, "get user", err)
 	default:
-		writeJSON(w, http.StatusOK, userJSON{UserID: u.UserID, Nickname: u.Nickname, Avatar: u.Avatar, CreatedAt: u.CreatedAt, Official: u.Official})
+		writeJSON(w, http.StatusOK, userJSON{UserID: u.UserID, Nickname: u.Nickname, Avatar: u.Avatar, CreatedAt: u.CreatedAt, Official: u.Official, Online: a.online(u.UserID)})
 	}
 }
 

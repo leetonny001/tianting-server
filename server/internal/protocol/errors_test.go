@@ -9,9 +9,10 @@ import (
 
 type errorsFile struct {
 	Errors []struct {
-		Code int    `json:"code"`
-		Name string `json:"name"`
-		HTTP *int   `json:"http"`
+		Code  int      `json:"code"`
+		Name  string   `json:"name"`
+		HTTP  *int     `json:"http"`
+		Scope []string `json:"scope"`
 	} `json:"errors"`
 	CloseCodes []struct {
 		Code int    `json:"code"`
@@ -36,6 +37,10 @@ func TestCodesMatchErrorsJSON(t *testing.T) {
 
 	seen := map[int]bool{}
 	for _, e := range f.Errors {
+		// 只属于 console-server 的码（PRD-admin 10.4 节第 5 条）：im-server 不定义常量，console-server 有自己的一致性测试。
+		if len(e.Scope) == 1 && e.Scope[0] == "console" {
+			continue
+		}
 		seen[e.Code] = true
 		info, ok := codes[e.Code]
 		if !ok {

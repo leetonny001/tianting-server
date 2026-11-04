@@ -9,6 +9,7 @@ import (
 	"slices"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -27,12 +28,11 @@ func (s *socEnv) mutual(owner string, peers ...string) {
 	s.adminPost("/admin/test/social/seed", map[string]any{"friends": fs, "silent": true}, adminKey)
 }
 
-var reqSeq int
+var reqSeq atomic.Int64 // 权限矩阵的子测试并行
 
 func createG(t *testing.T, c *client, members ...string) protocol.GroupCreateAck {
 	t.Helper()
-	reqSeq++
-	return mustAck[protocol.GroupCreateAck](t, c.call(protocol.CmdGroupCreate, map[string]any{"clientReqId": fmt.Sprintf("req-%08d", reqSeq), "members": members}))
+	return mustAck[protocol.GroupCreateAck](t, c.call(protocol.CmdGroupCreate, map[string]any{"clientReqId": fmt.Sprintf("req-%08d", reqSeq.Add(1)), "members": members}))
 }
 
 func gInfo(t *testing.T, c *client, gid string) protocol.GroupInfoAck {

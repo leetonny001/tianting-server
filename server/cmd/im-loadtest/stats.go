@@ -22,8 +22,8 @@ func (l *latencies) add(d time.Duration) {
 }
 
 type summary struct {
-	N             int
-	P50, P99, Max time.Duration
+	N                  int
+	P50, P95, P99, Max time.Duration
 }
 
 func (l *latencies) summary() summary {
@@ -35,11 +35,11 @@ func (l *latencies) summary() summary {
 	}
 	slices.Sort(d)
 	q := func(p float64) time.Duration { return d[min(len(d)-1, int(float64(len(d))*p))] }
-	return summary{N: len(d), P50: q(0.50), P99: q(0.99), Max: d[len(d)-1]}
+	return summary{N: len(d), P50: q(0.50), P95: q(0.95), P99: q(0.99), Max: d[len(d)-1]}
 }
 
 func (s summary) String() string {
-	return fmt.Sprintf("n=%d P50=%s P99=%s max=%s", s.N, ms(s.P50), ms(s.P99), ms(s.Max))
+	return fmt.Sprintf("n=%d P50=%s P95=%s P99=%s max=%s", s.N, ms(s.P50), ms(s.P95), ms(s.P99), ms(s.Max))
 }
 
 func ms(d time.Duration) string { return fmt.Sprintf("%.1fms", float64(d.Microseconds())/1000) }

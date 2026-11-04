@@ -22,6 +22,7 @@ import (
 	"tianting/server/internal/hub"
 	"tianting/server/internal/metrics"
 	"tianting/server/internal/protocol"
+	"tianting/server/internal/sessions"
 )
 
 // Handler 处理一条已解析的上行帧（ping 除外），返回要回给客户端的 ack；nil 表示不回复。
@@ -128,9 +129,11 @@ func (g *Gateway) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	uid := claims.UserID
 
 	c := &conn{
-		id:       g.cfg.NodeID + "-" + strconv.FormatUint(g.nextID.Add(1), 10),
-		uid:      uid,
-		platform: platform,
+		id:          g.cfg.NodeID + "-" + strconv.FormatUint(g.nextID.Add(1), 10),
+		uid:         uid,
+		platform:    platform,
+		connectedAt: g.clock.Now().UnixMilli(),
+		maskedIP:    sessions.MaskIP(ip),
 		// 剩余有效期在鉴权时按注入的时钟算好：auth 的 ack 发出之后测试可能马上改时钟，
 		// 如果等 run 开始时再算，就会和改时钟赛跑（race 检测下变慢时会被立即踢下线）。
 		ttl:  claims.ExpiresAt.Sub(g.clock.Now()),
@@ -236,9 +239,12 @@ type conn struct {
 	id       string
 	uid      string
 	platform string
-	ttl      time.Duration // 鉴权时 token 的剩余有效期
-	ws       *websocket.Conn
-	done     chan struct{} // 关闭后 Send 一律返回 false
+	// 连接元数据（PRD-admin F-ADM-14）。maskedIP 是脱敏后的值：结构体里不保存完整 IP。
+	connectedAt int64
+	maskedIP    string
+	ttl         time.Duration // 鉴权时 token 的剩余有效期
+	ws          *websocket.Conn
+	done        chan struct{} // 关闭后 Send 一律返回 false
 
 	// 待发送队列。按需分配、按需启动写协程，写空后协程退出：
 	// 1 万条空闲连接如果各自预分配 256 格的 channel、常驻一个写协程，要多占约 60MB 堆和约 80MB 栈（Q5a 内存分析）。
@@ -248,6 +254,16 @@ type conn struct {
 	kickOnce sync.Once
 	closed   atomic.Pointer[closeReason] // 服务端主动关闭的原因；为空表示是客户端关的
 	gw       *Gateway
+}
+
+// SessionInfo 实现 hub.Client。
+func (c *conn) SessionInfo() sessions.Conn {
+	c.qmu.Lock()
+	queued := len(c.queue)
+	c.qmu.Unlock()
+	return sessions.Conn{
+		ConnID: c.id, Platform: c.platform, ConnectedAt: c.connectedAt, Node: c.gw.cfg.NodeID, IP: c.maskedIP, QueueLen: queued,
+	}
 }
 
 // closeReason 是连接结束的原因（用于日志和指标）。

@@ -102,6 +102,7 @@ type User struct {
 
 // Store 是 IM 服务端用到的全部持久化操作。
 type Store interface {
+	AdminQueryStore
 	SocialStore
 	GroupStore
 

@@ -152,6 +152,7 @@ func New(cfg Config) (*App, error) {
 		NodeID: gw.NodeID, Failures: m.AdminAuthFailures,
 	}, signer, st, h, inv, svc, clk, cfg.TestMode, cfg.Logger)
 	adm.WithSocial(svc)
+	adm.WithSessions(h)
 	adminMux := http.NewServeMux()
 	adm.Register(adminMux)
 	if cfg.TestMode {

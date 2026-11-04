@@ -4,6 +4,8 @@ import (
 	"strconv"
 	"sync"
 	"testing"
+
+	"tianting/server/internal/sessions"
 )
 
 type fakeClient struct {
@@ -15,8 +17,9 @@ type fakeClient struct {
 	kicked string
 }
 
-func (f *fakeClient) ConnID() string { return f.id }
-func (f *fakeClient) UserID() string { return f.uid }
+func (f *fakeClient) SessionInfo() sessions.Conn { return sessions.Conn{ConnID: f.id} }
+func (f *fakeClient) ConnID() string             { return f.id }
+func (f *fakeClient) UserID() string             { return f.uid }
 func (f *fakeClient) Send(b []byte) bool {
 	f.mu.Lock()
 	defer f.mu.Unlock()

@@ -20,6 +20,8 @@ const (
 	CodeTokenRevoked             = 4012
 	CodeAdminKeyInvalid          = 4013
 	CodeAdminSignatureInvalid    = 4017
+	CodeUserBanned               = 4034
+	CodeMessageNotFound          = 4044
 	CodeForbidden                = 4030
 	CodeMuted                    = 4031
 	CodeNotConvParticipant       = 4032
@@ -61,7 +63,7 @@ var codes = map[int]codeInfo{
 	CodeInvalidID:                {"INVALID_ID", 400},
 	CodeTextEmpty:                {"TEXT_EMPTY", 0},
 	CodeTextTooLong:              {"TEXT_TOO_LONG", 0},
-	CodeInvalidConvID:            {"INVALID_CONV_ID", 0},
+	CodeInvalidConvID:            {"INVALID_CONV_ID", 400},
 	CodeClientMsgIDConflict:      {"CLIENT_MSG_ID_CONFLICT", 0},
 	CodeInvalidPlatform:          {"INVALID_PLATFORM", 0},
 	CodeTokenInvalid:             {"TOKEN_INVALID", 0},
@@ -69,6 +71,8 @@ var codes = map[int]codeInfo{
 	CodeTokenRevoked:             {"TOKEN_REVOKED", 0},
 	CodeAdminKeyInvalid:          {"ADMIN_KEY_INVALID", 401},
 	CodeAdminSignatureInvalid:    {"ADMIN_SIGNATURE_INVALID", 401},
+	CodeUserBanned:               {"USER_BANNED", 403},
+	CodeMessageNotFound:          {"MESSAGE_NOT_FOUND", 404},
 	CodeForbidden:                {"FORBIDDEN", 403},
 	CodeMuted:                    {"MUTED", 0},
 	CodeNotConvParticipant:       {"NOT_CONV_PARTICIPANT", 0},
@@ -118,6 +122,7 @@ const (
 	CloseTokenExpired    = 4011
 	CloseTokenRevoked    = 4012
 	CloseTooManyConns    = 4429
+	CloseInternalError   = 1011
 	CloseAuthRequired    = 4401
 	CloseSlowConsumer    = 4400
 	CloseIdleTimeout     = 4408
@@ -132,6 +137,7 @@ var closeCodes = map[int]string{
 	CloseTokenExpired:    "TOKEN_EXPIRED",
 	CloseTokenRevoked:    "TOKEN_REVOKED",
 	CloseTooManyConns:    "TOO_MANY_CONNECTIONS",
+	CloseInternalError:   "INTERNAL_ERROR",
 	CloseAuthRequired:    "AUTH_REQUIRED",
 	CloseSlowConsumer:    "SLOW_CONSUMER",
 	CloseIdleTimeout:     "IDLE_TIMEOUT",
@@ -145,6 +151,7 @@ const (
 	KickTokenInvalid = "tokenInvalid"
 	KickTokenExpired = "tokenExpired"
 	KickBanned       = "banned"
+	KickSuspended    = "suspended" // 封禁（PRD-admin F-ADM-13，第二批），和 banned 同一关闭码
 	KickReplaced     = "replaced"
 	KickTooManyConns = "tooManyConnections"
 	KickShutdown     = "serverShutdown"
@@ -155,6 +162,7 @@ var KickCloseCode = map[string]int{
 	KickTokenInvalid: CloseTokenInvalid,
 	KickTokenExpired: CloseTokenExpired,
 	KickBanned:       CloseTokenRevoked,
+	KickSuspended:    CloseTokenRevoked,
 	KickTooManyConns: CloseTooManyConns,
 	KickShutdown:     CloseGoingAway,
 }

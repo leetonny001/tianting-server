@@ -213,6 +213,11 @@ var adminSamples = map[string]adminSample{
 	"POST /admin/test/clock":                  {nil, "POST", "/admin/test/clock", map[string]any{"nowMs": nil}, 200},
 	"POST /admin/test/faults":                 {nil, "POST", "/admin/test/faults", map[string]any{"adminAuditWrite": ""}, 200},
 	"GET /admin/audit":                        {nil, "GET", "/admin/audit?from=0&to=1000", nil, 200},
+	"GET /admin/users":                        {func(e *env) { e.users("alice") }, "GET", "/admin/users?q=al", nil, 200},
+	"POST /admin/users/sessions/query":        {func(e *env) { e.users("alice") }, "POST", "/admin/users/sessions/query", map[string]any{"userId": "alice"}, 200},
+	"GET /admin/groups":                       {func(e *env) { e.createGroup("g1") }, "GET", "/admin/groups?q=g", nil, 200},
+	"GET /admin/groups/{groupId}/members":     {func(e *env) { e.createGroup("g1") }, "GET", "/admin/groups/g1/members", nil, 200},
+	"POST /admin/convs/messages/query":        {nil, "POST", "/admin/convs/messages/query", map[string]any{"convId": "group:g1"}, 200},
 	"DELETE /admin/groups/{groupId}":          {func(e *env) { e.createGroup("g1") }, "DELETE", "/admin/groups/g1", nil, 200},
 	// PRD-social M3（BE-114、BE-115、5.6 节测试设施）
 	"GET /admin/settings/social":          {nil, "GET", "/admin/settings/social", nil, 200},
