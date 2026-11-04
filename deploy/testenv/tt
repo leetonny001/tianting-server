@@ -22,6 +22,8 @@ tt query <PromQL>              查 Prometheus，输出 result 数组
 tt notifications               webhook 接收器收到的全部通知
 tt bootstrap <用户名>           创建运维空间第一个超管（需要 --console）
 tt compose ...                 带上正确参数的 docker compose
+tt put-manifest <source> <完成时间毫秒> <JSON>   用备份凭证往 MinIO 写一份清单
+tt reconcile                   导出审计和节点日志，运行 deploy/ops/reconcile（AC-OPS-14-6）
 USAGE
 }
 
@@ -221,6 +223,26 @@ cmd_set_clocks() {
   fi
 }
 
+cmd_put_manifest() { # source finishedAtMs json
+  local key
+  key="$(printf 'manifests/%s/%013d.json' "$1" "$2")"
+  printf '%s' "$3" | dc run --rm -T minio-init sh -c \
+    'mc alias set --quiet writer http://minio:9000 backup-writer "$BACKUP_WRITER_SECRET" >/dev/null && mc pipe --quiet "writer/tianting-backups/$0" >/dev/null' "$key"
+}
+
+cmd_reconcile() {
+  local dir n logs=()
+  dir="$(mktemp -d)"
+  dc exec -T postgres psql -At -v ON_ERROR_STOP=1 -U console_owner -d console -c \
+    "select json_build_object('action', action, 'requestId', request_id, 'count', (params::jsonb->>'count')::int) from audit.records where action = 'ops.troubleshoot.query' and phase = 'result'" \
+    >"$dir/audit.jsonl"
+  for n in $(nodes); do
+    dc logs --no-log-prefix --no-color "$n" >"$dir/$n.log"
+    logs+=("$dir/$n.log")
+  done
+  python3 -I "$HERE/../ops/reconcile" --audit "$dir/audit.jsonl" "${logs[@]}"
+}
+
 cmd_query() {
   dc exec -T prometheus wget -qO- "http://127.0.0.1:9090/api/v1/query?query=$(jq -rn --arg q "$1" '$q|@uri')" | jq -c '.data.result'
 }
@@ -245,5 +267,7 @@ case "${1:-}" in
   notifications) curl -fsS -m 5 http://127.0.0.1:19095/notifications ;;
   bootstrap) dc exec -T console console-server account bootstrap --space ops --username "${2:?username}" ;;
   compose) shift; dc "$@" ;;
+  put-manifest) shift; cmd_put_manifest "$@" ;;
+  reconcile) cmd_reconcile ;;
   *) usage; [ -n "${1:-}" ] || exit 2 ;;
 esac

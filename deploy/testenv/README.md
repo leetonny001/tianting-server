@@ -51,7 +51,26 @@ deploy/testenv/tt bootstrap eng1
 | AC-OPS-04-6 版本不一致 | `tt up e2a`（30 分钟用 `tt set-clocks`，先 [IM 钟] 后 [C 钟]） |
 | AC-OPS-90-5 观测组件全停 | `tt stop-observability`，`tt start-observability` |
 
+## console-server 联调
+
+`verify.sh --console` 最后跑 console-server 仓库的 `tools/ops-accept`：真实账号和 TOTP 登录，读真实组件，失败不中断，一次列全。
+
+| 验收项 | 内容 |
+|---|---|
+| AC-OPS-90-3 | 双节点用户 300 次排查（3 个账号），P99 ≤ 800ms |
+| AC-OPS-14-6 | 单节点和双节点用户排查后 `deploy/ops/reconcile`，差异 0 条 |
+| AC-OPS-08-11 | n2 暂停时查只在 n2 上的用户：2.5 秒内返回部分结果，不判为不在线 |
+| AC-OPS-04-2、04-5 | 真实 Prometheus 上的消息量；Prometheus 停止时卡片不可用 |
+| AC-OPS-04-6、05-1 | 节点和版本来自探活；时钟推进后显示版本不一致超过 30 分钟 |
+| AC-OPS-07-5 | 备份过期经真实 Alertmanager 进告警卡片，恢复后消失 |
+| AC-OPS-12-3 | 只读凭证读真实 MinIO 的清单，超过 2 小时标红 |
+| Grafana | 票据进入，经认证代理读真实面板和数据，写接口被拦 |
+
+这里测的是接口。页面文案和交互由 tianting-ops 的 Playwright 覆盖（后端用假服务）。
+
 ## 没有覆盖
+
+- **AC-OPS-90-2**：要在 1 万连接的 EP 环境里和 BE-321 同轮测。
 
 - **邮件 receiver**：配置里的 SMTP 是占位地址，这里不发信，Alertmanager 日志里会有发信失败。邮件要等 F-1 定下接收人和 SMTP。
 - **防火墙**（`firewall.nft`）：容器网络里不适用。

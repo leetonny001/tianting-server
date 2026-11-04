@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 # 环境验收（BE-320）：真实的 Prometheus、Alertmanager、Grafana、node_exporter、MinIO 和真实的 im-server 容器。约 15 分钟。
 # 覆盖 AC-OPS-07-2、07-3、07-6（通知内容）、90-5（不停 IM、只停观测组件）、04-6 和 08-11 的节点侧部分。
-# 加 --console 时也启动 console-server，只验证容器能启动、经 TLS 签名探活节点、能创建账号。
-# 它对真实 Prometheus、Alertmanager、Grafana、MinIO 的读取（登录后的接口和页面）属于 CS-120，这里没有覆盖。
+# 加 --console 时也启动 console-server，最后跑它仓库里的 tools/ops-accept：用真实账号登录，读真实的节点、
+# Prometheus、Alertmanager、Grafana、MinIO（AC-OPS-90-3、14-6、08-11、04-2、04-5、04-6、07-5、12-3）。
 set -euo pipefail
 HERE="$(cd "$(dirname "$0")" && pwd)"
 ROOT="$(cd "$HERE/../.." && pwd)"
@@ -79,8 +79,7 @@ if [ -n "$CONSOLE" ]; then
   for _ in $(seq 1 60); do curl -fsS -m 2 -H 'Host: ops.localhost:18290' http://127.0.0.1:18290/healthz >/dev/null 2>&1 && break; sleep 1; done
   curl -fsS -m 10 -X POST -H 'Host: ops.localhost:18290' http://127.0.0.1:18290/console/test/probe >/dev/null || fail "console probe"
   "$TT" compose exec -T postgres psql -At -U console_owner -d console -c "select count(*) from biz.ops_node_status where node_id='n1'" | grep -qx 1 || fail "n1 was not probed"
-  "$TT" bootstrap eng1 >/dev/null || fail "bootstrap"
-  echo "ok: 探活和创建第一个账号"
+  echo "ok: 探活"
 fi
 
 echo "== AC-OPS-07-2：kill -9，3 分钟内告警；重启后 3 分钟内恢复"
@@ -137,5 +136,13 @@ wait_query "暂停的 n2 在 Prometheus 里是 down" 'up{job="im",node_id="n2"}'
 "$TT" resume n2
 curl -fsS -m 5 --retry 5 --retry-all-errors --retry-delay 1 http://127.0.0.1:18180/readyz >/dev/null || fail "n2 did not resume"
 echo "ok: 暂停和恢复"
+
+if [ -n "$CONSOLE" ]; then
+  echo "== console-server 联调（约 12 分钟）"
+  code="$("$TT" bootstrap accsuper | sed -n 's/.*: //p')"
+  [ -n "$code" ] || fail "bootstrap"
+  (cd "${TIANTING_CONSOLE_DIR:-$ROOT/../tianting-console-server}" && go build -o "$WORK/ops-accept" ./tools/ops-accept)
+  "$WORK/ops-accept" -tt "$TT" -code "$code" -admin-key-file "$WORK/admin.key" || fail "ops-accept"
+fi
 
 echo "== 环境验收通过"
