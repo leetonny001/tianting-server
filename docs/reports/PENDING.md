@@ -8,7 +8,6 @@
 | # | 日期 | 事项 | 为什么需要你 | 不处理的影响 | 建议 |
 |---|---|---|---|---|---|
 | P-9 | 2026-11-04 | M3 手工验收（FE-248 及任务单记录的手工项）：iPhone 15 Safari 安全区截图、macOS / iOS Safari 拼音输入录屏、VoiceOver | 需要真机和人工操作，AI 无法独立完成 | 不阻塞开发，但 M3 不能算验收完成 | 社交页面完成后一起做，一次跑完 M3 演示路径；回复"社交页面完成后我来做"或指定其他人 |
-| P-9 | 2026-11-04 | 配置 console-server 和 tianting-server 互读的只读部署密钥：运行 tianting-console-server 的 `scripts/setup-ci-deploy-keys.sh` | 密钥由所有者本人创建，AI 不创建（仓库已于 2026-11-04 由 Frank 创建并推送，console CI 运行） | console-server 的端到端测试里需要 im-server 的部分在 CI 跳过；testenv 不含 console-server；tianting-admin 的端到端测试也还没进 CI。不影响继续开发 | 运行脚本后告诉 AI，会重跑 testenv 并核对结果 |
 | P-10 | 2026-11-04 | 下载 SecLists 的 `10-million-password-list-top-10000.txt` 作为弱密码表（PRD-admin F-CON-04 规则 1，约 80KB，来自 github.com/danielmiessler/SecLists） | 下载外部文件需要确认 | 目前用手写的 406 条暂行表，能拦住常见长口令，但覆盖不如正式列表；不阻塞开发，上线前必须换 | 回复"可以下载"，或自己放到 `tianting-console-server/assets/weak-passwords.txt` |
 | P-6 | 2026-11-03 | 法务确认后台能否查看单聊消息正文（X-7），以及宿主 App 隐私政策是否要更新 | 法律问题 | 在确认前后台不开放单聊正文查看（默认 ①），不阻塞其他工作 | 找法务确认后回复结论 |
 | P-7 | 2026-11-03 | 三个不阻塞的确认项：① F-1 告警发给谁、是否 7×24、严重告警是否买电话 / 短信（PRD-ops；默认先发给 Frank：办公 IM 机器人 + 邮件）；② Q-1 群消息查看用单独的 `console-msgread` 凭证、主凭证永远不能读正文（PRD-admin；第二批开工前确认）；③ D-1 ws 错误里"哪个用户"统一用 `details.userId`，不单独加 `userId` 字段（PRD-core v1.3 12.3 节；M4 前确认） | 产品 / 安全口径 | 都有默认方案，不确认就按默认做 | 回复"按默认"或逐项改 |
@@ -19,6 +18,7 @@
 
 | # | 日期 | 事项 | 结论 |
 |---|---|---|---|
+| P-9 | 2026-11-04 | 创建 tianting-console-server 私有仓库，配置和 tianting-server 互读的只读部署密钥 | 2026-11-04 Frank 建仓库并运行 setup-ci-deploy-keys.sh；console-server 的 CI（含真实 im-server 的端到端、真实 MinIO 的 WORM）和带 console-server 的 testenv 都通过。tianting-admin 的端到端测试还没有进 CI |
 | P-5 | 2026-11-04 | 本机安装 Postgres | 2026-11-04 Frank 授权。`brew install postgresql@17`（17.11），只监听本机。没有开启开机自启：需要时运行 `$(brew --prefix postgresql@17)/bin/pg_ctl -D $(brew --prefix)/var/postgresql@17 -l $(brew --prefix)/var/postgresql@17/server.log start`。开发库 `tianting_console_dev`、测试库 `tianting_console_test` |
 | P-8 | 2026-11-03 | tianting-web 的 CI 读取私有 SDK / 服务端 | 2026-11-03 Frank 运行 setup-ci-deploy-keys.sh；CI 检出两个仓库、构建 SDK、检查、单元测试、构建、端到端测试全部通过 |
 | P-4 | 2026-11-03 | tianting-sdk-ts 的 CI 读取私有 tianting-server | 2026-11-03 Frank 运行 setup-ci-deploy-key.sh：只读部署密钥 + Actions secret；CI 集成测试已实际执行并通过。仓库保持私有 |

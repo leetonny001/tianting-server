@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # 环境验收（BE-320）：真实的 Prometheus、Alertmanager、Grafana、node_exporter、MinIO 和真实的 im-server 容器。约 15 分钟。
 # 覆盖 AC-OPS-07-2、07-3、07-6（通知内容）、90-5（不停 IM、只停观测组件）、04-6 和 08-11 的节点侧部分。
-# 加 --console 时也启动 console-server，并验证它对真实的节点、Prometheus、Alertmanager、Grafana 和 MinIO 能用。
+# 加 --console 时也启动 console-server，只验证容器能启动、经 TLS 签名探活节点、能创建账号。
+# 它对真实 Prometheus、Alertmanager、Grafana、MinIO 的读取（登录后的接口和页面）属于 CS-120，这里没有覆盖。
 set -euo pipefail
 HERE="$(cd "$(dirname "$0")" && pwd)"
 ROOT="$(cd "$HERE/../.." && pwd)"
