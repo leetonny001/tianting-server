@@ -16,7 +16,7 @@
 
 | 任务 | 状态 | 说明 |
 |---|---|---|
-| FE-500 ～ FE-506 第一批 | ✅ 2026-11-04 | tianting-ops `69e9f04`。15 个 Playwright 用例对真实 console-server + 两个 im-server + Postgres（运维严格 CSP），17 个单元测试、lint、`npm audit`（没有 high）、产物扫描全过。**Prometheus、Alertmanager、备份桶、Grafana 在开发机上是假服务**，真实联调等 BE-320。登录、账号、审计、通知、设置页面从 tianting-admin 复制（任务单说共用组件，目前没有抽成共享包，两边改动要同步）。CI 只跑 lint、单元测试、构建和扫描，端到端要等 P-9。**没有页面端到端覆盖的**：版本不一致和下线中（接口层测过）、AC-OPS-04-2、04-3、04-8（要真实 Prometheus）、09-5、09-6（im-server 行为） |
+| FE-500 ～ FE-506 第一批 | ✅ 2026-11-04 | tianting-ops `69e9f04`。14 个 Playwright 用例对真实 console-server + 两个 im-server + Postgres（运维严格 CSP），17 个单元测试、lint、`npm audit`（没有 high）、产物扫描全过。**Prometheus、Alertmanager、备份桶、Grafana 在开发机上是假服务**，真实联调等 BE-320。登录、账号、审计、通知、设置页面从 tianting-admin 复制（任务单说共用组件，目前没有抽成共享包，两边改动要同步）。CI 只跑 lint、单元测试、构建和扫描，端到端要等 P-9。**没有页面端到端覆盖的**：版本不一致和下线中（接口层测过）、AC-OPS-04-2、04-3、04-8（要真实 Prometheus）、09-5、09-6（im-server 行为） |
 | FE-507 安全与兼容收尾 | ⬜ 未开始 | 渗透测试配合、Edge / Safari / Firefox 和真机回归都要人工或测试环境。目前只在 Chrome 上跑过（含 375px 视口） |
 | FE-520 第二批 | ⏸ 第一批之后 | 告警静默 |
 | FE-521 第二批 / P1 | ⏸ 第一批之后 | 双人批准、审计导出入口 |
