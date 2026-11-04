@@ -5,6 +5,8 @@ global:
   scrape_interval: 15s
   evaluation_interval: 15s
 
+# 还要有 --query.timeout=30s --query.max-samples=20000000：面板查询经 Grafana 来自运维账号，
+# 贵查询不能把 Prometheus 拖到影响告警评估。不要加 --web.enable-admin-api、--web.enable-lifecycle。
 alerting:
   # webhook 收到的是原始标签，模板管不到这里：instance 是节点的"IP:端口"，发出去之前去掉（AC-OPS-07-6）。
   alert_relabel_configs:
