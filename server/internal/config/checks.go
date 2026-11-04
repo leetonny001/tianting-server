@@ -94,7 +94,8 @@ func productionChecks(cfg Server) []Check {
 	if containsWildcard(a.Gateway.AllowedOrigins) {
 		flag = append(flag, "IM_ALLOWED_ORIGINS must not contain * in production")
 	}
-	add("origins_no_wildcard", fmt.Sprintf("IM_ALLOWED_ORIGINS：%d 项，不含 *", len(a.Gateway.AllowedOrigins)), flag...)
+	// 写实际情况：开发环境允许 *，检查项的说明不能照抄"不含 *"。
+	add("origins_no_wildcard", fmt.Sprintf("IM_ALLOWED_ORIGINS：%d 项，%s", len(a.Gateway.AllowedOrigins), cmpText(containsWildcard(a.Gateway.AllowedOrigins), "含 *", "不含 *")), flag...)
 
 	// PRD-ops S-OPS-19。
 	flag = nil

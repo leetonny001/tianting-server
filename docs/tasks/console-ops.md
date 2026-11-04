@@ -15,8 +15,8 @@
 
 | 任务 | 状态 | 说明 |
 |---|---|---|
-| CS-100 ～ CS-103 运维空间与基座增量 | ⬜ 未开始 | 等基座 CS 任务（console.md）完成账号空间、会话、角色、审计框架 |
-| CS-110 ～ CS-117 运维业务模块 | ⬜ 未开始 | CS-111 依赖 BE-301 签名测试向量 |
+| CS-100 ～ CS-103 运维空间与基座增量 | ✅ 2026-11-04（只在本地） | console-server `1c6f6d6`。CS-102 的基座行为由基座用例在运维空间上参数化覆盖了一部分，没有逐条补 AC-OPS-01-x 的运维专用用例 |
+| CS-110 ～ CS-117 运维业务模块 | ✅ 2026-11-04（只在本地） | 接口清单 YAML 启动时比对；节点真实（两个 im-server，含 kill、SIGSTOP、TLS 身份校验）；Prometheus、Alertmanager、备份桶、Grafana 是假服务（Go 里假桶校验签名和权限）。排查按基座两阶段写审计：一次查询一条 intent + 一条 result，条数、partial、节点在 result 上（`deploy/ops/reconcile` 的导出要取 result）。私钥轮换：节点先配两把公钥，再换 keyFile 重启 console-server，没有做同一节点两把私钥热切换。**未验证**：真实 Grafana / Prometheus / MinIO 策略（BE-310、311、313）、AC-OPS-90-x 性能（CS-120）。备份清单对象键约定 `manifests/{source}/{finishedAt 补零 13 位}.json`，BE-313 要按这个写 |
 | CS-120 性能与对账验收 | ⬜ 未开始 | |
 | CS-130 ～ CS-132 第二批 / P1 | ⏸ 第一批之后 | |
 | CS-140 ～ CS-142 B6 | ⏸ 随 B6 | |
