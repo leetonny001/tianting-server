@@ -53,10 +53,27 @@ type copyCase struct {
 	Text string `json:"text"`
 }
 
+// tipCase 是提示消息的本地文案（PRD-ui F-UI-40）：me 是当前用户，names 是本地显示名（可含本机备注）。
+type tipCase struct {
+	Me    string            `json:"me"`
+	Names map[string]string `json:"names,omitempty"`
+	Tip   tipBody           `json:"tip"`
+	Text  string            `json:"text"`
+}
+
+type tipBody struct {
+	Kind    string   `json:"kind"`
+	Actor   string   `json:"actor"`
+	Targets []string `json:"targets"`
+	Count   int      `json:"count,omitempty"`
+	Text    string   `json:"text"`
+}
+
 type vectorFile struct {
 	Description string     `json:"description"`
 	Cases       []vcase    `json:"cases"`
 	Copy        []copyCase `json:"copy"`
+	Tips        []tipCase  `json:"tips"`
 }
 
 const now = int64(1_800_000_000_000)
@@ -163,6 +180,41 @@ func copyTable() []copyCase {
 		{"userSearch", 4292, "今天的次数已用完，明天再试"},
 		{"block", 4292, "今天的次数已用完，明天再试"},
 		{"unblock", 4292, "今天的次数已用完，明天再试"},
+		{"groupCreate", 4035, "{name} 不是你的好友，无法邀请"},
+		{"groupInvite", 4035, "{name} 不是你的好友，无法邀请"},
+		{"groupCreate", 4135, "{name} 加入的群聊已达上限"},
+		{"groupInvite", 4135, "{name} 加入的群聊已达上限"},
+		{"groupCreate", 4030, "当前不允许创建群聊"},
+		{"groupCreate", 4292, "今天的次数已用完，明天再试"},
+		{"groupTransfer", 4046, "对方已不在群里"},
+		{"groupSetAdmin", 4046, "对方已不在群里"},
+		{"groupSetAdmin", 4136, "管理员最多 10 人"},
+	}
+}
+
+// tipTable 是 PRD-ui F-UI-40 的文案表，三套 SDK 共用。
+func tipTable() []tipCase {
+	many := make([]string, 20)
+	for i := range many {
+		many[i] = "u" + string(rune('a'+i))
+	}
+	return []tipCase{
+		{Me: "alice", Tip: tipBody{Kind: "created", Actor: "alice", Targets: []string{"bob"}}, Text: "你创建了群聊"},
+		{Me: "bob", Tip: tipBody{Kind: "created", Actor: "alice", Targets: []string{"bob"}}, Text: "alice 创建了群聊"},
+		{Me: "alice", Tip: tipBody{Kind: "joined", Actor: "bob", Targets: []string{"carol", "dave"}}, Text: "bob 邀请 carol、dave 加入了群聊"},
+		{Me: "alice", Names: map[string]string{"carol": "卡姐"}, Tip: tipBody{Kind: "joined", Actor: "bob", Targets: []string{"carol", "dave"}}, Text: "bob 邀请 卡姐、dave 加入了群聊"},
+		{Me: "bob", Tip: tipBody{Kind: "joined", Actor: "bob", Targets: []string{"dave"}}, Text: "你邀请 dave 加入了群聊"},
+		{Me: "dave", Tip: tipBody{Kind: "joined", Actor: "bob", Targets: []string{"dave"}}, Text: "bob 邀请 你 加入了群聊"},
+		{Me: "alice", Tip: tipBody{Kind: "joined", Actor: "bob", Targets: many, Count: 35}, Text: "bob 邀请 ua、ub、uc 等 35 人 加入了群聊"},
+		{Me: "alice", Tip: tipBody{Kind: "joined", Actor: "bob", Targets: []string{"a", "b", "c", "d"}}, Text: "bob 邀请 a、b、c 等 4 人 加入了群聊"},
+		{Me: "x", Tip: tipBody{Kind: "ownerChanged", Actor: "alice", Targets: []string{"bob"}}, Text: "alice 将群主转让给 bob"},
+		{Me: "x", Tip: tipBody{Kind: "ownerChanged", Actor: "", Targets: []string{"bob"}}, Text: "bob 已成为群主"},
+		{Me: "x", Tip: tipBody{Kind: "ownerChanged", Actor: "", Targets: []string{}}, Text: "群主已退出群聊"},
+		{Me: "x", Tip: tipBody{Kind: "adminSet", Actor: "alice", Targets: []string{"bob"}}, Text: "alice 将 bob 设为管理员"},
+		{Me: "x", Tip: tipBody{Kind: "adminUnset", Actor: "alice", Targets: []string{"bob"}}, Text: "alice 取消了 bob 的管理员"},
+		{Me: "x", Tip: tipBody{Kind: "renamed", Actor: "alice", Targets: []string{}, Text: "周六球局"}, Text: "alice 修改群名为\"周六球局\""},
+		{Me: "x", Tip: tipBody{Kind: "noticeUpdated", Actor: "alice", Targets: []string{}, Text: "周六 9 点"}, Text: "alice 更新了群公告"},
+		{Me: "x", Tip: tipBody{Kind: "futureKind", Actor: "alice", Targets: []string{}}, Text: "[群通知]"},
 	}
 }
 
@@ -212,8 +264,9 @@ func TestSocialVectors(t *testing.T) {
 	path := filepath.Clean(vectorsPath)
 	if *update {
 		f := vectorFile{
-			Description: "关系同步共享用例（PRD-social 10.3 节）：按顺序执行 steps（begin = 开始一轮；page = 一页 socialSync 应答；event = socialChanged {ver}；ack = 自己发起的修改的 ack），然后按 nowMs（服务端时间）断言 expect。expect.requests 的键为 userId/direction，值为按服务端时间算出的状态；needSync 表示是否要立即（再）开始一轮。copy 是\"命令 + 错误码\"文案（{N} 取 strangerMsgLimit）。期望结果由服务端的 Go 参考客户端（server/e2e/socialmodel）生成。",
+			Description: "关系同步共享用例（PRD-social 10.3 节）：按顺序执行 steps（begin = 开始一轮；page = 一页 socialSync 应答；event = socialChanged {ver}；ack = 自己发起的修改的 ack），然后按 nowMs（服务端时间）断言 expect。expect.requests 的键为 userId/direction，值为按服务端时间算出的状态；needSync 表示是否要立即（再）开始一轮。copy 是\"命令 + 错误码\"文案（{N} 取 strangerMsgLimit，{name} 取对方显示名）；tips 是群提示消息的本地文案（PRD-ui F-UI-40）。期望结果由服务端的 Go 参考客户端（server/e2e/socialmodel）生成。",
 			Copy:        copyTable(),
+			Tips:        tipTable(),
 		}
 		for _, c := range cases() {
 			e, err := run(c)
@@ -249,7 +302,7 @@ func TestSocialVectors(t *testing.T) {
 			t.Errorf("%s:\n got %+v\nwant %+v", c.Name, got, c.Expect)
 		}
 	}
-	if !reflect.DeepEqual(f.Copy, copyTable()) {
-		t.Error("copy table differs from PRD-social 9.4; rerun with -update")
+	if !reflect.DeepEqual(f.Copy, copyTable()) || !reflect.DeepEqual(f.Tips, tipTable()) {
+		t.Error("copy / tip tables differ from the generator; rerun with -update")
 	}
 }
