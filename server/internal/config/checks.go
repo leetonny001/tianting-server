@@ -120,6 +120,11 @@ func productionChecks(cfg Server) []Check {
 	if cfg.OpsAddr != "" && !isLoopback(cfg.OpsAddr) && len(a.OpsAllowedCIDRs) == 0 {
 		flag = append(flag, "IM_OPS_ADDR "+cfg.OpsAddr+" is not a loopback address: IM_OPS_ALLOWED_CIDRS is required in production")
 	}
+	for _, c := range a.OpsAllowedCIDRs {
+		if c.Bits() == 0 {
+			flag = append(flag, "IM_OPS_ALLOWED_CIDRS must not contain "+c.String()+" in production")
+		}
+	}
 	add("ops_cidrs", fmt.Sprintf("IM_OPS_ALLOWED_CIDRS：%d 个网段", len(a.OpsAllowedCIDRs)), flag...)
 
 	flag = nil

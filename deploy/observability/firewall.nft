@@ -10,6 +10,8 @@ table inet tianting_observability {
 
     # IM_METRICS_ADDR：只有 Prometheus 能抓。
     tcp dport 9090 ip saddr != $PROMETHEUS_HOST iifname != "lo" drop comment "im metrics"
+    # 上面的 ip saddr 只匹配 IPv4：指标端口监听双栈时，IPv6 不能漏过去。
+    meta nfproto ipv6 tcp dport 9090 iifname != "lo" drop comment "im metrics ipv6"
 
     # 在 Prometheus / Alertmanager 主机上启用（和指标端口 9090 同号，分主机）：
     # tcp dport 9090 ip saddr != { $CONSOLE_HOST, $GRAFANA_HOST } iifname != "lo" drop comment "prometheus"
