@@ -87,11 +87,11 @@ func TestMetrics(t *testing.T) {
 
 	// 客户端正常退出（1000）和服务端踢下线（4012）分别计数。
 	bob.ws.Close(websocket.StatusNormalClosure, "logout")
-	e.waitMetric(`im_disconnects_total{by="client",code="1000"}`, "1")
+	e.waitMetric(`im_disconnects_total{by="client",code="1000",phase="session"}`, "1")
 	e.waitMetric(`im_connections{platform="pc"}`, "0")
 	e.adminPost("/admin/users/alice/force-logout", map[string]any{}, adminKey)
 	alice.expectKicked(protocol.KickBanned, protocol.CloseTokenRevoked, waitTimeout)
-	e.waitMetric(`im_disconnects_total{by="server",code="4012"}`, "1")
+	e.waitMetric(`im_disconnects_total{by="server",code="4012",phase="session"}`, "1")
 	e.waitMetric(`im_connections{platform="web"}`, "0")
 }
 
@@ -133,11 +133,11 @@ func TestCloseIsLogged(t *testing.T) {
 	}
 }
 
-// BE-051、Q5a：/metrics 和 /debug/pprof/ 只在单独的内网地址上提供，对外端口上没有。
+// BE-051、Q5a、AC-OPS-17-7：/metrics 只在单独的内网地址上，pprof 只在 IM_PPROF_ADDR 上，对外端口上都没有。
 func TestMetricsOnSeparateListener(t *testing.T) {
 	bin := buildServer(t)
-	metricsAddr := freeAddr(t)
-	srv := startServer(t, bin, filepath.Join(t.TempDir(), "im.db"), "IM_METRICS_ADDR="+metricsAddr)
+	metricsAddr, pprofAddr := freeAddr(t), freeAddr(t)
+	srv := startServer(t, bin, filepath.Join(t.TempDir(), "im.db"), "IM_METRICS_ADDR="+metricsAddr, "IM_PPROF_ADDR="+pprofAddr)
 	for _, path := range []string{"/metrics", "/debug/pprof/", "/debug/pprof/heap"} {
 		if resp, err := http.Get("http://" + srv.addr + path); err == nil {
 			resp.Body.Close()
@@ -146,9 +146,14 @@ func TestMetricsOnSeparateListener(t *testing.T) {
 			}
 		}
 	}
-	// pprof 在内网地址上可用（Q5a）。
-	if resp, err := http.Get("http://" + metricsAddr + "/debug/pprof/heap?debug=1"); err != nil || resp.StatusCode != http.StatusOK {
-		t.Errorf("pprof on metrics listener: %v %v", resp, err)
+	// pprof 在 IM_PPROF_ADDR 上可用，指标端口上没有（S-OPS-20）。
+	if resp, err := http.Get("http://" + pprofAddr + "/debug/pprof/heap?debug=1"); err != nil || resp.StatusCode != http.StatusOK {
+		t.Errorf("pprof listener: %v %v", resp, err)
+	} else {
+		resp.Body.Close()
+	}
+	if resp, err := http.Get("http://" + metricsAddr + "/debug/pprof/"); err != nil || resp.StatusCode != http.StatusNotFound {
+		t.Errorf("metrics listener serves pprof: %v %v", resp, err)
 	} else {
 		resp.Body.Close()
 	}

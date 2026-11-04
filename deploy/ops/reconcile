@@ -1,0 +1,99 @@
+#!/usr/bin/env python3
+"""运维对账（PRD-ops F-OPS-14 规则 5、S-OPS-26）：按请求 ID 双向比对 console-server 审计和各节点运维访问日志。
+
+用法：reconcile --audit audit.jsonl LOG [LOG ...]
+
+- audit.jsonl：审计导出，每行一条 {"action","requestId","count"?}，只看 ops.troubleshoot.query（用户级查询）。
+- LOG：im-server 的日志（slog 文本或 JSON 格式都可以），只看 msg="ops request" 且 endpoint 是 connections / disconnects 的行。
+
+比对：① 每条审计都能在节点日志里找到同一个 requestId，结果条数之和一致；② 每条用户级请求都有对应的审计。
+有差异时列出并退出码 1，没有差异退出码 0。日志里没有 userId，这个脚本也不输出 userId。
+"""
+import argparse
+import json
+import re
+import shlex
+import sys
+
+USER_ENDPOINTS = {"connections", "disconnects"}
+AUDIT_ACTION = "ops.troubleshoot.query"
+
+
+def parse_line(line):
+    """把一行日志解析成字段；不是运维访问日志时返回 None。"""
+    line = line.strip()
+    if not line:
+        return None
+    if line.startswith("{"):
+        try:
+            fields = json.loads(line)
+        except ValueError:
+            return None
+    else:
+        try:
+            parts = shlex.split(line)
+        except ValueError:
+            return None
+        fields = dict(p.split("=", 1) for p in parts if "=" in p)
+    if fields.get("msg") != "ops request":
+        return None
+    return fields
+
+
+def read_logs(paths):
+    """返回 {requestId: 结果条数之和}（只算签名通过的用户级请求）。"""
+    seen = {}
+    for path in paths:
+        with open(path, encoding="utf-8", errors="replace") as f:
+            for line in f:
+                fields = parse_line(line)
+                if not fields or fields.get("endpoint") not in USER_ENDPOINTS:
+                    continue
+                if fields.get("result") != "ok":
+                    continue
+                rid = fields.get("requestId", "")
+                seen[rid] = seen.get(rid, 0) + int(fields.get("count", 0))
+    return seen
+
+
+def read_audit(path):
+    out = {}
+    with open(path, encoding="utf-8") as f:
+        for line in f:
+            line = line.strip()
+            if not line:
+                continue
+            rec = json.loads(line)
+            if rec.get("action") == AUDIT_ACTION:
+                out[rec.get("requestId", "")] = rec.get("count")
+    return out
+
+
+def compare(audit, logs):
+    diffs = []
+    for rid, count in sorted(audit.items()):
+        if rid not in logs:
+            diffs.append(f"审计有、节点日志没有：requestId={rid}")
+        elif count is not None and int(count) != logs[rid]:
+            diffs.append(f"条数不一致：requestId={rid} 审计 {count}，节点日志 {logs[rid]}")
+    for rid in sorted(logs):
+        if rid not in audit:
+            diffs.append(f"节点日志有、审计没有：requestId={rid}")
+    return diffs
+
+
+def main(argv=None):
+    ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    ap.add_argument("--audit", required=True)
+    ap.add_argument("logs", nargs="+")
+    args = ap.parse_args(argv)
+    audit, logs = read_audit(args.audit), read_logs(args.logs)
+    diffs = compare(audit, logs)
+    for d in diffs:
+        print(d)
+    print(f"审计 {len(audit)} 条，节点请求 {len(logs)} 个，差异 {len(diffs)} 条")
+    return 1 if diffs else 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

@@ -14,6 +14,7 @@ type Client interface {
 	delivery.Session
 	Send(frame []byte) bool // 发不出去时返回 false
 	Kick(reason string)     // 下发 kicked 并关闭连接
+	Platform() string
 	// SessionInfo 返回连接元数据（IP 已脱敏，PRD-admin F-ADM-14 规则 2）。
 	SessionInfo() sessions.Conn
 }
@@ -22,7 +23,9 @@ type Client interface {
 type Hub struct {
 	mu    sync.RWMutex
 	users map[string]map[string]entry
-	seq   uint64 // 登记顺序，用于找出最早的连接
+	// platforms 是按平台的连接数（运维接口读取，不遍历 users，PRD-ops S-OPS-13）。
+	platforms map[string]int
+	seq       uint64 // 登记顺序，用于找出最早的连接
 }
 
 type entry struct {
@@ -31,7 +34,7 @@ type entry struct {
 }
 
 func New() *Hub {
-	return &Hub{users: make(map[string]map[string]entry)}
+	return &Hub{users: make(map[string]map[string]entry), platforms: make(map[string]int)}
 }
 
 // Register 登记连接。用户的连接数超过 max（<= 0 表示不限）时，把最早的连接移出在线表并返回，
@@ -48,6 +51,7 @@ func (h *Hub) Register(c Client, max int) (evicted []Client) {
 	}
 	h.seq++
 	conns[c.ConnID()] = entry{c: c, seq: h.seq}
+	h.platforms[c.Platform()]++
 	for max > 0 && len(conns) > max {
 		var oldest entry
 		for _, e := range conns {
@@ -56,6 +60,7 @@ func (h *Hub) Register(c Client, max int) (evicted []Client) {
 			}
 		}
 		delete(conns, oldest.c.ConnID())
+		h.decPlatform(oldest.c.Platform())
 		evicted = append(evicted, oldest.c)
 	}
 	return evicted
@@ -66,10 +71,30 @@ func (h *Hub) Unregister(c Client) {
 	h.mu.Lock()
 	defer h.mu.Unlock()
 	conns := h.users[c.UserID()]
-	delete(conns, c.ConnID())
+	if _, ok := conns[c.ConnID()]; ok { // 被挤掉的连接已经移除过，不能再减一次
+		delete(conns, c.ConnID())
+		h.decPlatform(c.Platform())
+	}
 	if len(conns) == 0 {
 		delete(h.users, c.UserID())
 	}
+}
+
+func (h *Hub) decPlatform(p string) {
+	if h.platforms[p]--; h.platforms[p] <= 0 {
+		delete(h.platforms, p)
+	}
+}
+
+// PlatformCounts 返回本节点按平台的连接数。
+func (h *Hub) PlatformCounts() map[string]int {
+	h.mu.RLock()
+	defer h.mu.RUnlock()
+	out := make(map[string]int, len(h.platforms))
+	for p, n := range h.platforms {
+		out[p] = n
+	}
+	return out
 }
 
 var _ delivery.Router = (*Hub)(nil)

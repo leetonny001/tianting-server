@@ -10,6 +10,7 @@ import (
 	"net/http"
 	"slices"
 	"strconv"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -19,6 +20,7 @@ import (
 	"tianting/server/internal/auth"
 	"tianting/server/internal/clock"
 	"tianting/server/internal/delivery"
+	"tianting/server/internal/disconnects"
 	"tianting/server/internal/hub"
 	"tianting/server/internal/metrics"
 	"tianting/server/internal/protocol"
@@ -76,20 +78,21 @@ var platforms = map[string]bool{"android": true, "ios": true, "web": true, "pc":
 
 // Gateway 是 /ws 的 http.Handler。
 type Gateway struct {
-	cfg        Config
-	verifier   TokenVerifier
-	revocation RevocationChecker
-	clock      clock.Clock
-	hub        *hub.Hub
-	handler    Handler
-	log        *slog.Logger
-	metrics    *metrics.Metrics
-	guard      *guard
-	nextID     atomic.Uint64
+	disconnects *disconnects.Buffer
+	cfg         Config
+	verifier    TokenVerifier
+	revocation  RevocationChecker
+	clock       clock.Clock
+	hub         *hub.Hub
+	handler     Handler
+	log         *slog.Logger
+	metrics     *metrics.Metrics
+	guard       *guard
+	nextID      atomic.Uint64
 }
 
 func New(cfg Config, verifier TokenVerifier, revocation RevocationChecker, clk clock.Clock, h *hub.Hub, handler Handler, m *metrics.Metrics, log *slog.Logger) *Gateway {
-	return &Gateway{cfg: cfg, verifier: verifier, revocation: revocation, clock: clk, hub: h, handler: handler, metrics: m, log: log, guard: newGuard(cfg.Guard, clk)}
+	return &Gateway{cfg: cfg, verifier: verifier, revocation: revocation, clock: clk, hub: h, handler: handler, metrics: m, log: log, guard: newGuard(cfg.Guard, clk), disconnects: disconnects.New()}
 }
 
 // ServeHTTP 处理一条新连接：
@@ -102,14 +105,21 @@ func New(cfg Config, verifier TokenVerifier, revocation RevocationChecker, clk c
 func (g *Gateway) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	// 在升级之前拒绝：被限流的 IP 不占用 WebSocket 连接和 goroutine。
 	ip := g.guard.clientIP(r)
+	maskedIP := sessions.MaskIP(ip)
 	if !g.guard.allowHandshake(ip) {
 		g.handshake(metrics.HandshakeRateLimited)
 		http.Error(w, "too many connection attempts", http.StatusTooManyRequests)
-		g.log.Info("conn rejected", "reason", "handshake rate limited", "ip", ip)
+		g.log.Info("conn rejected", "phase", disconnects.PhaseHandshake, "reason", "handshake rate limited", "ip", maskedIP)
 		return
 	}
 	ws, err := websocket.Accept(w, r, g.acceptOptions())
 	if err != nil {
+		// 库只在 Origin 不在白名单时用这句话（有 e2e 守护：升级依赖时文案变了会被发现）。
+		if strings.Contains(err.Error(), "not authorized") {
+			g.handshake(metrics.HandshakeOriginDenied)
+			g.log.Info("conn rejected", "phase", disconnects.PhaseHandshake, "reason", "origin not allowed", "ip", maskedIP)
+			return
+		}
 		g.log.Warn("websocket accept failed", "err", err)
 		return
 	}
@@ -119,10 +129,11 @@ func (g *Gateway) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	if !platforms[platform] {
 		g.handshake(metrics.HandshakeBadPlatform)
 		ws.Close(protocol.CloseInvalidPlatform, "invalid platform")
-		g.log.Info("conn rejected", "reason", "invalid platform", "platform", platform)
+		// 平台来自请求参数，不进日志原样输出（可能很长或带控制字符）。
+		g.handshakeRejected(handshakeReject{code: protocol.CloseInvalidPlatform, reason: "invalid platform", platform: "unknown", ip: maskedIP})
 		return
 	}
-	claims, authID, ok := g.authenticate(r.Context(), ws, ip)
+	claims, authID, ok := g.authenticate(r.Context(), ws, ip, maskedIP, platform)
 	if !ok {
 		return
 	}
@@ -133,7 +144,7 @@ func (g *Gateway) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		uid:         uid,
 		platform:    platform,
 		connectedAt: g.clock.Now().UnixMilli(),
-		maskedIP:    sessions.MaskIP(ip),
+		maskedIP:    maskedIP,
 		// 剩余有效期在鉴权时按注入的时钟算好：auth 的 ack 发出之后测试可能马上改时钟，
 		// 如果等 run 开始时再算，就会和改时钟赛跑（race 检测下变慢时会被立即踢下线）。
 		ttl:  claims.ExpiresAt.Sub(g.clock.Now()),
@@ -156,10 +167,43 @@ func (g *Gateway) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 	g.hub.Unregister(c)
 	g.metrics.Connections.WithLabelValues(platform).Dec()
-	g.metrics.Disconnects.WithLabelValues(metrics.Code(cr.code), cr.by).Inc()
+	g.metrics.Disconnects.WithLabelValues(metrics.Code(cr.code), cr.by, disconnects.PhaseSession).Inc()
+	now := g.clock.Now().UnixMilli()
+	g.disconnects.Add(disconnects.Record{
+		UserID: uid, ConnID: c.id, Phase: disconnects.PhaseSession, Platform: platform, Code: cr.code,
+		Reason: strings.TrimPrefix(cr.reason, kickedPrefix), By: cr.by, TS: now, DurationMs: max(now-c.connectedAt, 0), IP: maskedIP,
+	})
 	// 记录关闭码、原因和关闭方，用于排查"为什么掉线"（BE-051、AC-AUTH-05-1）。
-	g.log.Info("conn closed", "conn", c.id, "uid", uid, "platform", platform,
+	g.log.Info("conn closed", "conn", c.id, "uid", uid, "platform", platform, "phase", disconnects.PhaseSession, "ip", maskedIP,
 		"code", cr.code, "reason", cr.reason, "by", cr.by, "duration", time.Since(opened).Round(time.Millisecond))
+}
+
+// Disconnects 返回断开记录缓冲（运维接口读取）。
+func (g *Gateway) Disconnects() *disconnects.Buffer { return g.disconnects }
+
+const kickedPrefix = "kicked: "
+
+// handshakeReject 是一次握手阶段的拒绝。uid 只在 token 签名有效时填写（4011、4012、1011）：
+// 4010 的 token 里自称的 userId 不可信，不进日志也不写断开记录（PRD-ops F-OPS-09 规则 3）。
+type handshakeReject struct {
+	code     int
+	reason   string
+	platform string
+	ip       string
+	uid      string
+}
+
+func (g *Gateway) handshakeRejected(r handshakeReject) {
+	g.metrics.Disconnects.WithLabelValues(metrics.Code(r.code), "server", disconnects.PhaseHandshake).Inc()
+	attrs := []any{"code", r.code, "phase", disconnects.PhaseHandshake, "reason", r.reason, "platform", r.platform, "ip", r.ip}
+	if r.uid != "" {
+		attrs = append(attrs, "uid", r.uid)
+		g.disconnects.Add(disconnects.Record{
+			UserID: r.uid, Phase: disconnects.PhaseHandshake, Platform: r.platform, Code: r.code, Reason: r.reason,
+			By: "server", TS: g.clock.Now().UnixMilli(), IP: r.ip,
+		})
+	}
+	g.log.Info("conn rejected", attrs...)
 }
 
 func (g *Gateway) handshake(result string) { g.metrics.Handshakes.WithLabelValues(result).Inc() }
@@ -172,22 +216,30 @@ func (g *Gateway) acceptOptions() *websocket.AcceptOptions {
 }
 
 // authenticate 等待并校验第一帧 auth。失败时已经关闭连接，返回 ok=false。
-func (g *Gateway) authenticate(ctx context.Context, ws *websocket.Conn, ip string) (claims auth.Claims, reqID string, ok bool) {
+func (g *Gateway) authenticate(ctx context.Context, ws *websocket.Conn, ip, maskedIP, platform string) (claims auth.Claims, reqID string, ok bool) {
+	reject := func(code int, reason, uid string) {
+		g.handshakeRejected(handshakeReject{code: code, reason: reason, platform: platform, ip: maskedIP, uid: uid})
+	}
 	// 用定时器而不是 Read 的 ctx 超时：ctx 到期时库会直接断开底层连接，客户端拿不到 4401（同空闲超时）。
 	timer := time.AfterFunc(g.cfg.AuthTimeout, func() {
 		ws.Close(protocol.CloseAuthRequired, "auth timeout")
 	})
 	typ, data, err := ws.Read(ctx)
-	if !timer.Stop() || err != nil {
+	timedOut := !timer.Stop()
+	if timedOut || err != nil {
 		g.handshake(metrics.HandshakeAuthRequired)
-		g.log.Info("conn rejected", "reason", "no auth frame", "err", err)
+		if timedOut {
+			reject(protocol.CloseAuthRequired, "no auth frame", "")
+		} else { // 客户端在发 auth 之前就断开了：不是服务端关的，不计入断开指标
+			g.log.Info("conn rejected", "phase", disconnects.PhaseHandshake, "reason", "client left before auth", "platform", platform, "ip", maskedIP)
+		}
 		return auth.Claims{}, "", false
 	}
 	var in protocol.InFrame
 	if typ != websocket.MessageText || json.Unmarshal(data, &in) != nil || in.Cmd != protocol.CmdAuth || in.ID == "" {
 		g.handshake(metrics.HandshakeAuthRequired)
 		ws.Close(protocol.CloseAuthRequired, "first frame must be auth")
-		g.log.Info("conn rejected", "reason", "first frame is not auth", "cmd", in.Cmd)
+		reject(protocol.CloseAuthRequired, "first frame is not auth", "")
 		return auth.Claims{}, "", false
 	}
 	var req protocol.AuthReq
@@ -197,10 +249,11 @@ func (g *Gateway) authenticate(ctx context.Context, ws *websocket.Conn, ip strin
 	if errors.Is(verr, auth.ErrInvalidToken) {
 		// 只统计"凭证无效"：过期和被强制下线是正常用户也会遇到的情况，不算攻击。
 		if g.guard.authFailed(ip) {
-			g.log.Warn("ip blocked", "reason", "too many invalid tokens", "ip", ip, "for", g.cfg.Guard.BlockFor)
+			g.log.Warn("ip blocked", "reason", "too many invalid tokens", "ip", maskedIP, "for", g.cfg.Guard.BlockFor)
 		}
 		g.handshake(metrics.HandshakeTokenInvalid)
 		g.kick(ws, protocol.KickTokenInvalid)
+		reject(protocol.CloseTokenInvalid, protocol.KickTokenInvalid, "")
 		return auth.Claims{}, "", false
 	}
 	version, err := g.revocation.TokenVersion(ctx, claims.UserID)
@@ -208,16 +261,19 @@ func (g *Gateway) authenticate(ctx context.Context, ws *websocket.Conn, ip strin
 		g.log.Error("check revocation", "err", err, "uid", claims.UserID)
 		g.handshake(metrics.HandshakeError)
 		ws.Close(websocket.StatusInternalError, "internal error")
+		reject(protocol.CloseInternalError, "revocation check failed", claims.UserID)
 		return auth.Claims{}, "", false
 	}
 	if claims.Version < version {
 		g.handshake(metrics.HandshakeTokenRevoked)
 		g.kick(ws, protocol.KickBanned)
+		reject(protocol.CloseTokenRevoked, protocol.KickBanned, claims.UserID)
 		return auth.Claims{}, "", false
 	}
 	if errors.Is(verr, auth.ErrExpiredToken) {
 		g.handshake(metrics.HandshakeTokenExpired)
 		g.kick(ws, protocol.KickTokenExpired)
+		reject(protocol.CloseTokenExpired, protocol.KickTokenExpired, claims.UserID)
 		return auth.Claims{}, "", false
 	}
 	return claims, in.ID, true
@@ -279,13 +335,14 @@ func (c *conn) closeWith(code int, reason string) {
 	c.ws.Close(websocket.StatusCode(code), reason)
 }
 
-func (c *conn) ConnID() string { return c.id }
-func (c *conn) UserID() string { return c.uid }
+func (c *conn) ConnID() string   { return c.id }
+func (c *conn) Platform() string { return c.platform }
+func (c *conn) UserID() string   { return c.uid }
 
 // Kick 踢下线（异步，不阻塞调用方），只生效一次。
 func (c *conn) Kick(reason string) {
 	c.kickOnce.Do(func() {
-		c.closed.CompareAndSwap(nil, &closeReason{code: protocol.KickCloseCode[reason], reason: "kicked: " + reason, by: "server"})
+		c.closed.CompareAndSwap(nil, &closeReason{code: protocol.KickCloseCode[reason], reason: kickedPrefix + reason, by: "server"})
 		go c.gw.kick(c.ws, reason)
 	})
 }
@@ -368,7 +425,7 @@ func (c *conn) run(parent context.Context) closeReason {
 			}
 			code := int(websocket.CloseStatus(err))
 			if code < 0 { // 没有收到关闭帧：断网、进程被杀等
-				return closeReason{code: int(websocket.StatusAbnormalClosure), reason: "abnormal: " + err.Error(), by: "client"}
+				return closeReason{code: int(websocket.StatusAbnormalClosure), reason: "abnormal", by: "client"} // 不带 err 文本：里面有对端完整地址（PRD-ops S-OPS-09）
 			}
 			return closeReason{code: code, reason: code2name(code), by: "client"}
 		}

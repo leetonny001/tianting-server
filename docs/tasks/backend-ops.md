@@ -15,7 +15,8 @@
 
 | 任务 | 状态 | 说明 |
 |---|---|---|
-| BE-300 ～ BE-307 im-server 改造 | ⬜ 未开始 | BE-301 依赖 PRD-admin X-5 的签名库（F-KEY-03）和 `IM_ADMIN_ADDR`（F-KEY-01） |
+| BE-300 ～ BE-306 im-server 改造 | ✅ 2026-11-04 | 指标（`phase`、`origin_rejected`、`im_build_info`、`im_ready`、`im_draining`、Go 运行时、`im_ops_*`、基数检查）；`internal/opsapi` 5 个只读接口（来源网段 → 并发闸门 → Ed25519 签名 → 2 秒超时）；`internal/disconnects` 环形缓冲；`productionChecks` 启动保护与配置摘要共用；`MigrationReport` CLI 与接口共用、只读连接；pprof 移到 `IM_PPROF_ADDR`；`backup -manifest`；向量 `protocol/vectors/ops-sign.json`；e2e `TestOPS*` |
+| BE-307 压测与对账工具 | 🟡 工具完成，验收待 console-server | `im-loadtest -scenarios opsimpact`、`-metrics-addr` / `-ops-addr` / `-pprof-addr`；`deploy/ops/reconcile`、`deploy/ops/scan-logs`（`deploy/ops/test_tools.py`）。**AC-OPS-90-1、14-6、08-13 还没有验收**：要 1 万连接 + console-server 驱动（BE-321）。目前只做过 100 连接、每段 15 秒的冒烟，运维流量直接打节点接口 |
 | BE-310 ～ BE-314 部署配置 | ⬜ 未开始 | 依赖 BE-300（指标）、BE-306（备份清单） |
 | BE-320 ～ BE-321 测试环境与性能验收 | ⬜ 未开始 | |
 | BE-340 B6 部分 | ⏸ 随 B6 | Postgres 位置脱敏、库大小估算 |

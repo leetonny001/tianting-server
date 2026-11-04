@@ -119,10 +119,26 @@ scope：`POST /admin/users/token` → `token.issue`；`POST /admin/users/import`
 | `GET /readyz` | 可以接收流量（数据库可用、没有在下线）；不可用时 503 |
 | `GET /metrics` | Prometheus 指标。**只在单独的内网地址上提供**（`IM_METRICS_ADDR`，默认 `127.0.0.1:9090`，`off` 关闭），对外端口上没有：在线连接数（按平台）、握手结果、上行命令数和错误码分布、命令处理耗时、新消息数、关闭码分布（按关闭方）、被踢原因、慢连接数，以及 Go 运行时和进程指标 |
 
-`IM_METRICS_ADDR` 上还提供 `/debug/pprof/`（Go 性能分析），同样只在内网。内存规划和 `GOMEMLIMIT` 设置见 [内存分析](../docs/reports/mem-2026-11-03.md)。
+pprof 只在 `IM_PPROF_ADDR` 上提供（开发默认 `127.0.0.1:6060`，生产默认关闭，设置时必须是回环地址）；需要时通过 SSH 隧道访问。内存规划和 `GOMEMLIMIT` 设置见 [内存分析](../docs/reports/mem-2026-11-03.md)。
 
 备份、恢复、数据库迁移、计数器修复通过命令行完成（`im-server backup / restore / migrate / repair counters`），不提供 HTTP 接口。
 
+## 节点运维接口（PRD-ops F-OPS-16，只给 console-server）
+
+独立监听 `IM_OPS_ADDR`（默认 `127.0.0.1:9091`，`off` 关闭），配置了 `IM_OPS_PUBKEYS=kid:base64`（Ed25519 公钥，最多 2 把，用于轮换）才监听。生产环境必须配置 `IM_NODE_ID`，且要么配置公钥要么设 `IM_OPS_ADDR=off`；非回环地址必须有 `IM_OPS_TLS_CERT` / `IM_OPS_TLS_KEY` 和 `IM_OPS_ALLOWED_CIDRS`。
+
+签名和管理接口同一实现（8 行待签名串），但调用方固定为 `console-ops`，`X-IM-Target-Node` 必填且等于本节点 ID；管理接口的调用方不能访问，`console-ops` 也不能访问 `/admin/*`。向量：[`vectors/ops-sign.json`](vectors/ops-sign.json)。检查顺序：来源网段（403 / 4030）→ 并发闸门（同时最多 4 个，429 / 4290）→ 签名（401 / 4017）→ 处理超时 2 秒（503 / 5030）。
+
+| 接口 | 请求 | 响应 |
+|---|---|---|
+| `GET /internal/v1/node` | — | `{nodeId, version, startedAt, ready, draining, connections:{平台:数量}, totalConns, liveBytes, heapBytes, stackBytes, goMemLimit, goroutines, disconnectBufferFrom}`（只读 `runtime/metrics`，不触发 STW） |
+| `POST /internal/v1/connections:query` | `{userId}` | `{connections:[{connId, platform, connectedAt, node, ip, queueLen}]}`：用户不存在和不在线响应相同；`ip` 已脱敏 |
+| `POST /internal/v1/disconnects:query` | `{userId, limit≤50}` | `{records:[{userId, connId, phase, platform, code, reason, by, ts, durationMs, ip}], bufferFrom}`：新的在前；每用户 50 条、全节点 2 万条，重启清空 |
+| `GET /internal/v1/config` | — | 脱敏的配置摘要（`env`、`productionChecks`、`keys`、`network`、`limits`、`database`、`switches`）：密钥只有 kid、数量和是否达标 |
+| `GET /internal/v1/db` | — | `{type, location, connected, version, migrations:[{version, name, appliedAt, checksumOk, pending}], pending}`：只读连接，和 `im-server migrate status` 同一个函数 |
+
+每次请求写一行访问日志（`msg="ops request"`）：`endpoint`、`kid`、`operator`、`requestId`、`count`、`durationMs`、`peer`、`result`，失败时带 `failure`；不写 userId、密钥和签名。对账用 `deploy/ops/reconcile`。
+
 ## 仅测试 / 演示环境
 
-`POST /admin/test/drop-ack`、`/admin/test/skip-delivery`、`/admin/test/clock`、`/admin/test/faults`（`{adminAuditWrite: "fail" | ""}`，模拟审计写失败）、社交测试设施（PRD-social 5.6 节）`/admin/test/social/drop-events {userId, type, count}`、`/admin/test/social/purge`、`/admin/test/social/seed {friends?, blocks?, requests?, groupMembers?, updatedAt?}`、`/admin/test/limits/reset {userId}`、`/admin/test/invalidate {topic, key}`（双节点测试环境：其他进程转发来的缓存失效，`IM_TEST_PEERS` 配置转发目标，`IM_TEST_INVALIDATION=off` 时不发也不收）（`IM_TEST_MODE=1`），`POST /demo/login {username, nickname?}`（`IM_DEMO_LOGIN=1`，不需要管理密钥；`nickname` 去首尾空白后 1～32 个码点，登录时覆盖该用户的昵称，超长 400 / 4000，不传或为空不改）。生产环境（`IM_ENV=production`）开启这两个开关会拒绝启动。
+`POST /admin/test/drop-ack`、`/admin/test/skip-delivery`、`/admin/test/clock`、`/admin/test/faults`（`{adminAuditWrite: "fail" | "", opsDelayMs?, storePing: "fail" | ""}`：模拟审计写失败、运维接口延迟、就绪检查失败）、社交测试设施（PRD-social 5.6 节）`/admin/test/social/drop-events {userId, type, count}`、`/admin/test/social/purge`、`/admin/test/social/seed {friends?, blocks?, requests?, groupMembers?, updatedAt?}`、`/admin/test/limits/reset {userId}`、`/admin/test/invalidate {topic, key}`（双节点测试环境：其他进程转发来的缓存失效，`IM_TEST_PEERS` 配置转发目标，`IM_TEST_INVALIDATION=off` 时不发也不收）（`IM_TEST_MODE=1`），`POST /demo/login {username, nickname?}`（`IM_DEMO_LOGIN=1`，不需要管理密钥；`nickname` 去首尾空白后 1～32 个码点，登录时覆盖该用户的昵称，超长 400 / 4000，不传或为空不改）。生产环境（`IM_ENV=production`）开启这两个开关会拒绝启动。

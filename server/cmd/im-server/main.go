@@ -21,12 +21,14 @@
 //	IM_ADMIN_ADDR         管理接口 /admin/* 的监听地址，默认 127.0.0.1:8081；off 关闭。对外端口上没有管理接口
 //	IM_ADMIN_TLS_CERT / IM_ADMIN_TLS_KEY  管理端口的 TLS 证书和私钥；production 下管理地址不是回环地址时必须配置
 //	IM_ADMIN_ALLOWED_CIDRS 管理端口允许的来源网段（逗号分隔），只看 TCP 对端地址
-//	IM_OPS_ADDR / IM_PPROF_ADDR  预留（运维接口、pprof），已启用的监听地址两两不能相同
+//	IM_OPS_ADDR           节点运维接口（只给 console-server），默认 127.0.0.1:9091；off 关闭；配置了 IM_OPS_PUBKEYS 才监听
+//	IM_OPS_PUBKEYS        运维公钥 kid:base64（Ed25519，最多 2 把）；IM_OPS_TLS_CERT / KEY、IM_OPS_ALLOWED_CIDRS 见 PRD-ops F-OPS-16
+//	IM_PPROF_ADDR         pprof，开发默认 127.0.0.1:6060，生产默认关闭，必须是回环地址；已启用的监听地址两两不能相同
 //	IM_ALLOWED_ORIGINS    浏览器 Origin 白名单，逗号分隔；默认只允许本机
 //	IM_MAX_CONNS_PER_USER 每个用户的连接上限，默认 10
 //	IM_IDLE_TIMEOUT       空闲超时（如 90s），默认 90s
 //	IM_NODE_ID            节点标识（集群部署时设置），默认随机
-//	IM_METRICS_ADDR       Prometheus 指标和 pprof 的监听地址（只给内网），默认 127.0.0.1:9090；off 关闭
+//	IM_METRICS_ADDR       Prometheus 指标的监听地址（只给内网），默认 127.0.0.1:9090；off 关闭
 //	IM_HANDSHAKE_RATE / IM_HANDSHAKE_BURST  每个 IP 的握手速率 / 突发上限，默认 20 / 50（压测时调高）
 //	IM_TRUSTED_PROXIES    可信反向代理（逗号分隔的 IP 或 CIDR），只信任它们传来的 X-Forwarded-For
 //	IM_DRAIN_DELAY        下线时先摘流量再踢连接的等待时间，默认 0（production 建议 5s）
@@ -38,14 +40,19 @@ package main
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
+	"encoding/json"
 	"errors"
 	"flag"
 	"fmt"
+	"io"
 	"log/slog"
 	"net/http"
 	"net/http/pprof"
 	"os"
 	"os/signal"
+	"path/filepath"
 	"syscall"
 	"time"
 
@@ -126,10 +133,6 @@ func serve(logger *slog.Logger) error {
 	if cfg.MetricsAddr != "" {
 		mux := http.NewServeMux()
 		mux.Handle("GET /metrics", a.MetricsHandler())
-		// pprof 只挂在这个内网地址上（不用空白导入：那会注册到全局 DefaultServeMux，容易被意外暴露到对外端口）。
-		mux.HandleFunc("GET /debug/pprof/", pprof.Index)
-		mux.HandleFunc("GET /debug/pprof/profile", pprof.Profile)
-		mux.HandleFunc("GET /debug/pprof/trace", pprof.Trace)
 		metricsSrv = &http.Server{Addr: cfg.MetricsAddr, Handler: mux, ReadHeaderTimeout: 5 * time.Second}
 		go func() {
 			logger.Info("metrics listening", "addr", cfg.MetricsAddr)
@@ -139,6 +142,41 @@ func serve(logger *slog.Logger) error {
 		}()
 	}
 	// /admin/* 单独监听内网地址（PRD-admin F-KEY-01）。
+	// 运维接口（PRD-ops F-OPS-16）：独立监听，配置了 TLS 就走 TLS。没有配置公钥时不监听。
+	var opsSrv *http.Server
+	if h := a.OpsHandler(); cfg.OpsAddr != "" && h != nil {
+		opsSrv = &http.Server{Addr: cfg.OpsAddr, Handler: h, ReadHeaderTimeout: 5 * time.Second, ReadTimeout: 5 * time.Second, WriteTimeout: 5 * time.Second, MaxHeaderBytes: 16 << 10}
+		go func() {
+			logger.Info("ops api listening", "addr", cfg.OpsAddr, "tls", cfg.OpsTLSCert != "")
+			var err error
+			if cfg.OpsTLSCert != "" {
+				err = opsSrv.ListenAndServeTLS(cfg.OpsTLSCert, cfg.OpsTLSKey)
+			} else {
+				err = opsSrv.ListenAndServe()
+			}
+			if err != nil && !errors.Is(err, http.ErrServerClosed) {
+				errc <- fmt.Errorf("ops server: %w", err)
+			}
+		}()
+	}
+
+	// pprof（PRD-ops F-OPS-17 规则 3）：只在回环地址上，和指标分开。不用空白导入：那会注册到全局 DefaultServeMux。
+	// 监听失败只告警：开发机上同时跑多个进程时默认端口会冲突，排查工具不值得让服务起不来。
+	var pprofSrv *http.Server
+	if cfg.PprofAddr != "" {
+		mux := http.NewServeMux()
+		mux.HandleFunc("GET /debug/pprof/", pprof.Index)
+		mux.HandleFunc("GET /debug/pprof/profile", pprof.Profile)
+		mux.HandleFunc("GET /debug/pprof/trace", pprof.Trace)
+		pprofSrv = &http.Server{Addr: cfg.PprofAddr, Handler: mux, ReadHeaderTimeout: 5 * time.Second}
+		go func() {
+			logger.Info("pprof listening", "addr", cfg.PprofAddr)
+			if err := pprofSrv.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
+				logger.Warn("pprof server not available", "err", err)
+			}
+		}()
+	}
+
 	var adminSrv *http.Server
 	if cfg.AdminAddr != "" {
 		adminSrv = &http.Server{
@@ -188,6 +226,12 @@ func serve(logger *slog.Logger) error {
 	if adminSrv != nil {
 		_ = adminSrv.Shutdown(shutdownCtx)
 	}
+	if opsSrv != nil {
+		_ = opsSrv.Shutdown(shutdownCtx)
+	}
+	if pprofSrv != nil {
+		_ = pprofSrv.Shutdown(shutdownCtx)
+	}
 	return srv.Shutdown(shutdownCtx)
 }
 
@@ -204,13 +248,29 @@ func migrate(args []string) error {
 		}
 		fmt.Printf("applied %d migration(s) %v to %s\n", len(done), done, *db)
 	case "status":
-		st, err := store.SQLiteStatus(ctx, *db)
+		// 和运维接口 /internal/v1/db 同一个函数（PRD-ops S-OPS-22）。
+		rows, err := store.SQLiteMigrationReport(ctx, *db)
 		if err != nil {
 			return err
 		}
-		fmt.Printf("%s: applied %v\n", *db, st.Applied)
-		for _, m := range st.Pending {
-			fmt.Printf("  pending %04d_%s\n", m.Version, m.Name)
+		fmt.Printf("%s:\n", *db)
+		bad := 0
+		for _, r := range rows {
+			switch {
+			case r.Pending:
+				fmt.Printf("  %04d_%s  pending\n", r.Version, r.Name)
+			case r.Unknown:
+				bad++
+				fmt.Printf("  %04d_%s  applied %s  unknown to this binary\n", r.Version, r.Name, time.UnixMilli(r.AppliedAt).UTC().Format(time.RFC3339))
+			case !r.ChecksumOK:
+				bad++
+				fmt.Printf("  %04d_%s  applied %s  checksum mismatch\n", r.Version, r.Name, time.UnixMilli(r.AppliedAt).UTC().Format(time.RFC3339))
+			default:
+				fmt.Printf("  %04d_%s  applied %s  checksum ok\n", r.Version, r.Name, time.UnixMilli(r.AppliedAt).UTC().Format(time.RFC3339))
+			}
+		}
+		if bad > 0 {
+			return fmt.Errorf("%d migration(s) do not match this binary", bad)
 		}
 	default:
 		return errors.New("usage: im-server migrate [-db FILE] up|status")
@@ -239,22 +299,84 @@ func repair(args []string) error {
 	return nil
 }
 
+// backupManifest 是备份清单（PRD-ops S-OPS-23）：加密、上传和 textfile 指标由 deploy/ops 的定时脚本完成。
+// 文件名不含目录，失败原因只有摘要：清单会上传到对象存储，不能带路径和凭证。
+type backupManifest struct {
+	Source           string `json:"source"`
+	Trigger          string `json:"trigger"`
+	StartedAt        int64  `json:"startedAt"`
+	FinishedAt       int64  `json:"finishedAt"`
+	File             string `json:"file"`
+	Size             int64  `json:"size"`
+	SHA256           string `json:"sha256"`
+	Verified         bool   `json:"verified"`
+	MigrationVersion int    `json:"migrationVersion"`
+	Host             string `json:"host"`
+	Result           string `json:"result"`
+	Error            string `json:"error,omitempty"`
+}
+
 func backup(args []string) error {
 	fs := flag.NewFlagSet("backup", flag.ExitOnError)
 	db := fs.String("db", dbPath(), "database file")
 	out := fs.String("o", "", "backup file to create (must not exist)")
+	manifest := fs.String("manifest", "", "write a JSON manifest to this file")
+	trigger := fs.String("trigger", "manual", "recorded in the manifest: manual or scheduled")
 	fs.Parse(args)
 	if *out == "" {
-		return errors.New("usage: im-server backup -o FILE [-db FILE]")
+		return errors.New("usage: im-server backup -o FILE [-db FILE] [-manifest FILE] [-trigger manual|scheduled]")
 	}
-	ctx := context.Background()
-	if err := store.BackupSQLite(ctx, *db, *out); err != nil {
-		return err
+	host, _ := os.Hostname()
+	m := backupManifest{Source: "im", Trigger: *trigger, StartedAt: time.Now().UnixMilli(), File: filepath.Base(*out), Host: host, Result: "ok"}
+	runErr := runBackup(*db, *out, &m)
+	m.FinishedAt = time.Now().UnixMilli()
+	if runErr != nil {
+		m.Result = "failed"
 	}
-	if _, err := store.VerifySQLiteFile(ctx, *out); err != nil {
-		return fmt.Errorf("backup written but failed verification: %w", err)
+	if *manifest != "" {
+		raw, err := json.MarshalIndent(m, "", "  ")
+		if err != nil {
+			return err
+		}
+		if err := os.WriteFile(*manifest, raw, 0o600); err != nil {
+			return err
+		}
+	}
+	if runErr != nil {
+		return runErr
 	}
 	fmt.Printf("backup of %s written to %s (verified)\n", *db, *out)
+	return nil
+}
+
+func runBackup(db, out string, m *backupManifest) error {
+	ctx := context.Background()
+	if err := store.BackupSQLite(ctx, db, out); err != nil {
+		m.Error = "backup failed"
+		return err
+	}
+	st, err := store.VerifySQLiteFile(ctx, out)
+	if err != nil {
+		m.Error = "verification failed"
+		return fmt.Errorf("backup written but failed verification: %w", err)
+	}
+	m.Verified = true
+	for _, v := range st.Applied {
+		m.MigrationVersion = max(m.MigrationVersion, v)
+	}
+	f, err := os.Open(out) // #nosec G304 -- 路径是运维传入的备份文件
+	if err != nil {
+		m.Error = "cannot read backup"
+		return err
+	}
+	defer f.Close()
+	h := sha256.New()
+	n, err := io.Copy(h, f)
+	if err != nil {
+		m.Error = "cannot read backup"
+		return err
+	}
+	m.Size, m.SHA256 = n, hex.EncodeToString(h.Sum(nil))
 	return nil
 }
 

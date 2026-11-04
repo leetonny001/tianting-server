@@ -9,7 +9,9 @@ package metrics
 
 import (
 	"net/http"
+	"regexp"
 	"strconv"
+	"strings"
 
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/collectors"
@@ -26,7 +28,21 @@ const (
 	HandshakeTokenRevoked = "token_revoked"
 	HandshakeTokenExpired = "token_expired"
 	HandshakeError        = "error"
+	HandshakeOriginDenied = "origin_rejected"
 )
+
+// 运维接口的结果（im_ops_requests_total 的 result 标签，PRD-ops S-OPS-06）。
+const (
+	OpsOK           = "ok"
+	OpsUnauthorized = "unauthorized"
+	OpsForbidden    = "forbidden_cidr"
+	OpsThrottled    = "throttled"
+	OpsError        = "error"
+)
+
+// goRuntimeMetrics 是内存和 GC 面板用到的 runtime/metrics（PRD-ops S-OPS-05）：
+// go_gc_gomemlimit_bytes、go_gc_heap_live_bytes、go_cpu_classes_gc_total_cpu_seconds_total、go_cpu_classes_total_cpu_seconds_total。
+var goRuntimeMetrics = regexp.MustCompile(`^/(gc/gomemlimit:bytes|gc/heap/live:bytes|cpu/classes/gc/total:cpu-seconds|cpu/classes/total:cpu-seconds)$`)
 
 // Metrics 是全部指标。每个 App 一份，测试之间互不影响。
 type Metrics struct {
@@ -43,6 +59,8 @@ type Metrics struct {
 	// AdminAuthFailures 是管理接口签名鉴权失败数，按原因（missing / caller / signature / window / nonce / node）。
 	// 失败不写审计（防刷爆），靠这个指标发现异常（PRD-admin F-KEY-03 规则 6）。
 	AdminAuthFailures *prometheus.CounterVec
+	OpsRequests       *prometheus.CounterVec // 运维接口请求数，按接口和结果
+	OpsInflight       prometheus.Gauge       // 正在处理的运维请求数
 }
 
 // New 创建并注册全部指标，另外带上 Go 运行时和进程指标。
@@ -58,8 +76,8 @@ func New() *Metrics {
 			Name: "im_handshakes_total", Help: "WebSocket handshakes by result.",
 		}, []string{"result"}),
 		Disconnects: prometheus.NewCounterVec(prometheus.CounterOpts{
-			Name: "im_disconnects_total", Help: "Closed connections by close code and which side closed.",
-		}, []string{"code", "by"}),
+			Name: "im_disconnects_total", Help: "Closed connections by close code, which side closed and phase (handshake / session).",
+		}, []string{"code", "by", "phase"}),
 		Kicks: prometheus.NewCounterVec(prometheus.CounterOpts{
 			Name: "im_kicks_total", Help: "Kicked connections by reason.",
 		}, []string{"reason"}),
@@ -80,7 +98,15 @@ func New() *Metrics {
 		AdminAuthFailures: prometheus.NewCounterVec(prometheus.CounterOpts{
 			Name: "im_admin_auth_failures_total", Help: "Rejected signed admin API requests by reason.",
 		}, []string{"reason"}),
+		OpsRequests: prometheus.NewCounterVec(prometheus.CounterOpts{
+			Name: "im_ops_requests_total", Help: "Node ops API requests by endpoint and result.",
+		}, []string{"endpoint", "result"}),
+		OpsInflight: prometheus.NewGauge(prometheus.GaugeOpts{
+			Name: "im_ops_inflight", Help: "Node ops API requests being processed.",
+		}),
 	}
+	f(m.OpsRequests)
+	f(m.OpsInflight)
 	f(m.Connections)
 	f(m.Handshakes)
 	f(m.Disconnects)
@@ -90,9 +116,30 @@ func New() *Metrics {
 	f(m.Messages)
 	f(m.AdminAuthFailures)
 	f(m.SlowConsumers)
-	f(collectors.NewGoCollector())
+	f(collectors.NewGoCollector(collectors.WithGoCollectorRuntimeMetrics(collectors.GoRuntimeMetricsRule{Matcher: goRuntimeMetrics})))
 	f(collectors.NewProcessCollector(collectors.ProcessCollectorOpts{}))
 	return m
+}
+
+// RegisterNode 注册构建信息和就绪 / 下线状态（PRD-ops S-OPS-03、04）。ready、draining 和 /readyz、优雅下线同一来源，抓取时现算。
+func (m *Metrics) RegisterNode(version, goVersion, nodeID string, ready, draining func() bool) {
+	build := prometheus.NewGaugeVec(prometheus.GaugeOpts{
+		Name: "im_build_info", Help: "Build information; the value is always 1.",
+	}, []string{"version", "go_version", "node_id"})
+	build.WithLabelValues(version, goVersion, nodeID).Set(1)
+	m.registry.MustRegister(build,
+		prometheus.NewGaugeFunc(prometheus.GaugeOpts{Name: "im_ready", Help: "1 when the node can accept traffic (same check as /readyz)."}, boolGauge(ready)),
+		prometheus.NewGaugeFunc(prometheus.GaugeOpts{Name: "im_draining", Help: "1 while the node is shutting down."}, boolGauge(draining)),
+	)
+}
+
+func boolGauge(fn func() bool) func() float64 {
+	return func() float64 {
+		if fn() {
+			return 1
+		}
+		return 0
+	}
 }
 
 // Handler 返回 /metrics 的 http.Handler。
@@ -121,3 +168,76 @@ func CmdLabel(cmd string) string {
 
 // Code 把错误码 / 关闭码转成标签值。
 func Code(code int) string { return strconv.Itoa(code) }
+
+// 标签取值的白名单（PRD-ops AC-OPS-90-4）。code 另外按数字检查；build_info 的三个标签来自配置，取值有限。
+var forbiddenLabels = map[string]bool{"userid": true, "user_id": true, "uid": true, "conv": true, "convid": true, "conv_id": true, "conn": true, "connid": true, "conn_id": true}
+
+var codeLabel = regexp.MustCompile(`^(\d+|unknown)$`)
+
+var allowedLabelValues = map[string]map[string]bool{
+	"by":        set("client", "server"),
+	"phase":     set("handshake", "session"),
+	"platform":  set("android", "ios", "web", "pc", "unknown"),
+	"conv_type": set("c2c", "group", "room", "unknown"),
+	"result": set(HandshakeOK, HandshakeRateLimited, HandshakeBadPlatform, HandshakeAuthRequired, HandshakeTokenInvalid,
+		HandshakeTokenRevoked, HandshakeTokenExpired, HandshakeError, HandshakeOriginDenied, OpsOK, OpsUnauthorized, OpsForbidden, OpsThrottled, OpsError, "unknown"),
+	"reason": set("tokenInvalid", "tokenExpired", "banned", "suspended", "replaced", "tooManyConnections", "serverShutdown",
+		"missing", "caller", "signature", "window", "nonce", "node", "unknown"),
+	"endpoint": set("node", "connections", "disconnects", "config", "db", "unknown"),
+}
+
+func set(values ...string) map[string]bool {
+	m := make(map[string]bool, len(values))
+	for _, v := range values {
+		m[v] = true
+	}
+	return m
+}
+
+// LabelProblems 检查全部 im_* 指标的标签：没有用户、会话、连接维度，取值都在枚举内。返回发现的问题。
+func (m *Metrics) LabelProblems() []string {
+	mfs, err := m.registry.Gather()
+	if err != nil {
+		return []string{err.Error()}
+	}
+	var out []string
+	for _, mf := range mfs {
+		name := mf.GetName()
+		if len(name) < 3 || name[:3] != "im_" || name == "im_build_info" {
+			continue
+		}
+		for _, metric := range mf.GetMetric() {
+			for _, l := range metric.GetLabel() {
+				if p := labelProblem(l.GetName(), l.GetValue()); p != "" {
+					out = append(out, name+": "+p)
+				}
+			}
+		}
+	}
+	return out
+}
+
+func labelProblem(name, value string) string {
+	if forbiddenLabels[strings.ToLower(name)] {
+		return "forbidden label " + name
+	}
+	switch name {
+	case "code":
+		if !codeLabel.MatchString(value) {
+			return "code value " + value
+		}
+	case "cmd":
+		if value != "unknown" && !knownCmds[value] {
+			return "cmd value " + value
+		}
+	default:
+		allowed, ok := allowedLabelValues[name]
+		if !ok {
+			return "label not in the allow list: " + name
+		}
+		if !allowed[value] {
+			return name + " value " + value
+		}
+	}
+	return ""
+}

@@ -4,6 +4,7 @@ package app
 import (
 	"context"
 	"crypto/rand"
+	"database/sql"
 	"encoding/hex"
 	"encoding/json"
 	"errors"
@@ -11,6 +12,7 @@ import (
 	"log/slog"
 	"net/http"
 	"net/netip"
+	"runtime"
 	"sync/atomic"
 	"time"
 
@@ -24,6 +26,7 @@ import (
 	"tianting/server/internal/hub"
 	"tianting/server/internal/logic"
 	"tianting/server/internal/metrics"
+	"tianting/server/internal/opsapi"
 	"tianting/server/internal/protocol"
 	"tianting/server/internal/ratelimit"
 	"tianting/server/internal/social"
@@ -59,6 +62,10 @@ type Config struct {
 	SendRate            int  // 每个用户每秒可发消息数，0 表示默认值 20（PRD F-MSG-07）
 	Version             string
 	Logger              *slog.Logger
+	// 节点运维接口（PRD-ops F-OPS-16）：OpsKeys 为空时不提供。ConfigSummary 生成脱敏的配置摘要（由 config 包提供）。
+	OpsKeys         []opsapi.Key
+	OpsAllowedCIDRs []netip.Prefix
+	ConfigSummary   func(version, nodeID string) any
 }
 
 const defaultSendRate = 20
@@ -75,6 +82,11 @@ type App struct {
 	draining    atomic.Bool
 	stop        chan struct{} // 关闭后台任务（社交清理）
 	loopback    *cache.HTTPLoopback
+	ops         *opsapi.Server
+	opsDB       *sql.DB // 运维接口的只读连接，不和消息写入共用
+	// 测试模式的故障注入（PRD-ops S-OPS-24）：生产环境没有设置它们的路由。
+	opsDelay atomic.Int64
+	pingFail atomic.Bool
 }
 
 // SetTestPeers 设置双节点测试环境的广播目标（只在测试模式下有效；TestInvalidationOff 时忽略）。
@@ -145,7 +157,31 @@ func New(cfg Config) (*App, error) {
 	if gw.NodeID == "" {
 		gw.NodeID = randomNodeID()
 	}
-	mux.Handle("GET /ws", gateway.New(gw, signer, st, clk, h, svc, m, cfg.Logger))
+	gws := gateway.New(gw, signer, st, clk, h, svc, m, cfg.Logger)
+	mux.Handle("GET /ws", gws)
+	m.RegisterNode(cfg.Version, runtime.Version(), gw.NodeID, func() bool {
+		ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+		defer cancel()
+		return a.ready(ctx) == nil
+	}, a.draining.Load)
+	if len(cfg.OpsKeys) > 0 {
+		if a.opsDB, err = store.OpenSQLiteReadOnly(cfg.DBPath); err != nil {
+			st.Close()
+			return nil, err
+		}
+		a.ops = opsapi.New(opsapi.Deps{
+			NodeID: gw.NodeID, Version: cfg.Version, StartedAt: time.Now(), Keys: cfg.OpsKeys, AllowedCIDRs: cfg.OpsAllowedCIDRs,
+			Clock: clk, Metrics: m, Log: cfg.Logger.With("log", "ops_access"), Ready: a.ready, Draining: a.draining.Load,
+			Platforms: h.PlatformCounts, Sessions: h, Disconnects: gws.Disconnects(), TestDelay: testDelay(cfg.TestMode, &a.opsDelay),
+			Config: func() any {
+				if cfg.ConfigSummary == nil {
+					return struct{}{}
+				}
+				return cfg.ConfigSummary(cfg.Version, gw.NodeID)
+			},
+			DB: func(ctx context.Context) (opsapi.DB, error) { return a.dbStatus(ctx, cfg.DBPath) },
+		})
+	}
 	// 管理接口只注册在单独的管理 mux 上（PRD-admin F-KEY-01）：对外端口上请求 /admin/* 是 404。
 	adm := admin.New(admin.AuthConfig{
 		LegacyKey: cfg.AdminKey, LegacyDisabled: cfg.AdminLegacyDisabled, Callers: cfg.AdminCallers,
@@ -153,6 +189,7 @@ func New(cfg Config) (*App, error) {
 	}, signer, st, h, inv, svc, clk, cfg.TestMode, cfg.Logger)
 	adm.WithSocial(svc)
 	adm.WithSessions(h)
+	adm.WithTestFaults(a)
 	adminMux := http.NewServeMux()
 	adm.Register(adminMux)
 	if cfg.TestMode {
@@ -180,7 +217,69 @@ func (a *App) AdminRoutes() []admin.RouteInfo { return a.adminRoutes }
 // MetricsHandler 是 /metrics。由 main 挂在单独的内网地址上（IM_METRICS_ADDR），不和对外端口共用。
 func (a *App) MetricsHandler() http.Handler { return a.metrics.Handler() }
 
+// OpsHandler 是运维端口（IM_OPS_ADDR）上的 /internal/v1/*；没有配置运维公钥时为 nil。
+func (a *App) OpsHandler() http.Handler {
+	if a.ops == nil {
+		return nil
+	}
+	return a.ops.Handler()
+}
+
+// OpsRoutes 返回运维接口的路由（只读路由守护测试用）。
+func (a *App) OpsRoutes() []string {
+	if a.ops == nil {
+		return nil
+	}
+	return a.ops.Routes()
+}
+
+// SetOpsDelay、SetPingFail 是测试模式的故障注入（admin.TestFaults）。
+func (a *App) SetOpsDelay(ms int64)  { a.opsDelay.Store(ms) }
+func (a *App) SetPingFail(fail bool) { a.pingFail.Store(fail) }
+
+func testDelay(testMode bool, v *atomic.Int64) *atomic.Int64 {
+	if testMode {
+		return v
+	}
+	return nil
+}
+
+func (a *App) dbStatus(ctx context.Context, path string) (opsapi.DB, error) {
+	ms, err := store.SQLiteMigrations()
+	if err != nil {
+		return opsapi.DB{}, err
+	}
+	info := opsapi.DB{Type: "sqlite", Location: path, Connected: !a.pingFail.Load() && a.opsDB.PingContext(ctx) == nil, Migrations: []store.MigrationRow{}, Pending: []store.MigrationRow{}}
+	if !info.Connected {
+		return info, nil
+	}
+	rows, err := store.MigrationReport(ctx, a.opsDB, ms)
+	if err != nil {
+		info.Connected = false
+		return info, nil
+	}
+	var done, pending []store.MigrationRow
+	for _, r := range rows {
+		if r.Pending {
+			pending = append(pending, r)
+			continue
+		}
+		done = append(done, r)
+		info.Version = max(info.Version, r.Version)
+	}
+	if done != nil {
+		info.Migrations = done
+	}
+	if pending != nil {
+		info.Pending = pending
+	}
+	return info, nil
+}
+
 func (a *App) ready(ctx context.Context) error {
+	if a.pingFail.Load() {
+		return errors.New("injected ping failure")
+	}
 	if a.draining.Load() {
 		return errors.New("draining")
 	}
@@ -194,6 +293,9 @@ func (a *App) StopAccepting() { a.draining.Store(true) }
 func (a *App) KickAll() int { return a.hub.KickAll(protocol.KickShutdown) }
 
 func (a *App) Close() error {
+	if a.opsDB != nil {
+		a.opsDB.Close()
+	}
 	close(a.stop)
 	return a.store.Close()
 }

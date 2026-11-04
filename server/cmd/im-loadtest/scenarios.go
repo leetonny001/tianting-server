@@ -23,6 +23,7 @@ type config struct {
 	groupDuration      time.Duration
 	hold               time.Duration
 	killAfter          time.Duration
+	opsSegment         time.Duration
 }
 
 func ids(prefix string, n, width int) []string {

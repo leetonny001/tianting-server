@@ -6,6 +6,8 @@ package config
 
 import (
 	"cmp"
+	"crypto/ed25519"
+	"encoding/base64"
 	"errors"
 	"fmt"
 	"net"
@@ -18,6 +20,7 @@ import (
 	"tianting/server/internal/app"
 	"tianting/server/internal/auth"
 	"tianting/server/internal/gateway"
+	"tianting/server/internal/opsapi"
 	"tianting/server/internal/social"
 )
 
@@ -48,10 +51,17 @@ type Server struct {
 	AdminAddr    string
 	AdminTLSCert string
 	AdminTLSKey  string
-	// OpsAddr、PprofAddr 预留给运维接口和 pprof（PRD-ops F-OPS-16、F-OPS-17），目前只参与地址冲突检查。
-	OpsAddr   string
-	PprofAddr string
-	App       app.Config
+	// OpsAddr 是节点运维接口的监听地址（PRD-ops F-OPS-16），默认 127.0.0.1:9091；为空表示不开启。
+	// 没有配置 IM_OPS_PUBKEYS 时不监听（生产环境拒绝启动）。非回环地址在生产环境必须有 TLS 和来源网段。
+	OpsAddr    string
+	OpsTLSCert string
+	OpsTLSKey  string
+	// PprofAddr 是 pprof 的监听地址（PRD-ops F-OPS-17 规则 3）：开发默认 127.0.0.1:6060，生产默认关闭，设置时必须是回环地址。
+	PprofAddr    string
+	PlannedConns int    // IM_PLANNED_CONNS：规划连接数，只用于配置检查的内存风险提示
+	GOGC         string // 原样显示
+	DrainDelay   string // 原样显示
+	App          app.Config
 }
 
 // Load 读取并校验配置。getenv 通常是 os.Getenv，测试时可以传入假实现。
@@ -69,8 +79,24 @@ func Load(getenv func(string) string) (cfg Server, warnings []string, err error)
 	cfg.Addr = cmp.Or(getenv("IM_ADDR"), ":8080")
 	cfg.MetricsAddr = addrEnv(getenv, "IM_METRICS_ADDR", "127.0.0.1:9090")
 	cfg.AdminAddr = addrEnv(getenv, "IM_ADMIN_ADDR", "127.0.0.1:8081")
-	cfg.OpsAddr = addrEnv(getenv, "IM_OPS_ADDR", "")
-	cfg.PprofAddr = addrEnv(getenv, "IM_PPROF_ADDR", "")
+	cfg.OpsAddr = addrEnv(getenv, "IM_OPS_ADDR", "127.0.0.1:9091")
+	pprofDefault := "127.0.0.1:6060"
+	if prod {
+		pprofDefault = ""
+	}
+	cfg.PprofAddr = addrEnv(getenv, "IM_PPROF_ADDR", pprofDefault)
+	cfg.OpsTLSCert, cfg.OpsTLSKey = getenv("IM_OPS_TLS_CERT"), getenv("IM_OPS_TLS_KEY")
+	if (cfg.OpsTLSCert == "") != (cfg.OpsTLSKey == "") {
+		bad("IM_OPS_TLS_CERT and IM_OPS_TLS_KEY must be set together")
+	}
+	cfg.GOGC, cfg.DrainDelay = getenv("GOGC"), getenv("IM_DRAIN_DELAY")
+	if v := getenv("IM_PLANNED_CONNS"); v != "" {
+		n, perr := strconv.Atoi(v)
+		if perr != nil || n < 1 {
+			bad("IM_PLANNED_CONNS: must be a positive integer, got %q", v)
+		}
+		cfg.PlannedConns = n
+	}
 	cfg.AdminTLSCert, cfg.AdminTLSKey = getenv("IM_ADMIN_TLS_CERT"), getenv("IM_ADMIN_TLS_KEY")
 	if (cfg.AdminTLSCert == "") != (cfg.AdminTLSKey == "") {
 		bad("IM_ADMIN_TLS_CERT and IM_ADMIN_TLS_KEY must be set together")
@@ -80,6 +106,21 @@ func Load(getenv func(string) string) (cfg Server, warnings []string, err error)
 		"IM_METRICS_ADDR": cfg.MetricsAddr, "IM_PPROF_ADDR": cfg.PprofAddr,
 	})...)
 	a := &cfg.App
+	keys, kerr := parseOpsKeys(getenv("IM_OPS_PUBKEYS"))
+	if kerr != nil {
+		bad("IM_OPS_PUBKEYS: %v", kerr)
+	}
+	a.OpsKeys = keys
+	if v := getenv("IM_OPS_ALLOWED_CIDRS"); v != "" {
+		for _, item := range splitList(v) {
+			p, perr := parsePrefix(item)
+			if perr != nil {
+				bad("IM_OPS_ALLOWED_CIDRS: %q is not an IP or CIDR", item)
+				continue
+			}
+			a.OpsAllowedCIDRs = append(a.OpsAllowedCIDRs, p)
+		}
+	}
 	a.DBPath = cmp.Or(getenv("IM_DB"), "im.db")
 	a.AutoMigrate = boolEnv(getenv, "IM_AUTO_MIGRATE", !prod, bad) // 生产默认由发布流程执行 migrate up
 	a.TestMode = boolEnv(getenv, "IM_TEST_MODE", false, bad)
@@ -155,6 +196,12 @@ func Load(getenv func(string) string) (cfg Server, warnings []string, err error)
 			bad("IM_ADMIN_CALLERS: %v", cerr)
 		}
 		a.AdminCallers = callers
+		// 运维凭证和管理接口作用域隔离（PRD-ops S-OPS-12）：console-ops 不能出现在管理接口的调用方里。
+		for _, c := range callers {
+			if c.ID == opsapi.CallerID {
+				bad("IM_ADMIN_CALLERS: %q is reserved for the ops API and cannot call /admin/*", opsapi.CallerID)
+			}
+		}
 	}
 	// 旧密钥（PRD-admin F-KEY-05 规则 3）：生产环境只有显式 IM_ADMIN_LEGACY=1 才接受。
 	if prod {
@@ -230,57 +277,12 @@ func Load(getenv func(string) string) (cfg Server, warnings []string, err error)
 	if len(problems) > 0 {
 		return Server{}, warnings, errors.New("invalid configuration:\n  - " + strings.Join(problems, "\n  - "))
 	}
+	if !prod && cfg.OpsAddr != "" && len(a.OpsKeys) == 0 {
+		warnings = append(warnings, "IM_OPS_PUBKEYS not set: the node ops API is not listening")
+	}
+	snapshot := cfg
+	a.ConfigSummary = func(version, nodeID string) any { return Summary(snapshot, version, nodeID) }
 	return cfg, warnings, nil
-}
-
-// productionProblems 列出生产环境下不允许的配置（ARCH S4）。
-func productionProblems(cfg Server) []string {
-	var out []string
-	a := cfg.App
-	checkSecret := func(name, value, devDefault string) {
-		switch {
-		case value == "":
-			out = append(out, name+" is required in production")
-		case value == devDefault:
-			out = append(out, name+" must not be the development default")
-		case len(value) < MinProductionSecretLen:
-			out = append(out, fmt.Sprintf("%s must be at least %d bytes in production", name, MinProductionSecretLen))
-		}
-	}
-	if len(a.JWTKeys) > 0 {
-		for _, k := range a.JWTKeys {
-			checkSecret("IM_JWT_KEYS["+k.ID+"]", string(k.Secret), DevJWTSecret)
-		}
-	} else {
-		checkSecret("IM_JWT_SECRET", a.JWTSecret, DevJWTSecret)
-	}
-	// 生产环境的管理鉴权：签名调用方（IM_ADMIN_CALLERS），或显式开启的旧密钥（IM_ADMIN_LEGACY=1 + IM_ADMIN_KEY）。
-	switch {
-	case a.AdminKey != "":
-		checkSecret("IM_ADMIN_KEY", a.AdminKey, DevAdminKey)
-	case !a.AdminLegacyDisabled:
-		out = append(out, "IM_ADMIN_LEGACY=1 requires IM_ADMIN_KEY")
-	}
-	if cfg.AdminAddr != "" && len(a.AdminCallers) == 0 && (a.AdminLegacyDisabled || a.AdminKey == "") {
-		out = append(out, "admin callers are required in production: set IM_ADMIN_CALLERS (or IM_ADMIN_KEY with IM_ADMIN_LEGACY=1)")
-	}
-	if a.JWTSecret != "" && a.JWTSecret == a.AdminKey {
-		out = append(out, "IM_JWT_SECRET and IM_ADMIN_KEY must be different")
-	}
-	if a.TestMode {
-		out = append(out, "IM_TEST_MODE must not be enabled in production")
-	}
-	if a.DemoLogin {
-		out = append(out, "IM_DEMO_LOGIN must not be enabled in production")
-	}
-	if containsWildcard(a.Gateway.AllowedOrigins) {
-		out = append(out, "IM_ALLOWED_ORIGINS must not contain * in production")
-	}
-	// 管理端口只有绑定回环地址（同机部署的业务服务端）时允许明文（PRD-admin F-KEY-01 规则 2）。
-	if cfg.AdminAddr != "" && cfg.AdminTLSCert == "" && !isLoopback(cfg.AdminAddr) {
-		out = append(out, "IM_ADMIN_ADDR "+cfg.AdminAddr+" is not a loopback address: IM_ADMIN_TLS_CERT and IM_ADMIN_TLS_KEY are required in production")
-	}
-	return out
 }
 
 // addrEnv 读取监听地址：未设置用默认值，"off" 表示不开启（返回空串）。
@@ -320,6 +322,29 @@ func isLoopback(addr string) bool {
 	}
 	ip, err := netip.ParseAddr(host)
 	return err == nil && ip.IsLoopback()
+}
+
+// parseOpsKeys 解析 IM_OPS_PUBKEYS（kid:base64，最多 2 把，用于轮换）。错误信息只报序号和 kid。
+func parseOpsKeys(raw string) ([]opsapi.Key, error) {
+	if raw == "" {
+		return nil, nil
+	}
+	var keys []opsapi.Key
+	for i, item := range splitList(raw) {
+		id, b64, ok := strings.Cut(item, ":")
+		if !ok || id == "" {
+			return nil, fmt.Errorf("entry #%d must be kid:base64", i+1)
+		}
+		pub, err := base64.StdEncoding.DecodeString(b64)
+		if err != nil || len(pub) != ed25519.PublicKeySize {
+			return nil, fmt.Errorf("key %s is not a valid Ed25519 public key", id)
+		}
+		keys = append(keys, opsapi.Key{ID: id, Public: ed25519.PublicKey(pub)})
+	}
+	if len(keys) > 2 {
+		return nil, errors.New("at most 2 keys")
+	}
+	return keys, nil
 }
 
 func parseKeys(raw string) ([]auth.Key, error) {

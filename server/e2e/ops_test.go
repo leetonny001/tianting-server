@@ -34,7 +34,7 @@ func runBin(t *testing.T, bin string, env []string, args ...string) (string, err
 func TestProductionRefusesUnsafeConfig(t *testing.T) {
 	bin := buildServer(t)
 	out, err := runBin(t, bin, []string{
-		"IM_ENV=production", "IM_ADDR=127.0.0.1:0", "IM_DB=" + filepath.Join(t.TempDir(), "im.db"),
+		"IM_ENV=production", "IM_NODE_ID=n1", "IM_OPS_ADDR=off", "IM_ADDR=127.0.0.1:0", "IM_DB=" + filepath.Join(t.TempDir(), "im.db"),
 		"IM_JWT_SECRET=dev-secret-change-me-0123456789", "IM_ADMIN_KEY=", "IM_TEST_MODE=1",
 	})
 	if err == nil {
@@ -52,7 +52,7 @@ func TestProductionRequiresMigrateUp(t *testing.T) {
 	bin := buildServer(t)
 	db := filepath.Join(t.TempDir(), "im.db")
 	prodEnv := []string{
-		"IM_ENV=production", "IM_ADDR=127.0.0.1:0", "IM_DB=" + db,
+		"IM_ENV=production", "IM_NODE_ID=n1", "IM_OPS_ADDR=off", "IM_ADDR=127.0.0.1:0", "IM_DB=" + db,
 		"IM_JWT_SECRET=jwt-0123456789abcdef0123456789abcdef", "IM_ADMIN_KEY=adm-0123456789abcdef0123456789abcdef",
 		"IM_ADMIN_LEGACY=1", // 测试用旧密钥调用管理接口（PRD-admin F-KEY-05 规则 3）
 	}
@@ -65,7 +65,7 @@ func TestProductionRequiresMigrateUp(t *testing.T) {
 	if out, err := runBin(t, bin, []string{"IM_DB=" + db}, "migrate", "status"); err != nil || strings.Contains(out, "pending") {
 		t.Fatalf("migrate status: %v\n%s", err, out)
 	}
-	srv := startServer(t, bin, db, prodEnv[0], prodEnv[3], prodEnv[4], prodEnv[5])
+	srv := startServer(t, bin, db, prodEnv[0], prodEnv[1], prodEnv[2], prodEnv[5], prodEnv[6], prodEnv[7])
 	srv.token(t, "alice")
 }
 
@@ -164,7 +164,7 @@ func TestAdminAddrStartupGuards(t *testing.T) {
 		t.Fatalf("migrate up: %v\n%s", err, out)
 	}
 	prod := []string{
-		"IM_ENV=production", "IM_ADDR=127.0.0.1:0", "IM_DB=" + db, "IM_METRICS_ADDR=off",
+		"IM_ENV=production", "IM_NODE_ID=n1", "IM_OPS_ADDR=off", "IM_ADDR=127.0.0.1:0", "IM_DB=" + db, "IM_METRICS_ADDR=off",
 		"IM_JWT_SECRET=jwt-0123456789abcdef0123456789abcdef", "IM_ADMIN_KEY=adm-0123456789abcdef0123456789abcdef",
 		"IM_ADMIN_LEGACY=1",
 	}
@@ -186,6 +186,6 @@ func TestAdminAddrStartupGuards(t *testing.T) {
 		}
 	}
 	// 01-3：回环地址允许明文，正常启动并可以签发 token。
-	srv := startServer(t, bin, db, prod[0], prod[4], prod[5], prod[6])
+	srv := startServer(t, bin, db, prod[0], prod[1], prod[2], prod[6], prod[7], prod[8])
 	srv.token(t, "alice")
 }

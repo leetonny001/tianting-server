@@ -13,6 +13,7 @@
 //	group     TC-PERF-00-07  200 人群扩散（P1）
 //	capacity  TC-PERF-00-02/03/05  1 万连接在线 + 500～600 条/秒 + 保持
 //	kill9     TC-PERF-00-06  压测中强杀，已 ack 的消息不丢
+//	opsimpact     AC-OPS-90-1   运维接口对 IM 的影响：关 / 开交替 6 段（-ops-segment）
 //	admin-search  AC-ADM-90-1   用户搜索：10 万用户、10 并发（SQLite 规模；Postgres 100 万随 BE-070）
 //	admin-meta    AC-ADM-90-2   消息元数据：单会话 1 万条（SQLite 规模；Postgres 10 万条随 BE-070）
 //	social-full   TC-SOC-06-18  全量同步：5000 好友 + 1000 黑名单 + 200 申请（PRD-social AC-SOC-06-12）
@@ -40,6 +41,10 @@ func main() {
 	flag.DurationVar(&cfg.groupDuration, "group-duration", 5*time.Minute, "group：发送时长")
 	flag.DurationVar(&cfg.killAfter, "kill-after", time.Minute, "kill9：发送多久后强杀")
 	flag.StringVar(&out, "out", "", "把报告（Markdown）写到这个文件")
+	flag.DurationVar(&cfg.opsSegment, "ops-segment", 5*time.Minute, "opsimpact：每段时长")
+	flag.StringVar(&fixedAddrs.metrics, "metrics-addr", "", "固定指标端口（默认随机，Prometheus 按固定地址抓取时用）")
+	flag.StringVar(&fixedAddrs.ops, "ops-addr", "", "固定运维端口（默认随机）")
+	flag.StringVar(&fixedAddrs.pprof, "pprof-addr", "", "固定 pprof 端口（默认随机）")
 	var extraEnv string
 	flag.StringVar(&extraEnv, "server-env", "", "额外传给服务端的环境变量，逗号分隔，如 GOMEMLIMIT=300MiB")
 	flag.Parse()
@@ -77,6 +82,8 @@ func main() {
 			results = append(results, scenarioSocialFull(cfg))
 		case "c2c-friends":
 			results = append(results, scenarioC2CFriends(cfg))
+		case "opsimpact":
+			results = append(results, scenarioOpsImpact(cfg))
 		case "admin-search":
 			results = append(results, scenarioAdminSearch(cfg))
 		case "admin-meta":

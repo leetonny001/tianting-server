@@ -3,6 +3,7 @@ package main
 import (
 	"bufio"
 	"bytes"
+	"cmp"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -18,6 +19,9 @@ import (
 	"time"
 )
 
+// fixedAddrs 是 -metrics-addr、-ops-addr、-pprof-addr（PRD-ops S-OPS-25）：外部的 Prometheus 和堆快照按固定端口采集。
+var fixedAddrs struct{ metrics, ops, pprof string }
+
 // serverEnv 是额外传给服务端的环境变量（-server-env），例如 GOMEMLIMIT。
 var serverEnv []string
 
@@ -31,6 +35,8 @@ type server struct {
 	bin, db, logPath string
 	addr, metrics    string
 	adminAddr        string // 管理端口（IM_ADMIN_ADDR），和对外端口分开
+	pprofAddr        string // pprof（IM_PPROF_ADDR），和指标端口分开
+	opsAddr          string // 运维接口（IM_OPS_ADDR）；为空时不配置
 	cmd              *exec.Cmd
 	log              *os.File
 	env              []string // 这个场景额外的环境变量（如 IM_TEST_MODE=1、IM_SOCIAL_DEFAULTS）
@@ -43,7 +49,11 @@ func newServer(bin, dir, name string) *server {
 // start 启动服务端（复用同一个数据库文件，可以用来做 kill -9 后重启）。
 // 压测机和服务端在同一台机器上，所有连接都来自 127.0.0.1，所以调高按 IP 的握手限流。
 func (s *server) start() error {
-	s.addr, s.metrics, s.adminAddr = freeAddr(), freeAddr(), freeAddr()
+	s.addr, s.metrics, s.adminAddr, s.pprofAddr = freeAddr(), cmp.Or(fixedAddrs.metrics, freeAddr()), freeAddr(), cmp.Or(fixedAddrs.pprof, freeAddr())
+	if fixedAddrs.ops != "" && s.opsAddr != "" {
+		s.opsAddr = fixedAddrs.ops
+		s.env = append(s.env, "IM_OPS_ADDR="+s.opsAddr) // 后面的值覆盖场景里随机的地址
+	}
 	f, err := os.OpenFile(s.logPath, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0o600)
 	if err != nil {
 		return err
@@ -51,7 +61,7 @@ func (s *server) start() error {
 	s.log = f
 	s.cmd = exec.Command(s.bin) // #nosec G204 -- 可执行文件路径来自运维传入的 -bin 参数
 	s.cmd.Env = append(os.Environ(),
-		"IM_ADDR="+s.addr, "IM_DB="+s.db, "IM_METRICS_ADDR="+s.metrics, "IM_ADMIN_ADDR="+s.adminAddr,
+		"IM_ADDR="+s.addr, "IM_DB="+s.db, "IM_METRICS_ADDR="+s.metrics, "IM_ADMIN_ADDR="+s.adminAddr, "IM_PPROF_ADDR="+s.pprofAddr,
 		"IM_ADMIN_KEY="+adminKey, "IM_JWT_SECRET="+jwtSecret,
 		"IM_HANDSHAKE_RATE=100000", "IM_HANDSHAKE_BURST=100000",
 	)
@@ -198,7 +208,7 @@ func (s *server) scrape() map[string]float64 {
 // 不用进程 RSS 判断泄漏：macOS 会压缩、回收进程内存，同一进程 30 秒内 RSS 能在 110MB 和 560MB 之间跳（Q5a 实测）；
 // GC 前的堆读数也混着还没回收的垃圾。
 func (s *server) liveMem() float64 {
-	if resp, err := http.Get("http://" + s.metrics + "/debug/pprof/heap?gc=1"); err == nil {
+	if resp, err := http.Get("http://" + s.pprofAddr + "/debug/pprof/heap?gc=1"); err == nil {
 		io.Copy(io.Discard, resp.Body)
 		resp.Body.Close()
 	}

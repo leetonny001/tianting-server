@@ -18,6 +18,7 @@ type fakeClient struct {
 }
 
 func (f *fakeClient) SessionInfo() sessions.Conn { return sessions.Conn{ConnID: f.id} }
+func (f *fakeClient) Platform() string           { return "web" }
 func (f *fakeClient) ConnID() string             { return f.id }
 func (f *fakeClient) UserID() string             { return f.uid }
 func (f *fakeClient) Send(b []byte) bool {

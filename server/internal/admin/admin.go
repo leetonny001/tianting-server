@@ -48,12 +48,22 @@ type Admin struct {
 	notifier ConvNotifier
 	social   SocialService // nil 时不注册社交路由
 	sessions sessions.Source
+	faults   TestFaults
 	clock    clock.Clock
 	log      *slog.Logger
 	testMode bool
 	// auditFail 由测试接口 /admin/test/faults 打开，模拟 admin_audit 写失败（AC-KEY-04-2）。
 	auditFail atomic.Bool
 }
+
+// TestFaults 是测试模式下 /admin/test/faults 能打开的节点级故障（由 app.App 实现）。
+type TestFaults interface {
+	SetOpsDelay(ms int64)
+	SetPingFail(fail bool)
+}
+
+// WithTestFaults 接上节点级故障注入。
+func (a *Admin) WithTestFaults(f TestFaults) { a.faults = f }
 
 // ConvNotifier 在群成员变动后给相关用户下发 convAdded / convRemoved（由 logic.Service 实现）。
 type ConvNotifier interface {
@@ -119,9 +129,17 @@ func (a *Admin) RegisterTestRoutes(mux *http.ServeMux, faults *logic.Faults, clk
 	a.route(mux, "POST", "/admin/test/faults", adminauth.ScopeTest, func(w http.ResponseWriter, r *http.Request) {
 		var req struct {
 			AdminAuditWrite string `json:"adminAuditWrite"` // "fail" 打开，"" 关闭
+			OpsDelayMs      *int64 `json:"opsDelayMs"`      // 运维接口人为延迟（PRD-ops S-OPS-24）
+			StorePing       string `json:"storePing"`       // "fail" 让就绪检查失败，"" 恢复
 		}
 		if readJSON(w, r, &req) {
 			a.auditFail.Store(req.AdminAuditWrite == "fail")
+			if a.faults != nil {
+				a.faults.SetPingFail(req.StorePing == "fail")
+				if req.OpsDelayMs != nil {
+					a.faults.SetOpsDelay(*req.OpsDelayMs)
+				}
+			}
 			writeJSON(w, http.StatusOK, struct{}{})
 		}
 	})

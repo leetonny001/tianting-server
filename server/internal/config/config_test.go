@@ -1,9 +1,14 @@
 package config
 
 import (
+	"crypto/ed25519"
+	"crypto/sha256"
 	"encoding/base64"
+	"encoding/hex"
+	"encoding/json"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 )
@@ -20,7 +25,26 @@ func callersFile(t *testing.T, content string) string {
 
 var bizSecret = base64.StdEncoding.EncodeToString([]byte("biz1-hmac-secret-0123456789abcdef!"))
 
-func envOf(m map[string]string) func(string) string { return func(k string) string { return m[k] } }
+// envOf：生产环境的用例默认带上节点 ID 并关闭运维接口，只验证各自关心的项；要测这两项的用例显式传值（"-" 表示不设置）。
+func envOf(m map[string]string) func(string) string {
+	return func(k string) string {
+		if v, ok := m[k]; ok {
+			if v == "-" {
+				return ""
+			}
+			return v
+		}
+		if m["IM_ENV"] == "production" {
+			switch k {
+			case "IM_NODE_ID":
+				return "n1"
+			case "IM_OPS_ADDR":
+				return "off"
+			}
+		}
+		return ""
+	}
+}
 
 const (
 	strongJWT   = "jwt-0123456789abcdef0123456789abcdef"
@@ -36,8 +60,8 @@ func TestDevelopmentDefaults(t *testing.T) {
 	if cfg.Env != EnvDevelopment || cfg.App.JWTSecret != DevJWTSecret || cfg.App.AdminKey != DevAdminKey || !cfg.App.AutoMigrate {
 		t.Errorf("cfg = %+v", cfg)
 	}
-	if len(warnings) != 2 {
-		t.Errorf("warnings = %v, want 2 (default keys)", warnings)
+	if len(warnings) != 3 {
+		t.Errorf("warnings = %v, want 3 (default keys, ops API not listening)", warnings)
 	}
 	if cfg.App.Gateway.MaxConnsPerUser != 10 || len(cfg.App.Gateway.AllowedOrigins) == 0 {
 		t.Errorf("gateway defaults = %+v", cfg.App.Gateway)
@@ -274,5 +298,142 @@ func TestSocialDefaults(t *testing.T) {
 		if _, _, err := Load(envOf(map[string]string{"IM_SOCIAL_DEFAULTS": bad})); err == nil {
 			t.Errorf("%s accepted", bad)
 		}
+	}
+}
+
+var opsKeyB64 = base64.StdEncoding.EncodeToString(make([]byte, ed25519.PublicKeySize))
+
+func prodOps(t *testing.T, extra map[string]string) (Server, error) {
+	t.Helper()
+	m := map[string]string{
+		"IM_ENV": "production", "IM_JWT_SECRET": strongJWT, "IM_ALLOWED_ORIGINS": "https://im.example.com",
+		"IM_ADMIN_CALLERS": callersFile(t, `[{"id":"biz1","alg":"hmac-sha256","secret":"`+bizSecret+`","scopes":["token.issue"]}]`),
+		"IM_OPS_PUBKEYS":   "k1:" + opsKeyB64,
+	}
+	for k, v := range extra {
+		m[k] = v
+	}
+	cfg, _, err := Load(envOf(m))
+	return cfg, err
+}
+
+// AC-OPS-16-4：五种组合。
+func TestProductionOpsGuards(t *testing.T) {
+	for _, tc := range []struct {
+		name  string
+		extra map[string]string
+		want  string // 空表示能启动
+	}{
+		{"non-loopback without TLS", map[string]string{"IM_OPS_ADDR": "10.0.0.5:9091", "IM_OPS_ALLOWED_CIDRS": "10.0.0.0/8"}, "IM_OPS_TLS_CERT"},
+		{"TLS but no CIDRs", map[string]string{"IM_OPS_ADDR": "10.0.0.5:9091", "IM_OPS_TLS_CERT": "c", "IM_OPS_TLS_KEY": "k"}, "IM_OPS_ALLOWED_CIDRS"},
+		{"loopback without TLS", map[string]string{"IM_OPS_ADDR": "127.0.0.1:9091"}, ""},
+		{"bad public key", map[string]string{"IM_OPS_ADDR": "127.0.0.1:9091", "IM_OPS_PUBKEYS": "k9:not-a-key"}, "k9"},
+		{"no node id", map[string]string{"IM_OPS_ADDR": "127.0.0.1:9091", "IM_NODE_ID": "-"}, "IM_NODE_ID"},
+		{"ops on without keys", map[string]string{"IM_OPS_ADDR": "127.0.0.1:9091", "IM_OPS_PUBKEYS": "-"}, "IM_OPS_PUBKEYS"},
+		{"three keys", map[string]string{"IM_OPS_ADDR": "127.0.0.1:9091", "IM_OPS_PUBKEYS": "a:" + opsKeyB64 + ",b:" + opsKeyB64 + ",c:" + opsKeyB64}, "at most 2"},
+		{"pprof not loopback", map[string]string{"IM_PPROF_ADDR": "0.0.0.0:6060"}, "IM_PPROF_ADDR"},
+		{"pprof loopback", map[string]string{"IM_PPROF_ADDR": "127.0.0.1:6060"}, ""},
+	} {
+		_, err := prodOps(t, tc.extra)
+		switch {
+		case tc.want == "" && err != nil:
+			t.Errorf("%s: %v", tc.name, err)
+		case tc.want != "" && (err == nil || !strings.Contains(err.Error(), tc.want)):
+			t.Errorf("%s: err = %v, want %q", tc.name, err, tc.want)
+		}
+	}
+	// 一次列出全部问题。
+	_, err := prodOps(t, map[string]string{"IM_OPS_ADDR": "10.0.0.5:9091", "IM_NODE_ID": "-"})
+	for _, want := range []string{"IM_NODE_ID", "IM_OPS_TLS_CERT", "IM_OPS_ALLOWED_CIDRS"} {
+		if err == nil || !strings.Contains(err.Error(), want) {
+			t.Errorf("missing %q in %v", want, err)
+		}
+	}
+}
+
+// 默认值：pprof 开发开、生产关；运维地址默认 9091；console-ops 不能出现在管理接口调用方里（S-OPS-12）。
+func TestOpsDefaults(t *testing.T) {
+	dev, _, err := Load(envOf(nil))
+	if err != nil || dev.PprofAddr != "127.0.0.1:6060" || dev.OpsAddr != "127.0.0.1:9091" {
+		t.Errorf("dev = %q %q %v", dev.PprofAddr, dev.OpsAddr, err)
+	}
+	prod, err := prodOps(t, nil)
+	if err != nil || prod.PprofAddr != "" {
+		t.Errorf("prod pprof = %q %v", prod.PprofAddr, err)
+	}
+	_, _, err = Load(envOf(map[string]string{
+		"IM_ADMIN_CALLERS": callersFile(t, `[{"id":"console-ops","alg":"hmac-sha256","secret":"`+bizSecret+`","scopes":["user.read"]}]`),
+	}))
+	if err == nil || !strings.Contains(err.Error(), "console-ops") {
+		t.Errorf("console-ops as admin caller: %v", err)
+	}
+}
+
+// AC-OPS-10-8：某一把 JWT 密钥和管理密钥相同：拒绝启动，只报 kid，不打印密钥。
+func TestJWTKeySameAsAdminKey(t *testing.T) {
+	_, _, err := Load(envOf(map[string]string{
+		"IM_ENV": "production", "IM_JWT_KEYS": "k1:" + strongJWT + ",k2:" + strongAdmin, "IM_JWT_ACTIVE_KID": "k1",
+		"IM_ADMIN_KEY": strongAdmin, "IM_ADMIN_LEGACY": "1", "IM_ALLOWED_ORIGINS": "https://im.example.com",
+	}))
+	if err == nil || !strings.Contains(err.Error(), "IM_JWT_KEYS[k2]") {
+		t.Fatalf("err = %v", err)
+	}
+	if strings.Contains(err.Error(), strongAdmin) {
+		t.Errorf("secret leaked: %v", err)
+	}
+}
+
+// AC-OPS-10-9：配置摘要的检查项和启动保护是同一份；AC-OPS-10-4：生产"通过"，开发"不适用"。
+func TestChecksShared(t *testing.T) {
+	prod, err := prodOps(t, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	sum := Summary(prod, "v1", "n1")
+	if len(sum.Checks) != len(productionChecks(prod)) {
+		t.Errorf("checks %d vs %d", len(sum.Checks), len(productionChecks(prod)))
+	}
+	seen := map[string]bool{}
+	for i, c := range sum.Checks {
+		if c.ID != productionChecks(prod)[i].ID || seen[c.ID] || c.Detail == "" {
+			t.Errorf("check %d = %+v", i, c)
+		}
+		seen[c.ID] = true
+		if !c.Passed || !c.Applicable {
+			t.Errorf("production check %s = %+v", c.ID, c)
+		}
+	}
+	dev, _, err := Load(envOf(nil))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, c := range Summary(dev, "v1", "n1").Checks {
+		if c.Applicable {
+			t.Errorf("development check %s should not be applicable", c.ID)
+		}
+	}
+}
+
+// AC-OPS-10-1、10-5：摘要里没有密钥的值和哈希，只有 kid。
+func TestSummaryHasNoSecrets(t *testing.T) {
+	cfg, _, err := Load(envOf(map[string]string{
+		"IM_JWT_KEYS": "k1:" + strongJWT + ",k2:" + strongJWT + "x", "IM_JWT_ACTIVE_KID": "k2", "IM_ADMIN_KEY": strongAdmin,
+		"IM_OPS_PUBKEYS": "ops1:" + opsKeyB64,
+	}))
+	if err != nil {
+		t.Fatal(err)
+	}
+	sum := Summary(cfg, "v1", "n1")
+	b, _ := json.Marshal(sum)
+	for _, secret := range []string{strongJWT, strongAdmin} {
+		h := sha256.Sum256([]byte(secret))
+		for _, leak := range []string{secret, hex.EncodeToString(h[:])[:16], base64.StdEncoding.EncodeToString([]byte(secret))} {
+			if strings.Contains(string(b), leak) {
+				t.Errorf("summary leaks %q", leak)
+			}
+		}
+	}
+	if !slices.Equal(sum.Keys.JWTKids, []string{"k1", "k2"}) || sum.Keys.JWTActiveKid != "k2" || !slices.Equal(sum.Keys.OpsKids, []string{"ops1"}) {
+		t.Errorf("keys = %+v", sum.Keys)
 	}
 }
