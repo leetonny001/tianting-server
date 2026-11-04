@@ -1,0 +1,15 @@
+[Unit]
+Description=Tianting IM backup
+After=network-online.target
+
+[Service]
+Type=oneshot
+User=tianting
+EnvironmentFile=/etc/tianting/backup.env
+ExecStart=/opt/tianting/deploy/backup/backup.sh --trigger schedule
+ExecStart=/opt/tianting/deploy/backup/backup-console.sh --trigger schedule
+NoNewPrivileges=yes
+ProtectSystem=strict
+ReadWritePaths=/var/lib/tianting /var/lib/node_exporter/textfile
+ProtectHome=yes
+PrivateTmp=yes

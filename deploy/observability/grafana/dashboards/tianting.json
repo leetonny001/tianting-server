@@ -1,0 +1,835 @@
+{
+  "uid": "tianting-overview",
+  "title": "天听 IM",
+  "tags": [
+    "tianting"
+  ],
+  "timezone": "browser",
+  "schemaVersion": 39,
+  "editable": false,
+  "refresh": "30s",
+  "time": {
+    "from": "now-1h",
+    "to": "now"
+  },
+  "timepicker": {
+    "refresh_intervals": [
+      "15s",
+      "30s",
+      "1m",
+      "5m"
+    ],
+    "quick_ranges": []
+  },
+  "templating": {
+    "list": [
+      {
+        "name": "node_id",
+        "label": "节点",
+        "type": "query",
+        "datasource": {
+          "type": "prometheus",
+          "uid": "prometheus"
+        },
+        "query": {
+          "query": "label_values(im_build_info, node_id)",
+          "refId": "node"
+        },
+        "refresh": 2,
+        "multi": true,
+        "includeAll": true,
+        "allValue": ".*",
+        "current": {
+          "text": "All",
+          "value": "$__all"
+        }
+      }
+    ]
+  },
+  "panels": [
+    {
+      "title": "在线连接",
+      "description": "全部节点的认证连接数，按平台。断崖先看节点列表和发布记录。",
+      "type": "timeseries",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 0
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "custom": {
+            "lineWidth": 1,
+            "fillOpacity": 10
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "bottom",
+          "calcs": [
+            "lastNotNull",
+            "max"
+          ]
+        },
+        "tooltip": {
+          "mode": "multi"
+        }
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "sum by (platform) (im_connections{node_id=~\"$node_id\"})",
+          "legendFormat": "{{platform}}",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "title": "握手结果",
+      "description": "每秒握手数，按结果。token_invalid 突增可能是攻击或客户端缺陷。",
+      "type": "timeseries",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 0
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "reqps",
+          "custom": {
+            "lineWidth": 1,
+            "fillOpacity": 10
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "bottom",
+          "calcs": [
+            "lastNotNull",
+            "max"
+          ]
+        },
+        "tooltip": {
+          "mode": "multi"
+        }
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "sum by (result) (rate(im_handshakes_total{node_id=~\"$node_id\"}[1m]))",
+          "legendFormat": "{{result}}",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "title": "消息吞吐",
+      "description": "每秒新消息数。500 条/秒是 PRD-core 的设计目标；容量以目标服务器的复测结果为准（C-50），复测后更新。",
+      "type": "timeseries",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 8
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "reqps",
+          "custom": {
+            "lineWidth": 1,
+            "fillOpacity": 10
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "bottom",
+          "calcs": [
+            "lastNotNull",
+            "max"
+          ]
+        },
+        "tooltip": {
+          "mode": "multi"
+        }
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "sum by (conv_type) (rate(im_messages_total{node_id=~\"$node_id\"}[1m]))",
+          "legendFormat": "{{conv_type}}",
+          "refId": "A"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "vector(500)",
+          "legendFormat": "设计目标 500 条/秒",
+          "refId": "B"
+        }
+      ]
+    },
+    {
+      "title": "命令量与结果",
+      "description": "每秒命令数，按命令和结果码（0 表示成功）。",
+      "type": "timeseries",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 8
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "reqps",
+          "custom": {
+            "lineWidth": 1,
+            "fillOpacity": 10
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "bottom",
+          "calcs": [
+            "lastNotNull",
+            "max"
+          ]
+        },
+        "tooltip": {
+          "mode": "multi"
+        }
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "sum by (cmd, code) (rate(im_commands_total{node_id=~\"$node_id\"}[1m]))",
+          "legendFormat": "{{cmd}} {{code}}",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "title": "命令耗时 P50 / P99",
+      "description": "1 秒是 PRD-core 的目标。同场景三次压测的 P99 在 30～64ms 之间波动，只看趋势和量级。最大桶是 2.5 秒，超过时显示 > 2.5s，不是真实数字。",
+      "type": "timeseries",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 16
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s",
+          "custom": {
+            "lineWidth": 1,
+            "fillOpacity": 10
+          },
+          "mappings": [
+            {
+              "type": "range",
+              "options": {
+                "from": 2.5,
+                "to": null,
+                "result": {
+                  "text": "> 2.5s"
+                }
+              }
+            }
+          ]
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "bottom",
+          "calcs": [
+            "lastNotNull",
+            "max"
+          ]
+        },
+        "tooltip": {
+          "mode": "multi"
+        }
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "histogram_quantile(0.5, sum by (cmd, le) (rate(im_command_duration_seconds_bucket{node_id=~\"$node_id\"}[5m])))",
+          "legendFormat": "{{cmd}} P50",
+          "refId": "A"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "histogram_quantile(0.99, sum by (cmd, le) (rate(im_command_duration_seconds_bucket{node_id=~\"$node_id\"}[5m])))",
+          "legendFormat": "{{cmd}} P99",
+          "refId": "B"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "vector(1)",
+          "legendFormat": "目标 1 秒",
+          "refId": "C"
+        }
+      ]
+    },
+    {
+      "title": "错误码分布",
+      "description": "命令失败，按错误码堆叠。含义见 protocol/ERRORS.md。",
+      "type": "timeseries",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 16
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "reqps",
+          "custom": {
+            "lineWidth": 1,
+            "fillOpacity": 10,
+            "stacking": {
+              "mode": "normal",
+              "group": "A"
+            }
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "bottom",
+          "calcs": [
+            "lastNotNull",
+            "max"
+          ]
+        },
+        "tooltip": {
+          "mode": "multi"
+        }
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "sum by (code) (rate(im_commands_total{code!=\"0\",node_id=~\"$node_id\"}[1m]))",
+          "legendFormat": "{{code}}",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "title": "关闭码分布",
+      "description": "按阶段（握手阶段 / 会话中）分组，组内按关闭方。4011、4012 在握手阶段说明客户端在用失效凭证重连；关闭码含义见 protocol/ERRORS.md。",
+      "type": "timeseries",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 24
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "reqps",
+          "custom": {
+            "lineWidth": 1,
+            "fillOpacity": 10
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "bottom",
+          "calcs": [
+            "lastNotNull",
+            "max"
+          ]
+        },
+        "tooltip": {
+          "mode": "multi"
+        }
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "sum by (code, by) (rate(im_disconnects_total{phase=\"handshake\",node_id=~\"$node_id\"}[5m]))",
+          "legendFormat": "握手阶段 {{by}} {{code}}",
+          "refId": "A"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "sum by (code, by) (rate(im_disconnects_total{phase=\"session\",node_id=~\"$node_id\"}[5m]))",
+          "legendFormat": "会话中 {{by}} {{code}}",
+          "refId": "B"
+        }
+      ]
+    },
+    {
+      "title": "被踢原因",
+      "description": "每秒被踢连接数，按原因。banned 是强制下线，tooManyConnections 是超过单用户连接上限。",
+      "type": "timeseries",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 24
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "reqps",
+          "custom": {
+            "lineWidth": 1,
+            "fillOpacity": 10
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "bottom",
+          "calcs": [
+            "lastNotNull",
+            "max"
+          ]
+        },
+        "tooltip": {
+          "mode": "multi"
+        }
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "sum by (reason) (rate(im_kicks_total{node_id=~\"$node_id\"}[5m]))",
+          "legendFormat": "{{reason}}",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "title": "慢连接",
+      "description": "因下行队列满被断开的连接。持续增长先看客户端网络和消息量。",
+      "type": "timeseries",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 32
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "reqps",
+          "custom": {
+            "lineWidth": 1,
+            "fillOpacity": 10
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "bottom",
+          "calcs": [
+            "lastNotNull",
+            "max"
+          ]
+        },
+        "tooltip": {
+          "mode": "multi"
+        }
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "sum(rate(im_slow_consumers_total{node_id=~\"$node_id\"}[5m]))",
+          "legendFormat": "慢连接",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "title": "内存",
+      "description": "堆 + 栈在 GOGC=100 下会涨到存活内存的约 2 倍，属正常；判断容量和泄漏看存活内存；不要用 RSS。没有设置 GOMEMLIMIT 时没有上限线，图例显示“未设置 GOMEMLIMIT”。",
+      "type": "timeseries",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 32
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "bytes",
+          "custom": {
+            "lineWidth": 1,
+            "fillOpacity": 10
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "bottom",
+          "calcs": [
+            "lastNotNull",
+            "max"
+          ]
+        },
+        "tooltip": {
+          "mode": "multi"
+        }
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "go_memstats_heap_inuse_bytes{node_id=~\"$node_id\"}",
+          "legendFormat": "{{node_id}} 堆",
+          "refId": "A"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "go_memstats_stack_inuse_bytes{node_id=~\"$node_id\"}",
+          "legendFormat": "{{node_id}} 栈",
+          "refId": "B"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "go_memstats_next_gc_bytes{node_id=~\"$node_id\"}",
+          "legendFormat": "{{node_id}} GC 目标",
+          "refId": "C"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "go_gc_heap_live_bytes{node_id=~\"$node_id\"} + go_memstats_stack_inuse_bytes{node_id=~\"$node_id\"}",
+          "legendFormat": "{{node_id}} 存活内存估算",
+          "refId": "D"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "go_gc_gomemlimit_bytes{node_id=~\"$node_id\"} < 2^62",
+          "legendFormat": "{{node_id}} GOMEMLIMIT",
+          "refId": "E"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "(go_gc_gomemlimit_bytes{node_id=~\"$node_id\"} >= bool 2^62) == 1",
+          "legendFormat": "{{node_id}} 未设置 GOMEMLIMIT",
+          "refId": "F"
+        }
+      ]
+    },
+    {
+      "title": "每连接存活内存",
+      "description": "存活内存估算 / 在线连接数，只在连接数 ≥ 1000 时显示（连接少时基础开销占比太大）。32 KB 是内存分析强制 GC 后的口径。这里是存活内存，不是堆 + 栈。",
+      "type": "timeseries",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 40
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "bytes",
+          "custom": {
+            "lineWidth": 1,
+            "fillOpacity": 10
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "bottom",
+          "calcs": [
+            "lastNotNull",
+            "max"
+          ]
+        },
+        "tooltip": {
+          "mode": "multi"
+        }
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "sum(go_gc_heap_live_bytes{node_id=~\"$node_id\"} + go_memstats_stack_inuse_bytes{node_id=~\"$node_id\"}) / sum(im_connections{node_id=~\"$node_id\"}) and sum(im_connections{node_id=~\"$node_id\"}) >= 1000",
+          "legendFormat": "每连接存活内存",
+          "refId": "A"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "vector(32768)",
+          "legendFormat": "参考 32 KB",
+          "refId": "B"
+        }
+      ]
+    },
+    {
+      "title": "goroutine",
+      "description": "约等于连接数 + 常数（1 万连接约 1.01 万）。比连接数涨得快说明有泄漏。",
+      "type": "timeseries",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 40
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "custom": {
+            "lineWidth": 1,
+            "fillOpacity": 10
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "bottom",
+          "calcs": [
+            "lastNotNull",
+            "max"
+          ]
+        },
+        "tooltip": {
+          "mode": "multi"
+        }
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "sum(go_goroutines{node_id=~\"$node_id\"})",
+          "legendFormat": "goroutine",
+          "refId": "A"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "sum(im_connections{node_id=~\"$node_id\"})",
+          "legendFormat": "在线连接",
+          "refId": "B"
+        }
+      ]
+    },
+    {
+      "title": "GC 与 CPU",
+      "description": "GC CPU 占比超过 25% 是 GC 风暴告警的阈值，先看 GOMEMLIMIT 是否太低。",
+      "type": "timeseries",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 48
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percentunit",
+          "custom": {
+            "lineWidth": 1,
+            "fillOpacity": 10
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "bottom",
+          "calcs": [
+            "lastNotNull",
+            "max"
+          ]
+        },
+        "tooltip": {
+          "mode": "multi"
+        }
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "rate(go_cpu_classes_gc_total_cpu_seconds_total{node_id=~\"$node_id\"}[5m]) / rate(go_cpu_classes_total_cpu_seconds_total{node_id=~\"$node_id\"}[5m])",
+          "legendFormat": "{{node_id}} GC CPU 占比",
+          "refId": "A"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "rate(process_cpu_seconds_total{node_id=~\"$node_id\"}[1m])",
+          "legendFormat": "{{node_id}} 进程 CPU 核数",
+          "refId": "B"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "vector(0.25)",
+          "legendFormat": "GC 风暴阈值 25%",
+          "refId": "C"
+        }
+      ]
+    },
+    {
+      "title": "数据保留说明",
+      "type": "text",
+      "gridPos": {
+        "h": 3,
+        "w": 24,
+        "x": 0,
+        "y": 56
+      },
+      "options": {
+        "mode": "markdown",
+        "content": "指标保留 30 天，超出部分显示为空。"
+      }
+    }
+  ]
+}

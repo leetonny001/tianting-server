@@ -1,0 +1,23 @@
+# S-OPS-27：指标抓取。保留 30 天用启动参数 --storage.tsdb.retention.time=30d。
+# 只监听回环，或只对 console-server、Grafana 开放（firewall.nft）。
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+
+alerting:
+  alertmanagers:
+    - static_configs:
+        - targets: ['127.0.0.1:9093']
+
+rule_files:
+  - alerts.yml
+
+scrape_configs:
+  # 节点清单由 gen-targets 从 console-server 的节点凭证表生成，node_id 标签和 im_build_info{node_id} 一致。
+  - job_name: im
+    file_sd_configs:
+      - files: ['targets/im.json']
+  # 备份指标走 node_exporter 的 textfile（PRD-ops F-OPS-12 规则 4）：告警不经过 console-server。
+  - job_name: node
+    static_configs:
+      - targets: ['127.0.0.1:9100']

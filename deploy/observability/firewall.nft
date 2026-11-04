@@ -1,0 +1,21 @@
+# AC-OPS-17-1、17-5、17-6、17-9：观测组件的访问控制（nftables 片段）。VPN 用户不能直接访问。
+# 替换下面的地址后 include 到主机的规则集。单机部署时 Prometheus、Alertmanager、Grafana 只监听回环，这个文件只需要指标端口那条。
+define PROMETHEUS_HOST = 10.8.2.20
+define CONSOLE_HOST = 10.8.2.10
+define GRAFANA_HOST = 10.8.2.21
+
+table inet tianting_observability {
+  chain input {
+    type filter hook input priority 0; policy accept;
+
+    # IM_METRICS_ADDR：只有 Prometheus 能抓。
+    tcp dport 9090 ip saddr != $PROMETHEUS_HOST iifname != "lo" drop comment "im metrics"
+
+    # 在 Prometheus / Alertmanager 主机上启用（和指标端口 9090 同号，分主机）：
+    # tcp dport 9090 ip saddr != { $CONSOLE_HOST, $GRAFANA_HOST } iifname != "lo" drop comment "prometheus"
+    # tcp dport 9093 ip saddr != { $CONSOLE_HOST } iifname != "lo" drop comment "alertmanager"
+
+    # 在 Grafana 主机上启用：只有 console-server 的认证代理能进（配合 grafana.ini 的 whitelist）。
+    # tcp dport 3000 ip saddr != $CONSOLE_HOST iifname != "lo" drop comment "grafana"
+  }
+}

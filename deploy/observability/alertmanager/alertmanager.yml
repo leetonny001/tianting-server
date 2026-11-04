@@ -1,0 +1,41 @@
+# PRD-ops F-OPS-07 规则 2～5。告警链路不经过天听自身（AC-OPS-07-9）：receiver 只能是办公 IM 机器人和邮件。
+# 接收人按 F-1 的默认值（Frank）。example.internal 的地址部署时替换。
+global:
+  smtp_smarthost: smtp.example.internal:587
+  smtp_from: im-alerts@example.internal
+  smtp_require_tls: true
+
+templates:
+  - templates/*.tmpl
+
+route:
+  receiver: office
+  group_by: [alertname, node_id, source]
+  group_wait: 30s
+  group_interval: 5m
+  repeat_interval: 1h
+  routes:
+    # 节点下线中只用来抑制，不通知。
+    - matchers: [alertname="节点下线中"]
+      receiver: blackhole
+
+inhibit_rules:
+  # 节点下线中时，压住它的警告级告警；"节点不可达"是严重级，不受影响。
+  - source_matchers: [alertname="节点下线中"]
+    target_matchers: [severity="warning"]
+    equal: [node_id]
+
+receivers:
+  - name: blackhole
+  - name: office
+    webhook_configs:
+      # 办公 IM 机器人。地址里有令牌：放文件，不进仓库。
+      - url_file: /etc/alertmanager/office-webhook-url
+        send_resolved: true
+    email_configs:
+      - to: frank@example.internal
+        send_resolved: true
+        headers:
+          Subject: '{{ template "tianting.subject" . }}'
+        html: ''
+        text: '{{ template "tianting.body" . }}'

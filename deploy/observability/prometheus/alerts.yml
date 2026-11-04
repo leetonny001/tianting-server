@@ -1,0 +1,149 @@
+# PRD-ops F-OPS-07 规则 1：11 条告警。每条在 alerts_test.yml 里有触发、不触发和边界用例。
+# 通知模板不输出节点地址标签，只用 node_id。
+groups:
+  - name: im
+    rules:
+      - alert: 节点不可达
+        expr: up{job="im"} == 0
+        for: 1m
+        labels: {severity: critical}
+        annotations:
+          value: '不可达'
+          threshold: 'up == 0 持续 1 分钟'
+          page: /nodes
+
+      - alert: 无就绪节点
+        # or vector(0)：节点全挂、指标全部消失时也成立。
+        expr: (sum(im_ready{job="im"}) or vector(0)) == 0
+        for: 1m
+        labels: {severity: critical}
+        annotations:
+          value: '0 个就绪节点'
+          threshold: '就绪节点数 == 0 持续 1 分钟'
+          page: /
+
+      - alert: 5xxx错误率高
+        expr: |
+          (
+            sum(increase(im_commands_total{job="im",cmd!~"auth|ping",code=~"5..."}[5m]))
+            /
+            sum(increase(im_commands_total{job="im",cmd!~"auth|ping"}[5m]))
+          ) > 0.01
+          and
+          sum(increase(im_commands_total{job="im",cmd!~"auth|ping",code=~"5..."}[5m])) >= 10
+        for: 5m
+        labels: {severity: critical}
+        annotations:
+          value: '{{ $value | humanizePercentage }}'
+          threshold: '5 分钟内占比 > 1% 且条数 ≥ 10'
+          page: /
+
+      - alert: 命令耗时高
+        # 直接读 0.5 秒的桶，不用 histogram_quantile 插值。
+        expr: |
+          (
+            1 - (
+              sum(rate(im_command_duration_seconds_bucket{job="im",cmd="send",le="0.5"}[5m]))
+              /
+              sum(rate(im_command_duration_seconds_count{job="im",cmd="send"}[5m]))
+            )
+          ) > 0.01
+          and
+          sum(rate(im_command_duration_seconds_count{job="im",cmd="send"}[5m])) > 1
+        for: 5m
+        labels: {severity: warning}
+        annotations:
+          value: '{{ $value | humanizePercentage }}'
+          threshold: 'send 超过 500ms 的比例 > 1% 且速率 > 1 条/秒'
+          page: /
+
+      - alert: 在线连接骤降
+        # 发布时不算：有节点下线中，或最近 10 分钟有节点重启。
+        expr: |
+          (
+            sum(im_connections{job="im"}) < 0.7 * sum(im_connections{job="im"} offset 5m)
+            and
+            sum(im_connections{job="im"} offset 5m) > 100
+          )
+          unless (sum(im_draining{job="im"}) > 0)
+          unless (sum(changes(process_start_time_seconds{job="im"}[10m])) > 0)
+        for: 2m
+        labels: {severity: warning}
+        annotations:
+          value: '{{ $value | humanize }} 个连接'
+          threshold: '比 5 分钟前下降 > 30% 且下降前 > 100'
+          page: /
+
+      - alert: 慢连接增多
+        expr: increase(im_slow_consumers_total{job="im"}[1m]) > 10
+        for: 5m
+        labels: {severity: warning}
+        annotations:
+          value: '{{ $value | humanize }} 次/分钟'
+          threshold: '> 10 次/分钟'
+          page: /
+
+      - alert: 握手异常
+        expr: sum by (node_id) (increase(im_handshakes_total{job="im",result="token_invalid"}[1m])) > 50
+        for: 5m
+        labels: {severity: warning}
+        annotations:
+          value: '{{ $value | humanize }} 次/分钟'
+          threshold: '凭证无效 > 50 次/分钟（可能是攻击或客户端缺陷）'
+          page: /
+
+      - alert: 内存逼近上限
+        # 2^62 以上表示没有设置 GOMEMLIMIT（Go 的默认值是 MaxInt64）。
+        expr: |
+          (go_gc_heap_live_bytes{job="im"} + go_memstats_stack_inuse_bytes{job="im"})
+            > go_gc_gomemlimit_bytes{job="im"} * 0.66
+          and
+          go_gc_gomemlimit_bytes{job="im"} < 2^62
+        for: 10m
+        labels: {severity: warning}
+        annotations:
+          value: '存活内存估算 {{ $value | humanize1024 }}B'
+          threshold: 'GOMEMLIMIT × 0.66'
+          page: /nodes
+
+      - alert: 疑似GC风暴
+        expr: |
+          rate(go_cpu_classes_gc_total_cpu_seconds_total{job="im"}[5m])
+            / rate(go_cpu_classes_total_cpu_seconds_total{job="im"}[5m]) > 0.25
+        for: 5m
+        labels: {severity: critical}
+        annotations:
+          value: '{{ $value | humanizePercentage }}'
+          threshold: 'GC CPU 占比 > 25%'
+          page: /nodes
+
+      - alert: 备份过期
+        # 指标不存在同样告警：备份任务可能从来没成功过。
+        expr: |
+          time() - max by (source) (im_backup_last_success_timestamp_seconds) > 7200
+          or absent(im_backup_last_success_timestamp_seconds{source="im"})
+          or absent(im_backup_last_success_timestamp_seconds{source="console"})
+        for: 1m
+        labels: {severity: critical}
+        annotations:
+          value: '{{ $value | humanizeDuration }}'
+          threshold: '最近一次成功距今 > 2 小时'
+          page: /database
+
+      - alert: 版本不一致
+        expr: count(count by (version) (im_build_info{job="im"})) > 1
+        for: 30m
+        labels: {severity: warning}
+        annotations:
+          value: '{{ $value }} 个版本'
+          threshold: '不一致持续 30 分钟'
+          page: /nodes
+
+      # 不通知，只给 Alertmanager 做抑制：节点下线中时压住它的警告级告警（规则 4）。
+      - alert: 节点下线中
+        expr: im_draining{job="im"} == 1
+        labels: {severity: none}
+        annotations:
+          value: '下线中'
+          threshold: 'im_draining == 1'
+          page: /nodes

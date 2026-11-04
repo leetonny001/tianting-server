@@ -79,3 +79,24 @@ jobs:
           python-version: '3.12'
       - name: 每条 AC 都有任务和测试用例
         run: python3 tools/trace.py --check
+
+  # 运维部署配置：开发机不装这些软件，真实工具只在这里跑（backend-ops.md 的环境依赖）。
+  ops-deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: server/go.mod
+          cache-dependency-path: server/go.sum
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: 部署脚本和配置的测试（假的 age、mc）
+        run: |
+          pip install pyyaml
+          python3 deploy/test_deploy.py
+      - name: 安装 age 和 sqlite3
+        run: sudo apt-get update -qq && sudo apt-get install -y -qq age sqlite3
+      - name: 真实工具：promtool、amtool、MinIO + age、Grafana
+        run: deploy/testenv-ci.sh

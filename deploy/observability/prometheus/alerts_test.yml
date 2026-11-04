@@ -1,0 +1,330 @@
+# promtool test rules alerts_test.yml（AC-OPS-07-1）。CI 用官方镜像运行。
+rule_files:
+  - alerts.yml
+evaluation_interval: 1m
+
+tests:
+  # 节点不可达：持续 1 分钟才触发。
+  - interval: 1m
+    input_series:
+      - series: 'up{job="im",node_id="n1",instance="10.0.0.1:9090"}'
+        values: '1 1 0 0 0'
+      - series: 'im_ready{job="im",node_id="n1"}'
+        values: '1x4'
+    alert_rule_test:
+      - {eval_time: 2m, alertname: 节点不可达, exp_alerts: []}
+      - eval_time: 3m
+        alertname: 节点不可达
+        exp_alerts:
+          - exp_labels: {severity: critical, job: im, node_id: n1, instance: '10.0.0.1:9090'}
+            exp_annotations: {value: 不可达, threshold: 'up == 0 持续 1 分钟', page: /nodes}
+
+  # 节点全挂：im_ready 消失也要触发无就绪节点。
+  - interval: 1m
+    input_series:
+      - series: 'im_ready{job="im",node_id="n1"}'
+        values: '1 1 _ _ _ _ _ _ _ _ _ _'
+    alert_rule_test:
+      - {eval_time: 1m, alertname: 无就绪节点, exp_alerts: []}
+      - eval_time: 10m
+        alertname: 无就绪节点
+        exp_alerts:
+          - exp_labels: {severity: critical}
+            exp_annotations: {value: '0 个就绪节点', threshold: '就绪节点数 == 0 持续 1 分钟', page: /}
+
+  # 就绪是 0（节点活着但不就绪）。
+  - interval: 1m
+    input_series:
+      - series: 'im_ready{job="im",node_id="n1"}'
+        values: '0x5'
+    alert_rule_test:
+      - eval_time: 5m
+        alertname: 无就绪节点
+        exp_alerts:
+          - exp_labels: {severity: critical}
+            exp_annotations: {value: '0 个就绪节点', threshold: '就绪节点数 == 0 持续 1 分钟', page: /}
+
+  # 5xxx：每 5 分钟 9 条，占比 2%：不触发。
+  - interval: 15s
+    input_series:
+      - series: 'im_commands_total{job="im",cmd="send",code="0"}'
+        values: '0+22.05x80'
+      - series: 'im_commands_total{job="im",cmd="send",code="5000"}'
+        values: '0+0.45x80'
+    alert_rule_test:
+      - {eval_time: 19m, alertname: 5xxx错误率高, exp_alerts: []}
+
+  # 5xxx：每 5 分钟 12 条，占比 2%：触发。
+  - interval: 15s
+    input_series:
+      - series: 'im_commands_total{job="im",cmd="send",code="0"}'
+        values: '0+29.4x80'
+      - series: 'im_commands_total{job="im",cmd="send",code="5000"}'
+        values: '0+0.6x80'
+    alert_rule_test:
+      - {eval_time: 4m, alertname: 5xxx错误率高, exp_alerts: []}
+      - eval_time: 19m
+        alertname: 5xxx错误率高
+        exp_alerts:
+          - exp_labels: {severity: critical}
+            exp_annotations: {value: 2%, threshold: '5 分钟内占比 > 1% 且条数 ≥ 10', page: /}
+
+  # 5xxx：条数够但占比低（0.5%）：不触发。
+  - interval: 15s
+    input_series:
+      - series: 'im_commands_total{job="im",cmd="send",code="0"}'
+        values: '0+199x80'
+      - series: 'im_commands_total{job="im",cmd="send",code="5000"}'
+        values: '0+1x80'
+    alert_rule_test:
+      - {eval_time: 19m, alertname: 5xxx错误率高, exp_alerts: []}
+
+  # auth 和心跳不算进分母：只有它们的错误不触发。
+  - interval: 15s
+    input_series:
+      - series: 'im_commands_total{job="im",cmd="auth",code="5000"}'
+        values: '0+5x80'
+    alert_rule_test:
+      - {eval_time: 19m, alertname: 5xxx错误率高, exp_alerts: []}
+
+  # 耗时：速率 0.5 条/秒，全部超时：不触发。
+  - interval: 15s
+    input_series:
+      - series: 'im_command_duration_seconds_bucket{job="im",cmd="send",le="0.5"}'
+        values: '0x80'
+      - series: 'im_command_duration_seconds_count{job="im",cmd="send"}'
+        values: '0+7.5x80'
+    alert_rule_test:
+      - {eval_time: 19m, alertname: 命令耗时高, exp_alerts: []}
+
+  # 耗时：速率 2 条/秒，10% 超时：触发。
+  - interval: 15s
+    input_series:
+      - series: 'im_command_duration_seconds_bucket{job="im",cmd="send",le="0.5"}'
+        values: '0+27x80'
+      - series: 'im_command_duration_seconds_count{job="im",cmd="send"}'
+        values: '0+30x80'
+    alert_rule_test:
+      - eval_time: 19m
+        alertname: 命令耗时高
+        exp_alerts:
+          - exp_labels: {severity: warning}
+            exp_annotations: {value: 10%, threshold: 'send 超过 500ms 的比例 > 1% 且速率 > 1 条/秒', page: /}
+
+  # 耗时：超时比例 0.5%：不触发。
+  - interval: 15s
+    input_series:
+      - series: 'im_command_duration_seconds_bucket{job="im",cmd="send",le="0.5"}'
+        values: '0+199x80'
+      - series: 'im_command_duration_seconds_count{job="im",cmd="send"}'
+        values: '0+200x80'
+    alert_rule_test:
+      - {eval_time: 19m, alertname: 命令耗时高, exp_alerts: []}
+
+  # 连接骤降：没有重启，下降 50%：触发。
+  - interval: 1m
+    input_series:
+      - series: 'im_connections{job="im",node_id="n1",platform="web"}'
+        values: '1000x10 500x10'
+      - series: 'im_draining{job="im",node_id="n1"}'
+        values: '0x20'
+      - series: 'process_start_time_seconds{job="im",node_id="n1"}'
+        values: '100x20'
+    alert_rule_test:
+      - {eval_time: 10m, alertname: 在线连接骤降, exp_alerts: []}
+      - eval_time: 13m
+        alertname: 在线连接骤降
+        exp_alerts:
+          - exp_labels: {severity: warning}
+            exp_annotations: {value: '500 个连接', threshold: '比 5 分钟前下降 > 30% 且下降前 > 100', page: /}
+
+  # 连接骤降：节点重启后 10 分钟内：不触发。
+  - interval: 1m
+    input_series:
+      - series: 'im_connections{job="im",node_id="n1",platform="web"}'
+        values: '1000x10 500x10'
+      - series: 'im_draining{job="im",node_id="n1"}'
+        values: '0x20'
+      - series: 'process_start_time_seconds{job="im",node_id="n1"}'
+        values: '100x10 700x10'
+    alert_rule_test:
+      - {eval_time: 13m, alertname: 在线连接骤降, exp_alerts: []}
+
+  # 连接骤降：节点下线中：不触发；下降前不足 100：不触发。
+  - interval: 1m
+    input_series:
+      - series: 'im_connections{job="im",node_id="n1",platform="web"}'
+        values: '1000x10 500x10'
+      - series: 'im_draining{job="im",node_id="n1"}'
+        values: '0x9 1x11'
+      - series: 'process_start_time_seconds{job="im",node_id="n1"}'
+        values: '100x20'
+    alert_rule_test:
+      - {eval_time: 13m, alertname: 在线连接骤降, exp_alerts: []}
+  - interval: 1m
+    input_series:
+      - series: 'im_connections{job="im",node_id="n1",platform="web"}'
+        values: '90x10 10x10'
+      - series: 'im_draining{job="im",node_id="n1"}'
+        values: '0x20'
+      - series: 'process_start_time_seconds{job="im",node_id="n1"}'
+        values: '100x20'
+    alert_rule_test:
+      - {eval_time: 13m, alertname: 在线连接骤降, exp_alerts: []}
+
+  # 慢连接。
+  - interval: 15s
+    input_series:
+      - series: 'im_slow_consumers_total{job="im",node_id="n1"}'
+        values: '0+5x60'
+    alert_rule_test:
+      - eval_time: 10m
+        alertname: 慢连接增多
+        exp_alerts:
+          - exp_labels: {severity: warning, job: im, node_id: n1}
+            exp_annotations: {value: '20 次/分钟', threshold: '> 10 次/分钟', page: /}
+  - interval: 15s
+    input_series:
+      - series: 'im_slow_consumers_total{job="im",node_id="n1"}'
+        values: '0+1x60'
+    alert_rule_test:
+      - {eval_time: 10m, alertname: 慢连接增多, exp_alerts: []}
+
+  # 握手异常。
+  - interval: 15s
+    input_series:
+      - series: 'im_handshakes_total{job="im",node_id="n1",result="token_invalid"}'
+        values: '0+20x60'
+      - series: 'im_handshakes_total{job="im",node_id="n1",result="ok"}'
+        values: '0+100x60'
+    alert_rule_test:
+      - eval_time: 10m
+        alertname: 握手异常
+        exp_alerts:
+          - exp_labels: {severity: warning, node_id: n1}
+            exp_annotations: {value: '80 次/分钟', threshold: '凭证无效 > 50 次/分钟（可能是攻击或客户端缺陷）', page: /}
+  - interval: 15s
+    input_series:
+      - series: 'im_handshakes_total{job="im",node_id="n1",result="token_invalid"}'
+        values: '0+10x60'
+    alert_rule_test:
+      - {eval_time: 10m, alertname: 握手异常, exp_alerts: []}
+
+  # 内存：上限 × 0.67 持续 10 分钟触发；× 0.65 不触发；没设 GOMEMLIMIT 不触发。
+  - interval: 1m
+    input_series:
+      - series: 'go_gc_heap_live_bytes{job="im",node_id="n1"}'
+        values: '670x15'
+      - series: 'go_memstats_stack_inuse_bytes{job="im",node_id="n1"}'
+        values: '0x15'
+      - series: 'go_gc_gomemlimit_bytes{job="im",node_id="n1"}'
+        values: '1000x15'
+    alert_rule_test:
+      - {eval_time: 5m, alertname: 内存逼近上限, exp_alerts: []}
+      - eval_time: 11m
+        alertname: 内存逼近上限
+        exp_alerts:
+          - exp_labels: {severity: warning, job: im, node_id: n1}
+            exp_annotations: {value: '存活内存估算 670B', threshold: 'GOMEMLIMIT × 0.66', page: /nodes}
+  - interval: 1m
+    input_series:
+      - series: 'go_gc_heap_live_bytes{job="im",node_id="n1"}'
+        values: '650x15'
+      - series: 'go_memstats_stack_inuse_bytes{job="im",node_id="n1"}'
+        values: '0x15'
+      - series: 'go_gc_gomemlimit_bytes{job="im",node_id="n1"}'
+        values: '1000x15'
+    alert_rule_test:
+      - {eval_time: 11m, alertname: 内存逼近上限, exp_alerts: []}
+  - interval: 1m
+    input_series:
+      - series: 'go_gc_heap_live_bytes{job="im",node_id="n1"}'
+        values: '6e18x15'
+      - series: 'go_memstats_stack_inuse_bytes{job="im",node_id="n1"}'
+        values: '0x15'
+      - series: 'go_gc_gomemlimit_bytes{job="im",node_id="n1"}'
+        values: '9.223372036854775807e18x15'
+    alert_rule_test:
+      - {eval_time: 11m, alertname: 内存逼近上限, exp_alerts: []}
+
+  # GC 风暴：占比 40% 触发，10% 不触发。
+  - interval: 15s
+    input_series:
+      - series: 'go_cpu_classes_gc_total_cpu_seconds_total{job="im",node_id="n1"}'
+        values: '0+4x80'
+      - series: 'go_cpu_classes_total_cpu_seconds_total{job="im",node_id="n1"}'
+        values: '0+10x80'
+    alert_rule_test:
+      - eval_time: 19m
+        alertname: 疑似GC风暴
+        exp_alerts:
+          - exp_labels: {severity: critical, job: im, node_id: n1}
+            exp_annotations: {value: 40%, threshold: 'GC CPU 占比 > 25%', page: /nodes}
+  - interval: 15s
+    input_series:
+      - series: 'go_cpu_classes_gc_total_cpu_seconds_total{job="im",node_id="n1"}'
+        values: '0+1x80'
+      - series: 'go_cpu_classes_total_cpu_seconds_total{job="im",node_id="n1"}'
+        values: '0+10x80'
+    alert_rule_test:
+      - {eval_time: 19m, alertname: 疑似GC风暴, exp_alerts: []}
+
+  # 备份：两个来源都新鲜：不触发。time() 在测试里从 0 开始。
+  - interval: 1m
+    input_series:
+      - series: 'im_backup_last_success_timestamp_seconds{source="im",trigger="schedule"}'
+        values: '100x10'
+      - series: 'im_backup_last_success_timestamp_seconds{source="console",trigger="schedule"}'
+        values: '100x10'
+    alert_rule_test:
+      - {eval_time: 5m, alertname: 备份过期, exp_alerts: []}
+
+  # 备份：im 没有指标（从来没成功过）：触发。
+  - interval: 1m
+    input_series:
+      - series: 'im_backup_last_success_timestamp_seconds{source="console",trigger="schedule"}'
+        values: '100x10'
+    alert_rule_test:
+      - eval_time: 5m
+        alertname: 备份过期
+        exp_alerts:
+          - exp_labels: {severity: critical, source: im}
+            exp_annotations: {value: 1s, threshold: '最近一次成功距今 > 2 小时', page: /database}
+
+  # 备份：im 超过 2 小时：触发。
+  - interval: 10m
+    input_series:
+      - series: 'im_backup_last_success_timestamp_seconds{source="im",trigger="schedule"}'
+        values: '0x20'
+      - series: 'im_backup_last_success_timestamp_seconds{source="console",trigger="schedule"}'
+        values: '0 600 1200 1800 2400 3000 3600 4200 4800 5400 6000 6600 7200 7800 8400 9000 9600 10200 10800 11400 12000'
+    alert_rule_test:
+      - {eval_time: 110m, alertname: 备份过期, exp_alerts: []}
+      - eval_time: 130m
+        alertname: 备份过期
+        exp_alerts:
+          - exp_labels: {severity: critical, source: im}
+            exp_annotations: {value: 2h 10m 0s, threshold: '最近一次成功距今 > 2 小时', page: /database}
+
+  # 版本不一致：持续 30 分钟才触发。
+  - interval: 1m
+    input_series:
+      - series: 'im_build_info{job="im",node_id="n1",version="0.3.0"}'
+        values: '1x40'
+      - series: 'im_build_info{job="im",node_id="n2",version="0.3.1"}'
+        values: '1x40'
+    alert_rule_test:
+      - {eval_time: 20m, alertname: 版本不一致, exp_alerts: []}
+      - eval_time: 31m
+        alertname: 版本不一致
+        exp_alerts:
+          - exp_labels: {severity: warning}
+            exp_annotations: {value: '2 个版本', threshold: '不一致持续 30 分钟', page: /nodes}
+  - interval: 1m
+    input_series:
+      - series: 'im_build_info{job="im",node_id="n1",version="0.3.0"}'
+        values: '1x40'
+      - series: 'im_build_info{job="im",node_id="n2",version="0.3.0"}'
+        values: '1x40'
+    alert_rule_test:
+      - {eval_time: 35m, alertname: 版本不一致, exp_alerts: []}

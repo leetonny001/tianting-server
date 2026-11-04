@@ -1,0 +1,11 @@
+{{/* 只输出告警名、级别、node_id、当前值、阈值、开始时间和运维后台链接。不引用节点地址标签，也没有任何用户信息（AC-OPS-07-6）。 */}}
+{{ define "tianting.subject" }}[{{ if eq .Status "firing" }}告警{{ else }}已恢复{{ end }}] {{ .CommonLabels.alertname }}{{ end }}
+{{ define "tianting.body" }}{{ range .Alerts }}{{ if eq .Status "firing" }}告警{{ else }}已恢复{{ end }}：{{ .Labels.alertname }}
+级别：{{ .Labels.severity }}
+节点：{{ if .Labels.node_id }}{{ .Labels.node_id }}{{ else }}全局{{ end }}
+当前值：{{ .Annotations.value }}
+阈值：{{ .Annotations.threshold }}
+开始时间：{{ .StartsAt }}
+运维后台：https://ops.example.internal{{ .Annotations.page }}
+
+{{ end }}{{ end }}

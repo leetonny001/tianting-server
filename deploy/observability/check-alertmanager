@@ -1,0 +1,86 @@
+#!/usr/bin/env python3
+"""AC-OPS-07-9、07-6：告警配置检查。
+
+列出全部 receiver 的目标，断言没有指向天听自身（告警链路不能依赖被监控的服务）；模板不引用 instance。
+用法：check-alertmanager [alertmanager.yml]。--scan FILE 扫描通知内容，找 userId、IP、JWT。
+"""
+import argparse
+import pathlib
+import re
+import sys
+
+import yaml
+
+SELF_MARKERS = ("tianting", "im-server", "console-server", ":8080", ":8081", ":8090", ":8091", ":9091")
+SENSITIVE = {
+    "IPv4": re.compile(r"\b\d{1,3}(?:\.\d{1,3}){3}\b"),
+    "IPv6": re.compile(r"\b(?:[0-9a-fA-F]{1,4}:){3,}[0-9a-fA-F:]*\b"),
+    "IP:端口": re.compile(r"\b[\w.-]+:\d{2,5}\b"),
+    "JWT": re.compile(r"\beyJ[\w-]+\.[\w-]+\.[\w-]+"),
+    "userId": re.compile(r"\buserId\b"),
+}
+# 时间戳里的 12:34:56 不算端口。
+TIME = re.compile(r"\d{1,2}:\d{2}(?::\d{2})?")
+
+
+def targets(cfg):
+    out = []
+    for r in cfg.get("receivers", []):
+        name = r.get("name", "?")
+        for w in r.get("webhook_configs", []):
+            out.append((name, "webhook", w.get("url") or f"file:{w.get('url_file')}"))
+        for e in r.get("email_configs", []):
+            out.append((name, "email", e.get("to", "")))
+        for key in r:
+            if key.endswith("_configs") and key not in ("webhook_configs", "email_configs"):
+                out.append((name, key, "未检查的类型"))
+    return out
+
+
+def check(path):
+    path = pathlib.Path(path)
+    cfg = yaml.safe_load(path.read_text())
+    problems = []
+    listed = targets(cfg)
+    for name, kind, target in listed:
+        print(f"{name}\t{kind}\t{target}")
+        if kind not in ("webhook", "email"):
+            problems.append(f"{name}: 不认识的 receiver 类型 {kind}")
+        if any(m in target.lower() for m in SELF_MARKERS):
+            problems.append(f"{name}: 目标指向天听自身：{target}")
+    if not listed:
+        problems.append("没有配置任何通知目标")
+    for pattern in cfg.get("templates", []):
+        for tmpl in path.parent.glob(pattern):
+            code = re.sub(r"\{\{/\*.*?\*/\}\}", "", tmpl.read_text(), flags=re.S)
+            if re.search(r"\binstance\b", code):
+                problems.append(f"{tmpl.name}: 模板引用了 instance")
+    text = path.read_text()
+    if re.search(r"\.Labels\.instance|GroupLabels\.instance", text):
+        problems.append("配置引用了 instance")
+    route = cfg.get("route", {})
+    if route.get("repeat_interval") != "1h":
+        problems.append("repeat_interval 必须是 1h（规则 4）")
+    if "instance" in route.get("group_by", []):
+        problems.append("group_by 不能有 instance")
+    return problems
+
+
+def scan(path):
+    text = TIME.sub("", pathlib.Path(path).read_text())
+    return [f"通知内容含 {name}：{m.group(0)}" for name, rx in SENSITIVE.items() for m in rx.finditer(text)]
+
+
+def main():
+    ap = argparse.ArgumentParser()
+    ap.add_argument("config", nargs="?", default=str(pathlib.Path(__file__).parent / "alertmanager/alertmanager.yml"))
+    ap.add_argument("--scan")
+    a = ap.parse_args()
+    problems = scan(a.scan) if a.scan else check(a.config)
+    for p in problems:
+        print(p, file=sys.stderr)
+    return 1 if problems else 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

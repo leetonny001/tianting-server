@@ -1,0 +1,124 @@
+#!/usr/bin/env python3
+"""生成 Grafana 面板 JSON（PRD-ops F-OPS-06 规则 1）。面板定义写在代码里比手改 1000 行 JSON 好审查；生成物也提交。
+
+用法：gen-dashboards [--check]
+"""
+import json
+import pathlib
+import sys
+
+NODE = 'node_id=~"$node_id"'
+OUT = pathlib.Path(__file__).parent / "dashboards" / "tianting.json"
+LIVE = f'go_gc_heap_live_bytes{{{NODE}}} + go_memstats_stack_inuse_bytes{{{NODE}}}'
+
+
+def target(expr, legend, ref):
+    return {"datasource": {"type": "prometheus", "uid": "prometheus"}, "expr": expr, "legendFormat": legend, "refId": ref}
+
+
+def line(value, label=""):
+    """水平参考线：一个固定值的序列。"""
+    return (f"vector({value})", label or f"参考线 {value}")
+
+
+def panel(i, title, desc, queries, unit="short", stack=False, mappings=None):
+    refs = "ABCDEFGH"
+    col = (i - 1) % 2
+    row = (i - 1) // 2
+    custom = {"lineWidth": 1, "fillOpacity": 10}
+    if stack:
+        custom["stacking"] = {"mode": "normal", "group": "A"}
+    defaults = {"unit": unit, "custom": custom}
+    if mappings:
+        defaults["mappings"] = mappings
+    return {
+        "title": title,
+        "description": desc,
+        "type": "timeseries",
+        "datasource": {"type": "prometheus", "uid": "prometheus"},
+        "gridPos": {"h": 8, "w": 12, "x": col * 12, "y": row * 8},
+        "fieldConfig": {"defaults": defaults, "overrides": []},
+        "options": {"legend": {"displayMode": "table", "placement": "bottom", "calcs": ["lastNotNull", "max"]}, "tooltip": {"mode": "multi"}},
+        "targets": [target(q[0], q[1], refs[n]) for n, q in enumerate(queries)],
+    }
+
+
+P99_MAPPING = [{"type": "range", "options": {"from": 2.5, "to": None, "result": {"text": "> 2.5s"}}}]
+
+PANELS = [
+    panel(1, "在线连接", "全部节点的认证连接数，按平台。断崖先看节点列表和发布记录。", [(f"sum by (platform) (im_connections{{{NODE}}})", "{{platform}}")]),
+    panel(2, "握手结果", "每秒握手数，按结果。token_invalid 突增可能是攻击或客户端缺陷。", [(f"sum by (result) (rate(im_handshakes_total{{{NODE}}}[1m]))", "{{result}}")], "reqps"),
+    panel(3, "消息吞吐", "每秒新消息数。500 条/秒是 PRD-core 的设计目标；容量以目标服务器的复测结果为准（C-50），复测后更新。", [(f"sum by (conv_type) (rate(im_messages_total{{{NODE}}}[1m]))", "{{conv_type}}"), line(500, "设计目标 500 条/秒")], "reqps"),
+    panel(4, "命令量与结果", "每秒命令数，按命令和结果码（0 表示成功）。", [(f"sum by (cmd, code) (rate(im_commands_total{{{NODE}}}[1m]))", "{{cmd}} {{code}}")], "reqps"),
+    panel(5, "命令耗时 P50 / P99", "1 秒是 PRD-core 的目标。同场景三次压测的 P99 在 30～64ms 之间波动，只看趋势和量级。最大桶是 2.5 秒，超过时显示 > 2.5s，不是真实数字。", [
+        (f"histogram_quantile(0.5, sum by (cmd, le) (rate(im_command_duration_seconds_bucket{{{NODE}}}[5m])))", "{{cmd}} P50"),
+        (f"histogram_quantile(0.99, sum by (cmd, le) (rate(im_command_duration_seconds_bucket{{{NODE}}}[5m])))", "{{cmd}} P99"),
+        line(1, "目标 1 秒"),
+    ], "s", mappings=P99_MAPPING),
+    panel(6, "错误码分布", "命令失败，按错误码堆叠。含义见 protocol/ERRORS.md。", [(f'sum by (code) (rate(im_commands_total{{code!="0",{NODE}}}[1m]))', "{{code}}")], "reqps", stack=True),
+    panel(7, "关闭码分布", "按阶段（握手阶段 / 会话中）分组，组内按关闭方。4011、4012 在握手阶段说明客户端在用失效凭证重连；关闭码含义见 protocol/ERRORS.md。", [
+        (f'sum by (code, by) (rate(im_disconnects_total{{phase="handshake",{NODE}}}[5m]))', "握手阶段 {{by}} {{code}}"),
+        (f'sum by (code, by) (rate(im_disconnects_total{{phase="session",{NODE}}}[5m]))', "会话中 {{by}} {{code}}"),
+    ], "reqps"),
+    panel(8, "被踢原因", "每秒被踢连接数，按原因。banned 是强制下线，tooManyConnections 是超过单用户连接上限。", [(f"sum by (reason) (rate(im_kicks_total{{{NODE}}}[5m]))", "{{reason}}")], "reqps"),
+    panel(9, "慢连接", "因下行队列满被断开的连接。持续增长先看客户端网络和消息量。", [(f"sum(rate(im_slow_consumers_total{{{NODE}}}[5m]))", "慢连接")], "reqps"),
+    panel(10, "内存", "堆 + 栈在 GOGC=100 下会涨到存活内存的约 2 倍，属正常；判断容量和泄漏看存活内存；不要用 RSS。没有设置 GOMEMLIMIT 时没有上限线，图例显示“未设置 GOMEMLIMIT”。", [
+        (f"go_memstats_heap_inuse_bytes{{{NODE}}}", "{{node_id}} 堆"),
+        (f"go_memstats_stack_inuse_bytes{{{NODE}}}", "{{node_id}} 栈"),
+        (f"go_memstats_next_gc_bytes{{{NODE}}}", "{{node_id}} GC 目标"),
+        (LIVE, "{{node_id}} 存活内存估算"),
+        (f"go_gc_gomemlimit_bytes{{{NODE}}} < 2^62", "{{node_id}} GOMEMLIMIT"),
+        (f"(go_gc_gomemlimit_bytes{{{NODE}}} >= bool 2^62) == 1", "{{node_id}} 未设置 GOMEMLIMIT"),
+    ], "bytes"),
+    panel(11, "每连接存活内存", "存活内存估算 / 在线连接数，只在连接数 ≥ 1000 时显示（连接少时基础开销占比太大）。32 KB 是内存分析强制 GC 后的口径。这里是存活内存，不是堆 + 栈。", [
+        (f"sum({LIVE}) / sum(im_connections{{{NODE}}}) and sum(im_connections{{{NODE}}}) >= 1000", "每连接存活内存"),
+        line(32768, "参考 32 KB"),
+    ], "bytes"),
+    panel(12, "goroutine", "约等于连接数 + 常数（1 万连接约 1.01 万）。比连接数涨得快说明有泄漏。", [(f"sum(go_goroutines{{{NODE}}})", "goroutine"), (f"sum(im_connections{{{NODE}}})", "在线连接")]),
+    panel(13, "GC 与 CPU", "GC CPU 占比超过 25% 是 GC 风暴告警的阈值，先看 GOMEMLIMIT 是否太低。", [
+        (f"rate(go_cpu_classes_gc_total_cpu_seconds_total{{{NODE}}}[5m]) / rate(go_cpu_classes_total_cpu_seconds_total{{{NODE}}}[5m])", "{{node_id}} GC CPU 占比"),
+        (f"rate(process_cpu_seconds_total{{{NODE}}}[1m])", "{{node_id}} 进程 CPU 核数"),
+        line(0.25, "GC 风暴阈值 25%"),
+    ], "percentunit"),
+    {
+        "title": "数据保留说明",
+        "type": "text",
+        "gridPos": {"h": 3, "w": 24, "x": 0, "y": 56},
+        "options": {"mode": "markdown", "content": "指标保留 30 天，超出部分显示为空。"},
+    },
+]
+
+
+def dashboard():
+    return {
+        "uid": "tianting-overview",
+        "title": "天听 IM",
+        "tags": ["tianting"],
+        "timezone": "browser",
+        "schemaVersion": 39,
+        "editable": False,
+        "refresh": "30s",
+        "time": {"from": "now-1h", "to": "now"},
+        "timepicker": {"refresh_intervals": ["15s", "30s", "1m", "5m"], "quick_ranges": []},
+        "templating": {"list": [{
+            "name": "node_id", "label": "节点", "type": "query", "datasource": {"type": "prometheus", "uid": "prometheus"},
+            "query": {"query": "label_values(im_build_info, node_id)", "refId": "node"}, "refresh": 2, "multi": True, "includeAll": True, "allValue": ".*",
+            "current": {"text": "All", "value": "$__all"},
+        }]},
+        "panels": PANELS,
+    }
+
+
+def main():
+    text = json.dumps(dashboard(), ensure_ascii=False, indent=2) + "\n"
+    if "--check" in sys.argv:
+        if not OUT.exists() or OUT.read_text(encoding="utf-8") != text:
+            print("dashboards/tianting.json 过期了：运行 gen-dashboards", file=sys.stderr)
+            return 1
+        return 0
+    OUT.write_text(text, encoding="utf-8")
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

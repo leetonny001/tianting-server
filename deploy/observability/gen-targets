@@ -1,0 +1,41 @@
+#!/usr/bin/env python3
+"""由 console-server 的节点凭证表生成 Prometheus 的 file_sd 清单（S-OPS-27）。
+
+只读 nodeId 和 metricsAddr：私钥引用不进清单。node_id 标签和 im_build_info{node_id} 同源。
+用法：gen-targets nodes.json > targets/im.json
+"""
+import json
+import sys
+
+
+def generate(rows):
+    out = []
+    seen = set()
+    for row in rows:
+        node, addr = row.get("nodeId"), row.get("metricsAddr")
+        if not node or not addr:
+            raise ValueError(f"节点 {node or '?'} 缺少 nodeId 或 metricsAddr")
+        if node in seen:
+            raise ValueError(f"节点 {node} 重复")
+        seen.add(node)
+        out.append({"targets": [addr], "labels": {"node_id": node}})
+    return out
+
+
+def main():
+    if len(sys.argv) != 2:
+        print(__doc__, file=sys.stderr)
+        return 2
+    with open(sys.argv[1], encoding="utf-8") as f:
+        rows = json.load(f)
+    try:
+        json.dump(generate(rows), sys.stdout, indent=2, ensure_ascii=False)
+    except ValueError as e:
+        print(e, file=sys.stderr)
+        return 1
+    print()
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())
