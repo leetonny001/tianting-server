@@ -2,7 +2,7 @@
 
 | 项 | 内容 |
 |---|---|
-| 依据 | [PRD-admin v1.0](../prd/PRD-admin-v1.0.md)（冻结）第 2.3、2.4 节、第 4 节 F-CON-01～12（**两个后台的唯一规格**）、第 5 节、第 6 节 console 侧部分、第 9 节；[PRD-ops v1.0](../prd/PRD-ops-v1.0.md) 第 4 节 B-OPS-01～15（运维侧对基座的需求）；[ARCH-v1](../arch/ARCH-v1.md)；[errors.json](../../protocol/errors.json) |
+| 依据 | [PRD-admin v1.0](../prd/PRD-admin-v1.0.md)（冻结）第 2.3、2.4 节、第 4 节 F-CON-01～12（**两个后台的唯一规格**）、第 5 节、第 6 节 console 侧部分、第 9 节；[PRD-ops v1.0](../prd/PRD-ops-v1.1.md) 第 4 节 B-OPS-01～15（运维侧对基座的需求）；[ARCH-v1](../arch/ARCH-v1.md)；[errors.json](../../protocol/errors.json) |
 | 负责 | 后端（AI） |
 | 仓库 | tianting-console-server（待建，Go；PRD 中称 `console-server`）。管理后台前端在 tianting-admin（见 [frontend-admin.md](frontend-admin.md)），由 console-server 托管其构建产物 |
 | 编号 | **CS-001～CS-099 本单**（基座 CS-001～CS-019、管理后台业务 CS-020～CS-069）；**CS-100～CS-199 运维模块**（另一份任务单，复用本单基座，不重复实现） |

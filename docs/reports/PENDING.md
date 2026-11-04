@@ -13,12 +13,12 @@
 | P-7 | 2026-11-03 | 三个不阻塞的确认项：① F-1 告警发给谁、是否 7×24、严重告警是否买电话 / 短信（PRD-ops；默认先发给 Frank：办公 IM 机器人 + 邮件）；② Q-1 群消息查看用单独的 `console-msgread` 凭证、主凭证永远不能读正文（PRD-admin；第二批开工前确认）；③ D-1 ws 错误里"哪个用户"统一用 `details.userId`，不单独加 `userId` 字段（PRD-core v1.3 12.3 节；M4 前确认） | 产品 / 安全口径 | 都有默认方案，不确认就按默认做 | 回复"按默认"或逐项改 |
 | P-2 | 2026-11-02 | 创建"自主开发"定时任务 `im-autodev`（每天 09:30、14:30） | 安全分类器要求本人确认：任务会自动改代码并推送 | 只有日报，开发要在聊天里让 AI 做 | 按 [AUTODEV_TASK.md](../process/AUTODEV_TASK.md) 在应用里创建，或允许 AI 创建 |
 | P-1 | 2026-11-02 | gh 令牌补 `workflow` 权限：`gh auth refresh -h github.com -s workflow` | 账号权限变更 | 无阻塞：AI 修改 `.github/workflows/` 时改用 SSH 推送即可 | 有空时做一次 |
-| P-11 | 2026-11-04 | AC-OPS-04-2 的今日累计误差：实测 1229.5，要求 1200 ±1% | PRD 和任务单都指定用 `increase()`，它按抓取间隔外推（结果带小数就是证据），多出的量约等于 总量 × 外推秒数 ÷ 抓取跨度。干净的 Prometheus 上跨度短，误差大；跨度 1 小时以上约 0.4%。要满足 1% 就得改 AC 或换算法，属于产品决定 | 只影响刚开始抓取、或刚过零点时卡片上的今日累计；其他项全部通过。testenv 工作流在决定之前保持失败 | Frank 决定：把 AC 的误差放宽到 3% 并注明外推（推荐）；或前提改成已抓取 1 小时以上 |
 
 ## 已处理
 
 | # | 日期 | 事项 | 结论 |
 |---|---|---|---|
+| P-11 | 2026-11-04 | AC-OPS-04-2 的今日累计误差（实测 1229.5，要求 1200 ±1%，`increase()` 的外推造成） | 2026-11-04 Frank 决定放宽到 3%。PRD-ops 升 v1.1，用例和工具同步，算法不变 |
 | P-9 | 2026-11-04 | 创建 tianting-console-server 私有仓库，配置和 tianting-server 互读的只读部署密钥 | 2026-11-04 Frank 建仓库并运行 setup-ci-deploy-keys.sh；console-server 的 CI（含真实 im-server 的端到端、真实 MinIO 的 WORM）和带 console-server 的 testenv 都通过。tianting-admin 的端到端测试还没有进 CI |
 | P-5 | 2026-11-04 | 本机安装 Postgres | 2026-11-04 Frank 授权。`brew install postgresql@17`（17.11），只监听本机。没有开启开机自启：需要时运行 `$(brew --prefix postgresql@17)/bin/pg_ctl -D $(brew --prefix)/var/postgresql@17 -l $(brew --prefix)/var/postgresql@17/server.log start`。开发库 `tianting_console_dev`、测试库 `tianting_console_test` |
 | P-8 | 2026-11-03 | tianting-web 的 CI 读取私有 SDK / 服务端 | 2026-11-03 Frank 运行 setup-ci-deploy-keys.sh；CI 检出两个仓库、构建 SDK、检查、单元测试、构建、端到端测试全部通过 |

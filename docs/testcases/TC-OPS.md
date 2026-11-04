@@ -1,6 +1,6 @@
 # 测试用例：运维后台（OPS）
 
-> 依据：[PRD-ops v1.0](../prd/PRD-ops-v1.0.md)（冻结，167 条 AC：第一批 159 条，其中 5 条依赖 B6；第二批 7 条；P1 1 条）、[PRD-admin v1.0](../prd/PRD-admin-v1.0.md) 第 4 节公共基座与 F-KEY-03、2.3 / 2.4 节、第 10 节错误码，[ERRORS.md](../../protocol/ERRORS.md)，[内存分析](../reports/mem-2026-11-03.md)，[压测报告](../reports/perf-2026-11-03.md)。任务单：[backend-ops](../tasks/backend-ops.md)、[console-ops](../tasks/console-ops.md)、[frontend-ops](../tasks/frontend-ops.md)。
+> 依据：[PRD-ops v1.0](../prd/PRD-ops-v1.1.md)（冻结，167 条 AC：第一批 159 条，其中 5 条依赖 B6；第二批 7 条；P1 1 条）、[PRD-admin v1.0](../prd/PRD-admin-v1.0.md) 第 4 节公共基座与 F-KEY-03、2.3 / 2.4 节、第 10 节错误码，[ERRORS.md](../../protocol/ERRORS.md)，[内存分析](../reports/mem-2026-11-03.md)，[压测报告](../reports/perf-2026-11-03.md)。任务单：[backend-ops](../tasks/backend-ops.md)、[console-ops](../tasks/console-ops.md)、[frontend-ops](../tasks/frontend-ops.md)。
 >
 > 通用约定：
 > - 环境（PRD-ops 3.3 节）：**E1 单节点**（1 个 im-server，development，`IM_TEST_MODE=1`，`IM_NODE_ID=n1`；console-server 基座测试模式 `CON_TEST_MODE=1`；Postgres、Prometheus、Alertmanager、Grafana、webhook 接收器、MinIO、node_exporter textfile）；**E2a 静态双节点**（E1 + n2，同一 JWT 密钥、各自 SQLite、静态节点列表，无 Redis / NATS / Presence）；**E2b 集群**（B6 交付的 Redis + NATS + Postgres，依赖 B6）；**EP 性能**（`im-loadtest` 驱动的 E1，服务端与压测客户端同机，结论只在同一轮内比较，C-50）；**单测**；**promtool**。环境编排见 BE-320，Postgres / Grafana / Prometheus / Alertmanager / MinIO 等由测试环境提供，不在开发机安装。
@@ -705,7 +705,7 @@
   2. 发送结束后一个刷新周期读取今日累计
 - 预期结果：
   1. 每秒新消息数在 9～11 之间
-  2. 今日累计比发送前增加 1200（误差 ≤ 1%）
+  2. 今日累计比发送前增加 1200（误差 ≤ 3%）
 
 ### TC-OPS-04-03 错误率卡片：4xxx 占比与 4290 计入 Top 3
 - 关联 AC：AC-OPS-04-3

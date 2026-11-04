@@ -2,7 +2,7 @@
 
 | 项 | 内容 |
 |---|---|
-| 依据 | [PRD-ops v1.0](../prd/PRD-ops-v1.0.md)（冻结，167 条 AC）第 15 节 S-OPS-01～30、第 7 节；[PRD-admin v1.0](../prd/PRD-admin-v1.0.md) F-KEY-01（独立内网监听）、F-KEY-03（签名）；[ARCH-v1](../arch/ARCH-v1.md) 第 2、7 节；[压测报告](../reports/perf-2026-11-03.md)；[内存分析](../reports/mem-2026-11-03.md)；[错误码](../../protocol/ERRORS.md) |
+| 依据 | [PRD-ops v1.0](../prd/PRD-ops-v1.1.md)（冻结，167 条 AC）第 15 节 S-OPS-01～30、第 7 节；[PRD-admin v1.0](../prd/PRD-admin-v1.0.md) F-KEY-01（独立内网监听）、F-KEY-03（签名）；[ARCH-v1](../arch/ARCH-v1.md) 第 2、7 节；[压测报告](../reports/perf-2026-11-03.md)；[内存分析](../reports/mem-2026-11-03.md)；[错误码](../../protocol/ERRORS.md) |
 | 负责 | 后端（AI） |
 | 仓库 | `tianting-server`（本仓库 `server/`，部署配置在 `deploy/`，目前尚无 `deploy/` 目录，由本任务单新建） |
 | 起点 | B5 已完成：`internal/metrics`（Prometheus 指标）、`IM_METRICS_ADDR` 上挂 `/metrics` + pprof、`conn closed` 日志、`internal/config` 的 `productionProblems`（返回 `[]string`，`IM_JWT_KEYS` 下漏查与 `IM_ADMIN_KEY` 相同）、`migrate status`（无执行时间和校验和）、`im-server backup`（无清单）、`im-loadtest` |

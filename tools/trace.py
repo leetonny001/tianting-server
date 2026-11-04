@@ -18,7 +18,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 PRDS = [ROOT / "docs/prd" / n for n in (
-    "PRD-core-v1.3.md", "PRD-social-v1.0.md", "PRD-ui-v1.0.md", "PRD-admin-v1.0.md", "PRD-ops-v1.0.md")]
+    "PRD-core-v1.3.md", "PRD-social-v1.0.md", "PRD-ui-v1.0.md", "PRD-admin-v1.0.md", "PRD-ops-v1.1.md")]
 TASK_DIR = ROOT / "docs/tasks"
 TC_DIR = ROOT / "docs/testcases"
 OUT = TC_DIR / "traceability.md"

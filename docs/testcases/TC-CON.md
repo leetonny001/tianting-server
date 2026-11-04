@@ -1,6 +1,6 @@
 # 测试用例：console-server 公共基座（CON）
 
-> 依据：[PRD-admin v1.0](../prd/PRD-admin-v1.0.md) 第 4 节 F-CON-01～12（两个后台的唯一规格，冻结）、第 2.3、2.4 节、第 10 节错误码；[PRD-ops v1.0](../prd/PRD-ops-v1.0.md) 第 4 节 B-OPS（运维侧验收另见 TC-OPS）。任务：[console.md](../tasks/console.md) CS-001～CS-017、[frontend-admin.md](../tasks/frontend-admin.md) FE-400～FE-405。
+> 依据：[PRD-admin v1.0](../prd/PRD-admin-v1.0.md) 第 4 节 F-CON-01～12（两个后台的唯一规格，冻结）、第 2.3、2.4 节、第 10 节错误码；[PRD-ops v1.0](../prd/PRD-ops-v1.1.md) 第 4 节 B-OPS（运维侧验收另见 TC-OPS）。任务：[console.md](../tasks/console.md) CS-001～CS-017、[frontend-admin.md](../tasks/frontend-admin.md) FE-400～FE-405。
 >
 > 通用约定：
 > - 环境：console-server 连真实 Postgres（每个用例独立库，`console-server migrate up` 后运行时用 `console_app`）；`CON_TEST_MODE=1`、`CON_ENV=test`（生产保护类用例除外）；im-server 测试模式（`IM_TEST_MODE=1`），console 用 `console` 调用方签名调用它。
