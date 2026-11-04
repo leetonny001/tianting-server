@@ -10,6 +10,7 @@ import (
 	"io"
 	"log/slog"
 	"net/http"
+	"net/http/httptest"
 	"strings"
 	"sync"
 	"testing"
@@ -99,10 +100,13 @@ func TestAuthFrameWithBadToken(t *testing.T) {
 func TestTooManyConnections(t *testing.T) {
 	e := newEnv(t)
 	bob := e.dial("bob", "web")
+	e.waitWebConns(1)
 	tok := e.token("alice")
 	conns := make([]*client, 11)
 	for i := range 10 {
 		conns[i] = e.dialURL(fmt.Sprintf("alice-%d", i), e.wsURL(tok, "web"))
+		// auth 的 ack 先于登记发出：不等登记，先后顺序可能反过来，被踢的就不是 conns[0]。
+		e.waitWebConns(i + 2)
 	}
 	conns[1].expectNoMsg(100 * time.Millisecond) // 10 个以内谁都不会被踢
 
@@ -114,6 +118,24 @@ func TestTooManyConnections(t *testing.T) {
 		if m := c.waitCmd(protocol.CmdMsg).msg(t); m.MsgID != a.MsgID {
 			t.Errorf("%s got %+v", c.uid, m)
 		}
+	}
+}
+
+// waitWebConns 等 web 平台的连接数达到 want（读指标，不需要运维接口）。
+func (e *env) waitWebConns(want int) {
+	e.t.Helper()
+	line := fmt.Sprintf(`im_connections{platform="web"} %d`, want)
+	deadline := time.Now().Add(5 * time.Second)
+	for {
+		rec := httptest.NewRecorder()
+		e.app.MetricsHandler().ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/metrics", nil))
+		if strings.Contains(rec.Body.String()+"\n", line+"\n") {
+			return
+		}
+		if time.Now().After(deadline) {
+			e.t.Fatalf("connections never reached %d", want)
+		}
+		time.Sleep(2 * time.Millisecond)
 	}
 }
 

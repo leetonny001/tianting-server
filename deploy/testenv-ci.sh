@@ -23,12 +23,21 @@ echo "== MinIO + age: backup"
 root_pw="$(openssl rand -hex 16)"
 writer_pw="$(openssl rand -hex 16)"
 reader_pw="$(openssl rand -hex 16)"
-docker run -d --name tt-minio -p 19100:9000 -e MINIO_ROOT_USER=root -e MINIO_ROOT_PASSWORD="$root_pw" minio/minio:RELEASE.2025-04-22T22-12-26Z server /data >/dev/null
-trap 'docker rm -f tt-minio tt-grafana >/dev/null 2>&1 || true' EXIT
+# MinIO 不再发布公开的镜像和二进制：从固定版本的源码构建。MINIO_BIN_DIR 由 CI 缓存。
+BIN="${MINIO_BIN_DIR:-$WORK/minio-bin}"
+mkdir -p "$BIN"
+build_from_source() { # name repo tag
+  [ -x "$BIN/$1" ] && return 0
+  git clone -q --depth 1 --branch "$3" "$2" "$WORK/src-$1"
+  (cd "$WORK/src-$1" && CGO_ENABLED=0 go build -o "$BIN/$1" .)
+}
+build_from_source minio https://github.com/minio/minio RELEASE.2025-04-22T22-12-26Z
+build_from_source mc https://github.com/minio/mc RELEASE.2025-04-16T18-13-26Z
+MINIO_ROOT_USER=root MINIO_ROOT_PASSWORD="$root_pw" "$BIN/minio" server --quiet --address 127.0.0.1:19100 "$WORK/minio-data" >/dev/null 2>&1 &
+MINIO_PID=$!
+trap 'kill "$MINIO_PID" 2>/dev/null || true; docker rm -f tt-grafana >/dev/null 2>&1 || true' EXIT
 for _ in $(seq 1 60); do curl -fs http://127.0.0.1:19100/minio/health/live >/dev/null && break; sleep 1; done
-curl -fsSL -o "$WORK/mc" https://dl.min.io/client/mc/release/linux-amd64/archive/mc.RELEASE.2025-04-16T18-13-26Z
-chmod +x "$WORK/mc"
-MC="$WORK/mc"
+MC="$BIN/mc"
 export MC_CONFIG_DIR="$WORK/mcconfig"
 "$MC" alias set --quiet root http://127.0.0.1:19100 root "$root_pw" >/dev/null
 "$MC" mb --quiet root/tianting-backups >/dev/null
