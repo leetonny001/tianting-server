@@ -53,7 +53,7 @@ func main() {
 	flag.StringVar(&externalKeyFile, "external-admin-key-file", "", "运行中节点的 IM_ADMIN_KEY 所在文件")
 	flag.Parse()
 	if external.addr != "" {
-		key, err := os.ReadFile(externalKeyFile)
+		key, err := os.ReadFile(externalKeyFile) // #nosec G304 -- 路径来自运维传入的 -external-admin-key-file 参数
 		if err != nil || external.adminAddr == "" || scenarios != "latency" {
 			fmt.Fprintln(os.Stderr, "-external-addr needs -external-admin-addr, -external-admin-key-file and -scenarios latency")
 			os.Exit(2)
