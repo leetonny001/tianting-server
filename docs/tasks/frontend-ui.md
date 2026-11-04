@@ -18,7 +18,8 @@
 | FE-203～FE-206、FE-210 | ✅ 完成 | tianting-sdk-ts `0561001`、`6ced393`：快照引用稳定、`memberCount` + `refreshConversations`（30 秒节流）+ `truncated()`、被移出快照（`reason`、重连推断、截断不推断）、打开未知会话向服务端确认、`avatarColorIndex` / `avatarInitial` 跑 `avatar.json` |
 | FE-207～FE-209 | ⬜ 未开始 | — |
 | FE-223、FE-226、FE-228、FE-234、FE-245～FE-247 | ✅ 完成（Web） | tianting-web `ee5c73d`：昵称登录、截断提示、"群名（N）"与聊天信息页、被移出 / 解散 / 未知会话、axe 扫描零违规、CSP + `uiPrefs`、500 会话 4 倍降速中位数约 376ms。手工项（VoiceOver、iOS Safari）未做 |
-| FE-238～FE-244、FE-248 | ⬜ 未开始 | 社交页面依赖 PRD-social 服务端 |
+| FE-238～FE-244 | ✅ 完成（Web） | tianting-web：通讯录（拼音分组，`protocol/vectors/pinyin-groups.json`）、资料卡、新的朋友、添加朋友、申请、备注、黑名单、隐私、私聊权限提示条、群聊列表；群消息发送者昵称、头像图片、官方标识、会话列表备注优先。组件测试 43 个、端到端 6 个、axe 覆盖新页面；2000 好友刷新后约 475ms 显示完成。未做：好友制 / 陌生人限额的提示条端到端（测试服务端是默认开放模式，这两条只有组件测试，服务端行为由 `TestTCSOC08*` 覆盖）、AC-UI-13-9 在 WebKit 上跑一次 |
+| FE-248（M3 手工验收） | ⬜ 未开始 | iOS Safari、VoiceOver 需要人工 |
 | FE-300～FE-313（M4：宽屏、深色、群管理、Tauri） | ⬜ 未开始 | — |
 | FE-350～FE-354（第二批 / P1） | ⬜ 未开始 | 依赖 PRD-admin 第二批服务端与协议 |
 | FE-380～FE-387（原生端总任务） | ⬜ 未开始 | M5 / M6 |

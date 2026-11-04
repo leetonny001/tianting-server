@@ -15,7 +15,7 @@
 
 | 任务 | 状态 | 说明 |
 |---|---|---|
-| FE-100 ～ FE-103（sdk-ts，M3） | ⬜ 未开始 | 等 BE-105 |
+| FE-100 ～ FE-103（sdk-ts，M3） | ✅ 2026-11-04 | tianting-sdk-ts：`SocialState` 纯状态机（与服务端 Go 参考客户端逐条对应，跑 `vectors/social.json`）、同步轮驱动（连接后先 `convs`、200ms 去抖、`restart`、ack 不连续补轮、4290 后 6 秒重试）、`friends` / `friendRequests` / `blocks` / `socialSettings` 快照与事件、好友 / 拉黑 / 搜索 / 隐私命令、`relationOf`、资料缓存（10 分钟，同一事件循环合并、每批 100，没返回的人 10 分钟内不重查）、`loadMyGroups`、`messageFor`、`refreshSocial`。单元测试 142 个、集成测试 9 个 |
 | FE-110 ～ FE-111（sdk-ts，M4） | ⬜ 未开始 | 等 BE-132 |
 | FE-130 ～ FE-133（sdk-kotlin，M5） | ⬜ 未开始 | 随 Q17 首版 |
 | FE-140 ～ FE-143（sdk-swift，M6） | ⬜ 未开始 | 随 Q18 首版 |
