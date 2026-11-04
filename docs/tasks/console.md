@@ -10,7 +10,7 @@
 
 格式说明：每个任务的 `- AC：` 一行列出它负责满足的验收标准，追溯矩阵由 `tools/trace.py` 从这一行生成。
 
-**前置条件（所有任务）**：**本地开发环境需要 Postgres**（`docs/reports/PENDING.md` P-5：本机安装尚未授权）。在授权前只能做不连库的部分（配置解析、签名客户端、密码策略等纯函数），集成测试一律以"Postgres 可用"为依赖。CI 使用容器内 Postgres（GitHub Actions service container），不依赖本机安装。
+**前置条件（所有任务）**：**本地开发环境需要 Postgres**（P-5 已于 2026-11-04 授权并安装，17.11，库 `tianting_console_dev` / `tianting_console_test`）。在授权前只能做不连库的部分（配置解析、签名客户端、密码策略等纯函数），集成测试一律以"Postgres 可用"为依赖。CI 使用容器内 Postgres（GitHub Actions service container），不依赖本机安装。
 
 ## 进度
 
