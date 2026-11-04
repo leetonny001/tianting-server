@@ -9,6 +9,7 @@
 |---|---|---|---|---|---|
 | P-9 | 2026-11-04 | M3 手工验收（FE-248 及任务单记录的手工项）：iPhone 15 Safari 安全区截图、macOS / iOS Safari 拼音输入录屏、VoiceOver | 需要真机和人工操作，AI 无法独立完成 | 不阻塞开发，但 M3 不能算验收完成 | 社交页面完成后一起做，一次跑完 M3 演示路径；回复"社交页面完成后我来做"或指定其他人 |
 | P-9 | 2026-11-04 | 创建私有仓库 tianting-console-server 并推送 | AI 建仓库被权限系统拦下（新建远端仓库属于对外操作） | 代码只在本机，没有 CI；不影响继续开发 | 运行 `gh repo create leetonny001/tianting-console-server --private --source /Users/frank/Desktop/workspace/tianting-console-server --remote origin --push`，或允许 AI 创建 |
+| P-10 | 2026-11-04 | 下载 SecLists 的 `10-million-password-list-top-10000.txt` 作为弱密码表（PRD-admin F-CON-04 规则 1，约 80KB，来自 github.com/danielmiessler/SecLists） | 下载外部文件需要确认 | 目前用手写的 406 条暂行表，能拦住常见长口令，但覆盖不如正式列表；不阻塞开发，上线前必须换 | 回复"可以下载"，或自己放到 `tianting-console-server/assets/weak-passwords.txt` |
 | P-6 | 2026-11-03 | 法务确认后台能否查看单聊消息正文（X-7），以及宿主 App 隐私政策是否要更新 | 法律问题 | 在确认前后台不开放单聊正文查看（默认 ①），不阻塞其他工作 | 找法务确认后回复结论 |
 | P-7 | 2026-11-03 | 三个不阻塞的确认项：① F-1 告警发给谁、是否 7×24、严重告警是否买电话 / 短信（PRD-ops；默认先发给 Frank：办公 IM 机器人 + 邮件）；② Q-1 群消息查看用单独的 `console-msgread` 凭证、主凭证永远不能读正文（PRD-admin；第二批开工前确认）；③ D-1 ws 错误里"哪个用户"统一用 `details.userId`，不单独加 `userId` 字段（PRD-core v1.3 12.3 节；M4 前确认） | 产品 / 安全口径 | 都有默认方案，不确认就按默认做 | 回复"按默认"或逐项改 |
 | P-2 | 2026-11-02 | 创建"自主开发"定时任务 `im-autodev`（每天 09:30、14:30） | 安全分类器要求本人确认：任务会自动改代码并推送 | 只有日报，开发要在聊天里让 AI 做 | 按 [AUTODEV_TASK.md](../process/AUTODEV_TASK.md) 在应用里创建，或允许 AI 创建 |
