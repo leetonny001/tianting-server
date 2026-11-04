@@ -16,7 +16,10 @@
 
 | 任务 | 状态 | 说明 |
 |---|---|---|
-| FE-400 ～ FE-440 | ⬜ 未开始 | 2026-11-03 需求分发 |
+| FE-400 ～ FE-405、FE-410 ～ FE-416 | ✅ 2026-11-04 | tianting-admin `320af4a`。30 个 Playwright 用例对真实 console-server + im-server + Postgres（生产 CSP 响应头）、17 个单元测试、lint、`npm audit`（只有 ESLint 依赖链的 moderate，没有 high）、构建产物扫描全过。**只在 Chrome 上跑过**：Edge、Safari、Firefox 未测。**没有端到端覆盖的**：AC-ADM-10-4（断线后刷新显示离线）、22-1（1500 人翻页，接口层已测）、15-7 的页面提示（接口和文案表已测）、23-2、16-1 的 1 秒生效（im-server 行为）；AC-ADM-14-6 依赖 B6，现在的文案没有列出未响应节点。CI 只跑 lint、单元测试、构建和扫描，端到端要等 P-9 |
+| FE-420 ～ FE-440 | ⬜ 未开始 | 第二批依赖 BE-222 ～ 229 |
+
+**规格冲突的处理**：AC-ADM-05-3 要求客服的菜单里没有"社交配置"、直接访问显示无权限，而 5.2 节矩阵和 AC-ADM-16-4 让客服能读配置。处理：页面按 `social.settings` 守卫，`GET /console/api/settings/social` 仍然对 `social.read` 开放。
 
 ## 总览
 
