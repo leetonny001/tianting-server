@@ -1,10 +1,15 @@
 # S-OPS-27：指标抓取。保留 30 天用启动参数 --storage.tsdb.retention.time=30d。
+# 启动参数还要有 --web.external-url=<内网域名，不带端口>：通知里的 generatorURL 默认是"主机名:端口"（AC-OPS-07-6）。
 # 只监听回环，或只对 console-server、Grafana 开放（firewall.nft）。
 global:
   scrape_interval: 15s
   evaluation_interval: 15s
 
 alerting:
+  # webhook 收到的是原始标签，模板管不到这里：instance 是节点的"IP:端口"，发出去之前去掉（AC-OPS-07-6）。
+  alert_relabel_configs:
+    - action: labeldrop
+      regex: instance
   alertmanagers:
     - static_configs:
         - targets: ['127.0.0.1:9093']

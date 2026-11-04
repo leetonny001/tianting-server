@@ -2,6 +2,7 @@
 # 通知模板不输出节点地址标签，只用 node_id。
 groups:
   - name: im
+    # 汇总类告警不属于某个节点，node_id 是 all：每条通知都要有 node_id（AC-OPS-07-6）。
     rules:
       - alert: 节点不可达
         expr: up{job="im"} == 0
@@ -16,7 +17,7 @@ groups:
         # or vector(0)：节点全挂、指标全部消失时也成立。
         expr: (sum(im_ready{job="im"}) or vector(0)) == 0
         for: 1m
-        labels: {severity: critical}
+        labels: {severity: critical, node_id: all}
         annotations:
           value: '0 个就绪节点'
           threshold: '就绪节点数 == 0 持续 1 分钟'
@@ -32,7 +33,7 @@ groups:
           and
           sum(increase(im_commands_total{job="im",cmd!~"auth|ping",code=~"5..."}[5m])) >= 10
         for: 5m
-        labels: {severity: critical}
+        labels: {severity: critical, node_id: all}
         annotations:
           value: '{{ $value | humanizePercentage }}'
           threshold: '5 分钟内占比 > 1% 且条数 ≥ 10'
@@ -51,7 +52,7 @@ groups:
           and
           sum(rate(im_command_duration_seconds_count{job="im",cmd="send"}[5m])) > 1
         for: 5m
-        labels: {severity: warning}
+        labels: {severity: warning, node_id: all}
         annotations:
           value: '{{ $value | humanizePercentage }}'
           threshold: 'send 超过 500ms 的比例 > 1% 且速率 > 1 条/秒'
@@ -68,7 +69,7 @@ groups:
           unless (sum(im_draining{job="im"}) > 0)
           unless (sum(changes(process_start_time_seconds{job="im"}[10m])) > 0)
         for: 2m
-        labels: {severity: warning}
+        labels: {severity: warning, node_id: all}
         annotations:
           value: '{{ $value | humanize }} 个连接'
           threshold: '比 5 分钟前下降 > 30% 且下降前 > 100'
@@ -124,7 +125,7 @@ groups:
           or absent(im_backup_last_success_timestamp_seconds{source="im"})
           or absent(im_backup_last_success_timestamp_seconds{source="console"})
         for: 1m
-        labels: {severity: critical}
+        labels: {severity: critical, node_id: all}
         annotations:
           value: '{{ $value | humanizeDuration }}'
           threshold: '最近一次成功距今 > 2 小时'
@@ -133,7 +134,7 @@ groups:
       - alert: 版本不一致
         expr: count(count by (version) (im_build_info{job="im"})) > 1
         for: 30m
-        labels: {severity: warning}
+        labels: {severity: warning, node_id: all}
         annotations:
           value: '{{ $value }} 个版本'
           threshold: '不一致持续 30 分钟'

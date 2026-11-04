@@ -25,10 +25,13 @@ var fixedAddrs struct{ metrics, ops, pprof string }
 // serverEnv 是额外传给服务端的环境变量（-server-env），例如 GOMEMLIMIT。
 var serverEnv []string
 
-const (
-	adminKey  = "loadtest-admin-key-0123456789abcdef"
-	jwtSecret = "loadtest-jwt-secret-0123456789abcdef"
-)
+// external 让压测打到已经在运行的节点，不启动子进程（AC-OPS-90-5：测试环境里的 n1）。
+var external struct{ addr, adminAddr string }
+
+// adminKey 在 external 模式下换成 -external-admin-key-file 的内容。
+var adminKey = "loadtest-admin-key-0123456789abcdef"
+
+const jwtSecret = "loadtest-jwt-secret-0123456789abcdef"
 
 // server 是由压测工具启动的 im-server 子进程。
 type server struct {
@@ -49,6 +52,18 @@ func newServer(bin, dir, name string) *server {
 // start 启动服务端（复用同一个数据库文件，可以用来做 kill -9 后重启）。
 // 压测机和服务端在同一台机器上，所有连接都来自 127.0.0.1，所以调高按 IP 的握手限流。
 func (s *server) start() error {
+	if external.addr != "" {
+		s.addr, s.adminAddr = external.addr, external.adminAddr
+		resp, err := http.Get("http://" + s.addr + "/readyz")
+		if err != nil {
+			return err
+		}
+		resp.Body.Close()
+		if resp.StatusCode != http.StatusOK {
+			return fmt.Errorf("external server is not ready: %d", resp.StatusCode)
+		}
+		return nil
+	}
 	s.addr, s.metrics, s.adminAddr, s.pprofAddr = freeAddr(), cmp.Or(fixedAddrs.metrics, freeAddr()), freeAddr(), cmp.Or(fixedAddrs.pprof, freeAddr())
 	if fixedAddrs.ops != "" && s.opsAddr != "" {
 		s.opsAddr = fixedAddrs.ops

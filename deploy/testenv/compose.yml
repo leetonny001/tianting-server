@@ -1,0 +1,154 @@
+# E1 单节点（PRD-ops 3.3 节）。不要直接 docker compose up：用 ./tt up，它先生成 .run/ 里的密钥和配置。
+#
+# Prometheus、Alertmanager、Grafana、node_exporter、console-server 共用一个网络命名空间（netns）：
+# 生产配置里写的是 127.0.0.1（告警送 127.0.0.1:9093、抓 127.0.0.1:9100、Grafana 只听回环），
+# 这样不用改一个字就能挂上去，测的就是要上线的那几份文件。
+#
+# console-server 在 profile "console" 里：它的仓库还没有远端（PENDING P-9），CI 上构建不了。
+name: tianting-testenv
+
+services:
+  netns:
+    image: alpine:3.22
+    command: [sleep, infinity]
+    init: true
+    ports:
+      - 127.0.0.1:18290:18290 # console-server 运维空间
+
+  n1:
+    build:
+      context: ../../server
+      dockerfile: ../deploy/testenv/im.Dockerfile
+      args: {VERSION: 0.3.0}
+    image: tianting-testenv/im:0.3.0
+    env_file: [.run/im.env, .run/n1.env]
+    restart: "no"
+    volumes: [n1-data:/data]
+    ports:
+      - 127.0.0.1:18080:8080
+      - 127.0.0.1:18081:8081
+
+  prometheus:
+    image: prom/prometheus:v3.5.0
+    network_mode: service:netns
+    depends_on: [netns]
+    command:
+      - --config.file=/etc/prometheus/prometheus.yml
+      - --storage.tsdb.path=/prometheus
+      - --storage.tsdb.retention.time=30d
+      - --web.listen-address=127.0.0.1:9090
+      - --web.external-url=http://prometheus.tianting.test/
+    volumes:
+      - ../observability/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - ../observability/prometheus/alerts.yml:/etc/prometheus/alerts.yml:ro
+      - ./.run/targets:/etc/prometheus/targets:ro
+      - prometheus-data:/prometheus
+
+  alertmanager:
+    image: prom/alertmanager:v0.28.1
+    network_mode: service:netns
+    depends_on: [netns]
+    command:
+      - --config.file=/etc/alertmanager/alertmanager.yml
+      - --storage.path=/alertmanager
+      - --web.listen-address=127.0.0.1:9093
+      - --web.external-url=http://alertmanager.tianting.test/
+      - --cluster.listen-address=
+    volumes:
+      - ../observability/alertmanager/alertmanager.yml:/etc/alertmanager/alertmanager.yml:ro
+      - ../observability/alertmanager/templates:/etc/alertmanager/templates:ro
+      - ./.run/office-webhook-url:/etc/alertmanager/office-webhook-url:ro
+
+  grafana:
+    image: grafana/grafana:11.6.0
+    network_mode: service:netns
+    depends_on: [netns]
+    volumes:
+      - ../observability/grafana/grafana.ini:/etc/grafana/grafana.ini:ro
+      - ../observability/grafana/provisioning:/etc/grafana/provisioning:ro
+      - ../observability/grafana/dashboards:/etc/grafana/dashboards:ro
+
+  node-exporter:
+    image: prom/node-exporter:v1.9.1
+    network_mode: service:netns
+    depends_on: [netns]
+    command:
+      - --web.listen-address=127.0.0.1:9100
+      - --collector.textfile.directory=/textfile
+    volumes:
+      - ./.run/textfile:/textfile:ro
+
+  webhook:
+    image: python:3.13-alpine
+    command: [python, -I, /app/webhook.py]
+    environment:
+      NOTIFY_LOG: /data/notifications.jsonl
+    volumes:
+      - ./webhook.py:/app/webhook.py:ro
+      - webhook-data:/data
+    ports:
+      - 127.0.0.1:19095:9095
+
+  minio:
+    build:
+      context: .
+      dockerfile: minio.Dockerfile
+    image: tianting-testenv/minio:RELEASE.2025-04-22T22-12-26Z
+    command: [minio, server, --quiet, --address, ":9000", /data]
+    env_file: [.run/minio.env]
+    volumes: [minio-data:/data]
+    healthcheck:
+      test: [CMD, wget, -q, --spider, http://127.0.0.1:9000/minio/health/live]
+      interval: 2s
+      retries: 60
+
+  minio-init:
+    image: tianting-testenv/minio:RELEASE.2025-04-22T22-12-26Z
+    command: [sh, /app/minio-init.sh]
+    env_file: [.run/minio.env]
+    depends_on:
+      minio: {condition: service_healthy}
+    volumes:
+      - ./minio-init.sh:/app/minio-init.sh:ro
+      - ../backup/policy-backup-writer.json:/app/writer.json:ro
+      - ../backup/policy-console-reader.json:/app/reader.json:ro
+
+  postgres:
+    profiles: [console]
+    image: postgres:17-alpine
+    env_file: [.run/postgres.env]
+    volumes: [postgres-data:/var/lib/postgresql/data]
+    healthcheck:
+      test: [CMD, pg_isready, -U, console_owner, -d, console]
+      interval: 2s
+      retries: 60
+
+  console-migrate:
+    profiles: [console]
+    build: &console-build
+      context: ${TIANTING_CONSOLE_DIR:-../../../tianting-console-server}
+      dockerfile: ${PWD}/console.Dockerfile
+    image: tianting-testenv/console
+    command: [migrate, up]
+    env_file: [.run/console.env]
+    depends_on:
+      postgres: {condition: service_healthy}
+
+  console:
+    profiles: [console]
+    build: *console-build
+    image: tianting-testenv/console
+    network_mode: service:netns
+    depends_on: [netns]
+    user: ${TT_UID:-1000}:${TT_GID:-1000}
+    env_file: [.run/console.env]
+    volumes:
+      - ./.run/nodes:/run/tianting/nodes:ro
+      - ${TIANTING_OPS_DIST:-./.run/no-ops-dist}:/srv/ops:ro
+
+volumes:
+  n1-data:
+  prometheus-data:
+  webhook-data:
+  minio-data:
+  postgres-data:

@@ -29,7 +29,7 @@ tests:
       - eval_time: 10m
         alertname: 无就绪节点
         exp_alerts:
-          - exp_labels: {severity: critical}
+          - exp_labels: {severity: critical, node_id: all}
             exp_annotations: {value: '0 个就绪节点', threshold: '就绪节点数 == 0 持续 1 分钟', page: /}
 
   # 就绪是 0（节点活着但不就绪）。
@@ -41,7 +41,7 @@ tests:
       - eval_time: 5m
         alertname: 无就绪节点
         exp_alerts:
-          - exp_labels: {severity: critical}
+          - exp_labels: {severity: critical, node_id: all}
             exp_annotations: {value: '0 个就绪节点', threshold: '就绪节点数 == 0 持续 1 分钟', page: /}
 
   # 5xxx：每 5 分钟 9 条，占比 2%：不触发。
@@ -66,7 +66,7 @@ tests:
       - eval_time: 19m
         alertname: 5xxx错误率高
         exp_alerts:
-          - exp_labels: {severity: critical}
+          - exp_labels: {severity: critical, node_id: all}
             exp_annotations: {value: 2%, threshold: '5 分钟内占比 > 1% 且条数 ≥ 10', page: /}
 
   # 5xxx：条数够但占比低（0.5%）：不触发。
@@ -108,7 +108,7 @@ tests:
       - eval_time: 19m
         alertname: 命令耗时高
         exp_alerts:
-          - exp_labels: {severity: warning}
+          - exp_labels: {severity: warning, node_id: all}
             exp_annotations: {value: 10%, threshold: 'send 超过 500ms 的比例 > 1% 且速率 > 1 条/秒', page: /}
 
   # 耗时：超时比例 0.5%：不触发。
@@ -135,7 +135,7 @@ tests:
       - eval_time: 13m
         alertname: 在线连接骤降
         exp_alerts:
-          - exp_labels: {severity: warning}
+          - exp_labels: {severity: warning, node_id: all}
             exp_annotations: {value: '500 个连接', threshold: '比 5 分钟前下降 > 30% 且下降前 > 100', page: /}
 
   # 连接骤降：节点重启后 10 分钟内：不触发。
@@ -288,7 +288,7 @@ tests:
       - eval_time: 5m
         alertname: 备份过期
         exp_alerts:
-          - exp_labels: {severity: critical, source: im}
+          - exp_labels: {severity: critical, source: im, node_id: all}
             exp_annotations: {value: 1s, threshold: '最近一次成功距今 > 2 小时', page: /database}
 
   # 备份：im 超过 2 小时：触发。
@@ -303,7 +303,7 @@ tests:
       - eval_time: 130m
         alertname: 备份过期
         exp_alerts:
-          - exp_labels: {severity: critical, source: im}
+          - exp_labels: {severity: critical, source: im, node_id: all}
             exp_annotations: {value: 2h 10m 0s, threshold: '最近一次成功距今 > 2 小时', page: /database}
 
   # 版本不一致：持续 30 分钟才触发。
@@ -318,7 +318,7 @@ tests:
       - eval_time: 31m
         alertname: 版本不一致
         exp_alerts:
-          - exp_labels: {severity: warning}
+          - exp_labels: {severity: warning, node_id: all}
             exp_annotations: {value: '2 个版本', threshold: '不一致持续 30 分钟', page: /nodes}
   - interval: 1m
     input_series:

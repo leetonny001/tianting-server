@@ -12,7 +12,8 @@ route:
   receiver: office
   group_by: [alertname, node_id, source]
   group_wait: 30s
-  group_interval: 5m
+  # 恢复通知要等下一次组刷新：AC-OPS-07-2、07-3 要求恢复后 3 分钟内通知。
+  group_interval: 1m
   repeat_interval: 1h
   routes:
     # 节点下线中只用来抑制，不通知。

@@ -1,0 +1,37 @@
+# 运维测试环境的真实运行（BE-320）：改了部署配置或压测工具时跑，约 20 分钟，不阻塞 server.yml 的快速反馈。
+# 不含 console-server：它的仓库还没有远端（PENDING P-9）。
+name: testenv
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - deploy/**
+      - server/cmd/im-loadtest/**
+      - .github/workflows/testenv.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: server/go.mod
+          cache-dependency-path: server/go.sum
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: pip install pyyaml
+      - name: 编排文件合法（含 console profile）
+        run: |
+          deploy/testenv/tt config e2a --console
+          docker compose --env-file deploy/testenv/.run/compose.env -f deploy/testenv/compose.yml -f deploy/testenv/compose.e2a.yml --profile console config -q
+          deploy/testenv/tt down
+      - name: E1 / E2a 环境验收
+        run: deploy/testenv/verify.sh

@@ -15,3 +15,6 @@ node_modules/
 dist/
 coverage/
 *.tsbuildinfo
+
+# 测试环境生成的密钥和配置
+deploy/testenv/.run/

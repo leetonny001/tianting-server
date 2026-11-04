@@ -47,7 +47,20 @@ func main() {
 	flag.StringVar(&fixedAddrs.pprof, "pprof-addr", "", "固定 pprof 端口（默认随机）")
 	var extraEnv string
 	flag.StringVar(&extraEnv, "server-env", "", "额外传给服务端的环境变量，逗号分隔，如 GOMEMLIMIT=300MiB")
+	var externalKeyFile string
+	flag.StringVar(&external.addr, "external-addr", "", "打到已经在运行的节点（host:port），不启动子进程；只能跑 latency")
+	flag.StringVar(&external.adminAddr, "external-admin-addr", "", "运行中节点的管理端口")
+	flag.StringVar(&externalKeyFile, "external-admin-key-file", "", "运行中节点的 IM_ADMIN_KEY 所在文件")
 	flag.Parse()
+	if external.addr != "" {
+		key, err := os.ReadFile(externalKeyFile)
+		if err != nil || external.adminAddr == "" || scenarios != "latency" {
+			fmt.Fprintln(os.Stderr, "-external-addr needs -external-admin-addr, -external-admin-key-file and -scenarios latency")
+			os.Exit(2)
+		}
+		adminKey = strings.TrimSpace(string(key))
+		cfg.bin = "external"
+	}
 	if extraEnv != "" {
 		serverEnv = strings.Split(extraEnv, ",")
 	}

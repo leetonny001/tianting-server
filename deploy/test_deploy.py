@@ -3,6 +3,7 @@
 
 python3 deploy/test_deploy.py（需要 pyyaml、go、jq、openssl）
 """
+import importlib.util
 import json
 import os
 import pathlib
@@ -11,8 +12,10 @@ import shutil
 import stat
 import subprocess
 import tempfile
+import threading
 import time
 import unittest
+import urllib.error
 import urllib.request
 
 import yaml
@@ -130,6 +133,119 @@ def exprs():
     for p in json.loads(DASH.read_text())["panels"]:
         out += [t["expr"] for t in p.get("targets", [])]
     return out
+
+
+class Testenv(unittest.TestCase):
+    """BE-320：编排文件和 tt 生成的配置。真实运行在 CI 的 testenv 工作流（verify.sh）。"""
+
+    HERE = ROOT / "testenv"
+
+    def compose(self, name="compose.yml"):
+        return yaml.safe_load((self.HERE / name).read_text())
+
+    def test_images_are_pinned_and_ports_are_loopback(self):
+        for name in ["compose.yml", "compose.e2a.yml"]:
+            for svc, c in self.compose(name)["services"].items():
+                if "image" in c and "build" not in c:
+                    self.assertRegex(c["image"], r":[\w.-]*\d", svc)
+                for port in c.get("ports", []):
+                    self.assertTrue(port.startswith("127.0.0.1:"), f"{svc}: {port}")
+
+    def test_mounts_the_production_config_unchanged(self):
+        svcs = self.compose()["services"]
+        def mounts(name):
+            return svcs[name]["volumes"]
+        self.assertIn("../observability/prometheus/alerts.yml:/etc/prometheus/alerts.yml:ro", mounts("prometheus"))
+        self.assertIn("../observability/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro", mounts("prometheus"))
+        self.assertIn("../observability/alertmanager/alertmanager.yml:/etc/alertmanager/alertmanager.yml:ro", mounts("alertmanager"))
+        self.assertIn("../observability/grafana/grafana.ini:/etc/grafana/grafana.ini:ro", mounts("grafana"))
+        for name in ["prometheus", "alertmanager", "grafana", "node-exporter", "console"]:
+            self.assertEqual(svcs[name]["network_mode"], "service:netns", name)
+
+    def test_console_is_optional(self):
+        svcs = self.compose()["services"]
+        for name in ["console", "console-migrate", "postgres"]:
+            self.assertEqual(svcs[name]["profiles"], ["console"], name)
+
+    def test_no_secret_in_the_repo_files(self):
+        for name in ["compose.yml", "compose.e2a.yml"]:
+            text = (self.HERE / name).read_text()
+            self.assertNotRegex(text, r"(?i)(password|secret|key)\s*[:=]\s*\S")
+
+    def test_generated_config(self):
+        with tempfile.TemporaryDirectory() as d:
+            env = {**os.environ, "TT_RUN_DIR": d + "/run"}
+            run(str(self.HERE / "tt"), "config", "e2a", "--console", env=env)
+            r = pathlib.Path(d) / "run"
+            parse = lambda f: dict(l.split("=", 1) for l in (r / f).read_text().splitlines())
+            # 两个节点同一份 JWT 密钥（都读 im.env），各自的运维公钥。
+            self.assertEqual(len(parse("im.env")["IM_JWT_SECRET"]), 64)
+            n1, n2 = parse("n1.env"), parse("n2.env")
+            self.assertEqual((n1["IM_NODE_ID"], n2["IM_NODE_ID"]), ("n1", "n2"))
+            self.assertNotEqual(n1["IM_OPS_PUBKEYS"], n2["IM_OPS_PUBKEYS"])
+            # 密钥文件别人读不了。
+            for f in ["secrets", "im.env", "console.env", "minio.env", "postgres.env", "nodes/n1.key", "nodes/n2.key"]:
+                self.assertEqual(stat.S_IMODE((r / f).stat().st_mode), 0o600, f)
+            self.assertEqual(stat.S_IMODE(r.stat().st_mode), 0o700)
+            # 节点表和抓取清单同源。
+            rows = json.loads((r / "nodes/nodes.json").read_text())
+            self.assertEqual([x["nodeId"] for x in rows], ["n1", "n2"])
+            targets = json.loads((r / "targets/im.json").read_text())
+            self.assertEqual([t["labels"]["node_id"] for t in targets], ["n1", "n2"])
+            # 再跑一次（e1 升 e2a 的路径）：密钥不换。
+            before = (r / "secrets").read_text(), (r / "n1.env").read_text()
+            run(str(self.HERE / "tt"), "config", "e2a", env=env)
+            self.assertEqual(before, ((r / "secrets").read_text(), (r / "n1.env").read_text()))
+            # backup-age 写的是告警读的那个指标。
+            run(str(self.HERE / "tt"), "backup-age", "im", "7260", env=env)
+            line = (r / "textfile/im_backup_im.prom").read_text()
+            self.assertRegex(line, r'^im_backup_last_success_timestamp_seconds\{source="im",trigger="schedule"\} \d+\n$')
+            self.assertAlmostEqual(int(line.split()[-1]), time.time() - 7260, delta=30)
+
+    def test_webhook_records_each_notification(self):
+        spec = importlib.util.spec_from_file_location("tt_webhook", self.HERE / "webhook.py")
+        mod = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(mod)
+        with tempfile.TemporaryDirectory() as d:
+            log = d + "/n.jsonl"
+            srv = mod.serve(0, log)
+            threading.Thread(target=srv.serve_forever, daemon=True).start()
+            base = f"http://127.0.0.1:{srv.server_address[1]}"
+            def post(body):
+                return urllib.request.urlopen(urllib.request.Request(base + "/notify", data=body, method="POST"))
+            for i in (1, 2):
+                post(json.dumps({"status": "firing", "alerts": [{"labels": {"alertname": "节点不可达"}, "n": i}]}).encode())
+            with self.assertRaises(urllib.error.HTTPError) as bad:
+                post(b"not json")
+            self.assertEqual(bad.exception.code, 400)
+            rows = json.load(urllib.request.urlopen(base + "/notifications"))
+            self.assertEqual([r["payload"]["alerts"][0]["n"] for r in rows], [1, 2])
+            self.assertGreater(rows[0]["receivedAtMs"], 0)
+            srv.shutdown()
+            srv.server_close()
+            # 重启不丢。
+            self.assertEqual(len(mod.Store(log).all()), 2)
+
+
+class NotificationContent(unittest.TestCase):
+    """AC-OPS-07-6 和恢复通知时限：webhook 收到的是原始标签，模板管不到。"""
+
+    def test_instance_is_dropped_before_alertmanager(self):
+        cfg = yaml.safe_load((OBS / "prometheus/prometheus.yml").read_text())
+        self.assertIn({"action": "labeldrop", "regex": "instance"}, cfg["alerting"]["alert_relabel_configs"])
+
+    def test_every_alert_has_node_id(self):
+        rules = yaml.safe_load((OBS / "prometheus/alerts.yml").read_text())["groups"][0]["rules"]
+        for r in rules:
+            expr = r["expr"]
+            grouped_away = re.search(r"\b(sum|count|max)\b(?! by \(node_id\))", expr) or "absent" in expr
+            if grouped_away and "by (node_id)" not in expr:
+                self.assertEqual(r["labels"].get("node_id"), "all", r["alert"])
+
+    def test_resolved_notification_is_not_held_by_group_interval(self):
+        route = yaml.safe_load((OBS / "alertmanager/alertmanager.yml").read_text())["route"]
+        self.assertEqual(route["group_interval"], "1m")
+        self.assertEqual(route["repeat_interval"], "1h")
 
 
 class Dashboards(unittest.TestCase):

@@ -1,0 +1,239 @@
+#!/usr/bin/env bash
+# 运维测试环境（BE-320）。需要 docker compose、Go、jq、curl、openssl、python3。说明见 README.md。
+set -euo pipefail
+HERE="$(cd "$(dirname "$0")" && pwd)"
+RUN="${TT_RUN_DIR:-$HERE/.run}"
+OBS="$HERE/../observability"
+NOW() { date +%s; }
+
+usage() {
+  cat <<'USAGE'
+tt config e1|e2a [--console]   只生成 .run/（密钥、节点表、抓取清单、textfile）
+tt up e1|e2a [--console]       生成配置并启动；--console 同时启动 Postgres 和 console-server
+tt down                        停止并删除容器、数据卷和 .run/
+tt set-clocks <nowMs>          先 [IM 钟]（全部节点）后 [C 钟]；暂停中的节点跳过
+tt pause|resume <node>         kill -STOP / -CONT（AC-OPS-08-11）
+tt kill <node>                 kill -9（AC-OPS-07-2）
+tt start <node>                重新启动节点（数据卷保留）
+tt backup-age <source> <秒>    把 textfile 里的最近成功时间改成"现在减 N 秒"（AC-OPS-07-3）
+tt stop-observability          同时停止 console-server、Grafana、Prometheus（AC-OPS-90-5）
+tt start-observability         重新启动它们
+tt query <PromQL>              查 Prometheus，输出 result 数组
+tt notifications               webhook 接收器收到的全部通知
+tt bootstrap <用户名>           创建运维空间第一个超管（需要 --console）
+tt compose ...                 带上正确参数的 docker compose
+USAGE
+}
+
+mode() { cat "$RUN/mode" 2>/dev/null || echo e1; }
+has_console() { [ -f "$RUN/console-enabled" ]; }
+nodes() { if [ "$(mode)" = e2a ]; then echo n1 n2; else echo n1; fi; }
+admin_port() { case "$1" in n1) echo 18081 ;; n2) echo 18181 ;; *) echo "unknown node $1" >&2; exit 2 ;; esac; }
+
+dc() {
+  local files=(-f "$HERE/compose.yml")
+  [ "$(mode)" != e2a ] || files+=(-f "$HERE/compose.e2a.yml")
+  local prof=()
+  ! has_console || prof=(--profile console)
+  (cd "$HERE" && docker compose --env-file "$RUN/compose.env" "${files[@]}" "${prof[@]}" "$@")
+}
+
+container() { dc ps -q "$1"; }
+
+write_backup_metric() { # source ts
+  local tmp="$RUN/textfile/.im_backup_$1.tmp.$$"
+  printf 'im_backup_last_success_timestamp_seconds{source="%s",trigger="schedule"} %s\n' "$1" "$2" >"$tmp"
+  chmod 644 "$tmp"
+  mv "$tmp" "$RUN/textfile/im_backup_$1.prom"
+}
+
+secret() { openssl rand -hex 32; }
+
+cmd_config() {
+  local m="${1:?e1 or e2a}" console="${2:-}"
+  case "$m" in e1 | e2a) ;; *) echo "mode must be e1 or e2a" >&2; exit 2 ;; esac
+  mkdir -p "$RUN"
+  chmod 700 "$RUN"
+  mkdir -p "$RUN/targets" "$RUN/textfile" "$RUN/nodes" "$RUN/no-ops-dist"
+  chmod 755 "$RUN/targets" "$RUN/textfile" "$RUN/nodes" "$RUN/no-ops-dist"
+  echo "$m" >"$RUN/mode"
+  if [ "$console" = --console ]; then : >"$RUN/console-enabled"; fi
+  printf 'TT_UID=%s\nTT_GID=%s\n' "$(id -u)" "$(id -g)" >"$RUN/compose.env"
+
+  # 密钥只生成一次：从 e1 升到 e2a 时 n1 和 console-server 不用换。
+  umask 077
+  if [ ! -f "$RUN/secrets" ]; then
+    {
+      echo "JWT_SECRET=$(secret)"
+      echo "ADMIN_KEY=$(secret)"
+      echo "MINIO_ROOT=$(secret)"
+      echo "WRITER=$(secret)"
+      echo "READER=$(secret)"
+      echo "PG_OWNER=$(secret)"
+      echo "PG_APP=$(secret)"
+      echo "DATA_KEY=$(openssl rand -base64 32)"
+      echo "PEPPER=$(openssl rand -base64 32)"
+    } >"$RUN/secrets"
+  fi
+  # shellcheck disable=SC1091
+  . "$RUN/secrets"
+
+  cat >"$RUN/im.env" <<ENV
+IM_TEST_MODE=1
+IM_ADDR=0.0.0.0:8080
+IM_ADMIN_ADDR=0.0.0.0:8081
+IM_OPS_ADDR=0.0.0.0:9091
+IM_METRICS_ADDR=0.0.0.0:9464
+IM_PPROF_ADDR=off
+IM_DB=/data/im.db
+IM_ADMIN_KEY=$ADMIN_KEY
+IM_JWT_SECRET=$JWT_SECRET
+IM_ALLOWED_ORIGINS=*
+ENV
+  local rows="" n seed pub pair
+  for n in n1 n2; do
+    if [ ! -f "$RUN/$n.env" ]; then
+      pair="$(cd "$HERE" && go run genkey.go)"
+      seed="${pair% *}"
+      pub="${pair#* }"
+      printf 'IM_NODE_ID=%s\nIM_OPS_PUBKEYS=k1:%s\n' "$n" "$pub" >"$RUN/$n.env"
+      printf '%s' "$seed" >"$RUN/nodes/$n.key"
+    fi
+  done
+  for n in $(nodes); do
+    rows="$rows{\"nodeId\":\"$n\",\"addr\":\"$n:9091\",\"kid\":\"k1\",\"keyFile\":\"/run/tianting/nodes/$n.key\",\"metricsAddr\":\"$n:9464\"},"
+  done
+  echo "[${rows%,}]" >"$RUN/nodes/nodes.json"
+
+  cat >"$RUN/minio.env" <<ENV
+MINIO_ROOT_USER=root
+MINIO_ROOT_PASSWORD=$MINIO_ROOT
+BACKUP_WRITER_SECRET=$WRITER
+CONSOLE_READER_SECRET=$READER
+ENV
+  cat >"$RUN/postgres.env" <<ENV
+POSTGRES_USER=console_owner
+POSTGRES_PASSWORD=$PG_OWNER
+POSTGRES_DB=console
+ENV
+  cat >"$RUN/console.env" <<ENV
+CON_TEST_MODE=1
+CON_TEST_DISABLE_LOCKOUT=1
+CON_SPACES=ops
+CON_OPS_ADDR=0.0.0.0:18290
+CON_OPS_ORIGIN=http://ops.localhost:18290
+CON_OPS_WEB_DIR=/srv/ops
+CON_METRICS_ADDR=off
+CON_ARGON_MEMORY_KIB=1024
+CON_ARGON_TIME=1
+CON_OWNER_DATABASE_URL=postgres://console_owner:$PG_OWNER@postgres:5432/console?sslmode=disable
+CON_DATABASE_URL=postgres://console_app:$PG_APP@postgres:5432/console?sslmode=disable
+CON_DATA_KEYS=k1:$DATA_KEY
+CON_HASH_PEPPER=$PEPPER
+CON_OPS_NODES=/run/tianting/nodes/nodes.json
+CON_OPS_PROMETHEUS_URL=http://127.0.0.1:9090
+CON_OPS_ALERTMANAGER_URL=http://127.0.0.1:9093
+CON_OPS_BACKUP_STORE=s3://tianting-backups
+CON_OPS_BACKUP_ENDPOINT=http://minio:9000
+CON_OPS_BACKUP_ACCESS_KEY=console-reader
+CON_OPS_BACKUP_SECRET_KEY=$READER
+CON_OPS_GRAFANA_URL=http://127.0.0.1:3000
+CON_OPS_GRAFANA_HOST=grafana.ops.localhost:18290
+ENV
+  umask 022
+  # 抓取清单用生产的生成器，和节点表同源（S-OPS-27）。原子替换，Prometheus 的 file_sd 会读到完整的文件。
+  python3 -I "$OBS/gen-targets" "$RUN/nodes/nodes.json" >"$RUN/targets/.im.json.tmp"
+  chmod 644 "$RUN/targets/.im.json.tmp"
+  mv "$RUN/targets/.im.json.tmp" "$RUN/targets/im.json"
+  echo 'http://webhook:9095/notify' >"$RUN/office-webhook-url"
+  chmod 644 "$RUN/office-webhook-url"
+  # 启动时备份指标是新鲜的；缺了指标"备份过期"会立刻告警（规则里的 absent）。
+  [ -f "$RUN/textfile/im_backup_im.prom" ] || write_backup_metric im "$(NOW)"
+  [ -f "$RUN/textfile/im_backup_console.prom" ] || write_backup_metric console "$(NOW)"
+}
+
+wait_ready() { # node
+  local port
+  case "$1" in n1) port=18080 ;; n2) port=18180 ;; esac
+  for _ in $(seq 1 120); do
+    curl -fsS -m 2 "http://127.0.0.1:$port/readyz" >/dev/null 2>&1 && return 0
+    sleep 1
+  done
+  dc logs --tail 30 "$1" >&2 || true
+  echo "$1 not ready" >&2
+  return 1
+}
+
+cmd_up() {
+  cmd_config "$@"
+  dc build
+  dc up -d --wait netns webhook minio
+  dc run --rm minio-init
+  if has_console; then
+    dc up -d --wait postgres
+    dc run --rm console-migrate
+    # shellcheck disable=SC1091
+    . "$RUN/secrets"
+    dc exec -T postgres psql -q -v ON_ERROR_STOP=1 -U console_owner -d console \
+      -c "ALTER ROLE console_app LOGIN PASSWORD '$PG_APP'"
+  fi
+  # 每个服务都点名：minio-init、console-migrate 是一次性任务，不跟着起。
+  local svcs=(prometheus alertmanager grafana node-exporter)
+  ! has_console || svcs+=(console)
+  dc up -d "${svcs[@]}" $(nodes)
+  for n in $(nodes); do wait_ready "$n"; done
+  echo "testenv $(mode) is up"
+}
+
+cmd_down() {
+  if [ -d "$RUN" ]; then
+    # 从 mode 里读不出来也要清干净：两份编排、全部 profile 一起 down。
+    (cd "$HERE" && docker compose --env-file "$RUN/compose.env" -f compose.yml -f compose.e2a.yml --profile console down -v --remove-orphans) || true
+    find "$RUN" -delete
+  fi
+}
+
+cmd_set_clocks() {
+  local now="${1:?usage: set-clocks <nowMs>}" n
+  # shellcheck disable=SC1091
+  . "$RUN/secrets"
+  for n in $(nodes); do
+    if [ -f "$RUN/paused-$n" ]; then
+      echo "skip paused $n" >&2
+      continue
+    fi
+    curl -fsS -m 5 -X POST "http://127.0.0.1:$(admin_port "$n")/admin/test/clock" \
+      -H "X-Admin-Key: $ADMIN_KEY" -d "{\"nowMs\":$now}" >/dev/null
+  done
+  if has_console; then
+    curl -fsS -m 5 -X POST http://127.0.0.1:18290/console/test/clock \
+      -H 'Host: ops.localhost:18290' -d "{\"nowMs\":$now}" >/dev/null
+  fi
+}
+
+cmd_query() {
+  dc exec -T prometheus wget -qO- "http://127.0.0.1:9090/api/v1/query?query=$(jq -rn --arg q "$1" '$q|@uri')" | jq -c '.data.result'
+}
+
+case "${1:-}" in
+  config) shift; cmd_config "$@" ;;
+  up) shift; cmd_up "$@" ;;
+  down) cmd_down ;;
+  set-clocks) shift; cmd_set_clocks "$@" ;;
+  pause) docker kill -s STOP "$(container "${2:?node}")" >/dev/null; : >"$RUN/paused-$2" ;;
+  resume) docker kill -s CONT "$(container "${2:?node}")" >/dev/null; find "$RUN" -maxdepth 1 -name "paused-$2" -delete ;;
+  kill) docker kill -s KILL "$(container "${2:?node}")" >/dev/null ;;
+  start) dc start "${2:?node}"; wait_ready "$2" ;;
+  backup-age) write_backup_metric "${2:?source}" "$(($(NOW) - ${3:?seconds}))" ;;
+  stop-observability)
+    if has_console; then dc stop console grafana prometheus; else dc stop grafana prometheus; fi
+    ;;
+  start-observability)
+    if has_console; then dc start prometheus grafana console; else dc start prometheus grafana; fi
+    ;;
+  query) cmd_query "${2:?PromQL}" ;;
+  notifications) curl -fsS -m 5 http://127.0.0.1:19095/notifications ;;
+  bootstrap) dc exec -T console console-server account bootstrap --space ops --username "${2:?username}" ;;
+  compose) shift; dc "$@" ;;
+  *) usage; [ -n "${1:-}" ] || exit 2 ;;
+esac
