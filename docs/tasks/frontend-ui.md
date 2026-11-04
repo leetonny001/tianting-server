@@ -18,6 +18,7 @@
 | FE-203～FE-206、FE-210 | ✅ 完成 | tianting-sdk-ts `0561001`、`6ced393`：快照引用稳定、`memberCount` + `refreshConversations`（30 秒节流）+ `truncated()`、被移出快照（`reason`、重连推断、截断不推断）、打开未知会话向服务端确认、`avatarColorIndex` / `avatarInitial` 跑 `avatar.json` |
 | FE-207～FE-209 | ⬜ 未开始 | — |
 | FE-223、FE-226、FE-228、FE-234、FE-245～FE-247 | ✅ 完成（Web） | tianting-web `ee5c73d`：昵称登录、截断提示、"群名（N）"与聊天信息页、被移出 / 解散 / 未知会话、axe 扫描零违规、CSP + `uiPrefs`、500 会话 4 倍降速中位数约 376ms。手工项（VoiceOver、iOS Safari）未做 |
+| FE-306～FE-311 | ✅ 完成（Web） | tianting-web `06be970`：发起群聊、群设置（角色 × 托管矩阵）、群公告、成员列表与管理模式、邀请、提示消息、`reason=left`；真实服务端 e2e 覆盖 AC-UI-06-8、33-7、33-8、35-1、36-5～7、37-1、38-1、38-2、38-4、38-5、39-1，新页面已加入 axe 扫描。同时把解散后的禁用条改为 F-UI-33 规则 4 的"群聊已解散"（M3 多写了"，无法发送消息"）。F-UI-39 规则 3 的多条结果合并成一条轻提示（轻提示同时只显示 1 条）。未验证：WebKit、真机 VoiceOver（同 FE-248）。 |
 | FE-238～FE-244 | ✅ 完成（Web） | tianting-web：通讯录（拼音分组，`protocol/vectors/pinyin-groups.json`）、资料卡、新的朋友、添加朋友、申请、备注、黑名单、隐私、私聊权限提示条、群聊列表；群消息发送者昵称、头像图片、官方标识、会话列表备注优先。组件测试 43 个、端到端 6 个、axe 覆盖新页面；2000 好友刷新后约 475ms 显示完成。未做：好友制 / 陌生人限额的提示条端到端（测试服务端是默认开放模式，这两条只有组件测试，服务端行为由 `TestTCSOC08*` 覆盖）、AC-UI-13-9 在 WebKit 上跑一次 |
 | FE-248（M3 手工验收） | ⬜ 未开始 | iOS Safari、VoiceOver 需要人工 |
 | FE-300～FE-313（M4：宽屏、深色、群管理、Tauri） | ⬜ 未开始 | — |
