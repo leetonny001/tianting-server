@@ -134,6 +134,7 @@ curl -fsS -m 2 http://127.0.0.1:18080/readyz >/dev/null || fail "n1 affected by 
 wait_query "暂停的 n2 在 Prometheus 里是 down" 'up{job="im",node_id="n2"}' '.[0].value[1] == "0"' 60
 "$TT" set-clocks "$(now_ms)" # 跳过暂停的 n2，不挂住
 "$TT" resume n2
+"$TT" release-clocks
 curl -fsS -m 5 --retry 5 --retry-all-errors --retry-delay 1 http://127.0.0.1:18180/readyz >/dev/null || fail "n2 did not resume"
 echo "ok: 暂停和恢复"
 

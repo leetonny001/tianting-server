@@ -36,7 +36,8 @@ deploy/testenv/tt bootstrap eng1
 ## 注意
 
 - `verify.sh` 的 TC-PERF-00-01 要求 seq 从 1 开始，只能在新环境里跑一次（`verify.sh` 自己会先 `tt down`）。
-- `tt set-clocks` 冻结 [IM 钟]，之后发消息会受影响；跑延迟用例之前不要调用。
+- `tt set-clocks` 冻结时钟：令牌桶不再补充（发消息被限流），发给 MinIO 的签名时间也不走。用完运行 `tt release-clocks`。
+- console-server 只在启动时读节点表。`tt up` 从 e1 升到 e2a 时会重启它；生产上增减节点也要重启。
 - n1、n2 的进程不做健康检查：`docker` 的健康检查碰到 `kill -STOP` 会把容器标成不健康，和这里要测的东西混在一起。
 
 ## 辅助命令

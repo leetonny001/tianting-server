@@ -12,6 +12,7 @@ tt config e1|e2a [--console]   只生成 .run/（密钥、节点表、抓取清�
 tt up e1|e2a [--console]       生成配置并启动；--console 同时启动 Postgres 和 console-server
 tt down                        停止并删除容器、数据卷和 .run/
 tt set-clocks <nowMs>          先 [IM 钟]（全部节点）后 [C 钟]；暂停中的节点跳过
+tt release-clocks              解除冻结，回到真实时间。冻结期间令牌桶不补充、发给 MinIO 的签名时间也不走
 tt pause|resume <node>         kill -STOP / -CONT（AC-OPS-08-11）
 tt kill <node>                 kill -9（AC-OPS-07-2）
 tt start <node>                重新启动节点（数据卷保留）
@@ -177,6 +178,8 @@ wait_ready() { # node
 }
 
 cmd_up() {
+  local before
+  before="$(mode)"
   cmd_config "$@"
   dc build
   dc up -d --wait netns webhook minio
@@ -194,6 +197,10 @@ cmd_up() {
   ! has_console || svcs+=(console)
   dc up -d "${svcs[@]}" $(nodes)
   for n in $(nodes); do wait_ready "$n"; done
+  # console-server 只在启动时读节点表：从 e1 升到 e2a 要重启，生产上增减节点也一样。
+  if has_console && [ "$before" != "$(mode)" ]; then
+    dc restart console
+  fi
   echo "testenv $(mode) is up"
 }
 
@@ -243,6 +250,18 @@ cmd_reconcile() {
   python3 -I "$HERE/../ops/reconcile" --audit "$dir/audit.jsonl" "${logs[@]}"
 }
 
+cmd_release_clocks() {
+  local n
+  # shellcheck disable=SC1091
+  . "$RUN/secrets"
+  for n in $(nodes); do
+    curl -fsS -m 5 -X POST "http://127.0.0.1:$(admin_port "$n")/admin/test/clock" -H "X-Admin-Key: $ADMIN_KEY" -d '{}' >/dev/null
+  done
+  if has_console; then
+    curl -fsS -m 5 -X POST http://127.0.0.1:18290/console/test/clock -H 'Host: ops.localhost:18290' -d '{}' >/dev/null
+  fi
+}
+
 cmd_query() {
   dc exec -T prometheus wget -qO- "http://127.0.0.1:9090/api/v1/query?query=$(jq -rn --arg q "$1" '$q|@uri')" | jq -c '.data.result'
 }
@@ -252,6 +271,7 @@ case "${1:-}" in
   up) shift; cmd_up "$@" ;;
   down) cmd_down ;;
   set-clocks) shift; cmd_set_clocks "$@" ;;
+  release-clocks) cmd_release_clocks ;;
   pause) docker kill -s STOP "$(container "${2:?node}")" >/dev/null; : >"$RUN/paused-$2" ;;
   resume) docker kill -s CONT "$(container "${2:?node}")" >/dev/null; find "$RUN" -maxdepth 1 -name "paused-$2" -delete ;;
   kill) docker kill -s KILL "$(container "${2:?node}")" >/dev/null ;;
