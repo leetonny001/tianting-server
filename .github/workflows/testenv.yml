@@ -1,5 +1,5 @@
 # 运维测试环境的真实运行（BE-320）：改了部署配置或压测工具时跑，约 20 分钟，不阻塞 server.yml 的快速反馈。
-# 不含 console-server：它的仓库还没有远端（PENDING P-9）。
+# 配了 TIANTING_CONSOLE_DEPLOY_KEY（tianting-console-server 的 scripts/setup-ci-deploy-keys.sh）时带上 console-server 一起验收。
 name: testenv
 
 on:
@@ -18,8 +18,16 @@ jobs:
   verify:
     runs-on: ubuntu-latest
     timeout-minutes: 45
+    env:
+      HAS_CONSOLE_KEY: ${{ secrets.TIANTING_CONSOLE_DEPLOY_KEY != '' }}
     steps:
       - uses: actions/checkout@v4
+      - uses: actions/checkout@v4
+        if: env.HAS_CONSOLE_KEY == 'true'
+        with:
+          repository: leetonny001/tianting-console-server
+          ssh-key: ${{ secrets.TIANTING_CONSOLE_DEPLOY_KEY }}
+          path: .deps/tianting-console-server
       - uses: actions/setup-go@v5
         with:
           go-version-file: server/go.mod
@@ -34,4 +42,9 @@ jobs:
           docker compose --env-file deploy/testenv/.run/compose.env -f deploy/testenv/compose.yml -f deploy/testenv/compose.e2a.yml --profile console config -q
           deploy/testenv/tt down
       - name: E1 / E2a 环境验收
-        run: deploy/testenv/verify.sh
+        run: |
+          if [ "$HAS_CONSOLE_KEY" = true ]; then
+            TIANTING_CONSOLE_DIR="$PWD/.deps/tianting-console-server" deploy/testenv/verify.sh --console
+          else
+            deploy/testenv/verify.sh
+          fi

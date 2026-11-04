@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # 环境验收（BE-320）：真实的 Prometheus、Alertmanager、Grafana、node_exporter、MinIO 和真实的 im-server 容器。约 15 分钟。
 # 覆盖 AC-OPS-07-2、07-3、07-6（通知内容）、90-5（不停 IM、只停观测组件）、04-6 和 08-11 的节点侧部分。
-# 加 --console 时也启动 console-server。CI 上没有 --console：console-server 仓库还没有远端（PENDING P-9）。
+# 加 --console 时也启动 console-server，并验证它对真实的节点、Prometheus、Alertmanager、Grafana 和 MinIO 能用。
 set -euo pipefail
 HERE="$(cd "$(dirname "$0")" && pwd)"
 ROOT="$(cd "$HERE/../.." && pwd)"
@@ -68,6 +68,15 @@ for _ in $(seq 1 60); do G /api/dashboards/uid/tianting-overview >/dev/null 2>&1
 G /api/dashboards/uid/tianting-overview | jq -e '.dashboard.panels | length == 14' >/dev/null || fail "dashboard"
 G '/api/datasources/proxy/uid/prometheus/api/v1/query?query=up%7Bjob%3D%22im%22%7D' | jq -e '.data.result | length == 1' >/dev/null || fail "grafana datasource"
 echo "ok: 14 个面板，Viewer 能经数据源查到 n1"
+
+if [ -n "$CONSOLE" ]; then
+  echo "== console-server：运行在容器里，用节点表的密钥探活 n1"
+  for _ in $(seq 1 60); do curl -fsS -m 2 -H 'Host: ops.localhost:18290' http://127.0.0.1:18290/healthz >/dev/null 2>&1 && break; sleep 1; done
+  curl -fsS -m 10 -X POST -H 'Host: ops.localhost:18290' http://127.0.0.1:18290/console/test/probe >/dev/null || fail "console probe"
+  "$TT" compose exec -T postgres psql -At -U console_owner -d console -c "select count(*) from biz.ops_node_status where node_id='n1'" | grep -qx 1 || fail "n1 was not probed"
+  "$TT" bootstrap eng1 >/dev/null || fail "bootstrap"
+  echo "ok: 探活和创建第一个账号"
+fi
 
 echo "== AC-OPS-07-2：kill -9，3 分钟内告警；重启后 3 分钟内恢复"
 t0="$(now_ms)"
