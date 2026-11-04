@@ -5,7 +5,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"io"
 	"net"
 	"net/http"
 	"os"
@@ -94,25 +93,37 @@ func buildServer(t *testing.T) string {
 
 func startServer(t *testing.T, bin, db string, extraEnv ...string) *serverProc {
 	t.Helper()
-	addr, adminAddr := freeAddr(t), freeAddr(t)
-	cmd := exec.Command(bin)
-	// IM_METRICS_ADDR=off：默认的 127.0.0.1:9090 会和本机正在运行的其他实例冲突；管理端口同理用随机端口。
-	cmd.Env = append(os.Environ(), "IM_ADDR="+addr, "IM_ADMIN_ADDR="+adminAddr, "IM_DB="+db, "IM_ADMIN_KEY="+adminKey, "IM_JWT_SECRET=e2e-secret-0123456789", "IM_METRICS_ADDR=off")
-	cmd.Env = append(cmd.Env, extraEnv...)
-	cmd.Stdout, cmd.Stderr = io.Discard, io.Discard
-	if err := cmd.Start(); err != nil {
-		t.Fatal(err)
-	}
-	p := &serverProc{cmd: cmd, addr: addr, adminAddr: adminAddr}
-	t.Cleanup(func() { cmd.Process.Kill(); cmd.Wait() })
-	for i := 0; i < 100; i++ {
-		if resp, err := http.Get("http://" + addr + "/healthz"); err == nil {
-			resp.Body.Close()
-			return p
+	logPath := filepath.Join(t.TempDir(), "server.log")
+	// freeAddr 探到的端口关掉之后可能被别的进程抢走，服务端就起不来：换一组端口重试。
+	for range 3 {
+		addr, adminAddr := freeAddr(t), freeAddr(t)
+		cmd := exec.Command(bin)
+		// IM_METRICS_ADDR=off：默认的 127.0.0.1:9090 会和本机正在运行的其他实例冲突；管理端口同理用随机端口。
+		cmd.Env = append(os.Environ(), "IM_ADDR="+addr, "IM_ADMIN_ADDR="+adminAddr, "IM_DB="+db, "IM_ADMIN_KEY="+adminKey, "IM_JWT_SECRET=e2e-secret-0123456789", "IM_METRICS_ADDR=off")
+		cmd.Env = append(cmd.Env, extraEnv...)
+		log, err := os.OpenFile(logPath, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0o600)
+		if err != nil {
+			t.Fatal(err)
 		}
-		time.Sleep(50 * time.Millisecond)
+		cmd.Stdout, cmd.Stderr = log, log
+		err = cmd.Start()
+		log.Close()
+		if err != nil {
+			t.Fatal(err)
+		}
+		for range 200 {
+			if resp, err := http.Get("http://" + addr + "/healthz"); err == nil {
+				resp.Body.Close()
+				t.Cleanup(func() { cmd.Process.Kill(); cmd.Wait() })
+				return &serverProc{cmd: cmd, addr: addr, adminAddr: adminAddr}
+			}
+			time.Sleep(50 * time.Millisecond)
+		}
+		cmd.Process.Kill()
+		cmd.Wait()
 	}
-	t.Fatal("server did not become healthy")
+	out, _ := os.ReadFile(logPath)
+	t.Fatalf("server did not become healthy:\n%s", out)
 	return nil
 }
 
