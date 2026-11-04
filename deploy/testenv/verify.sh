@@ -22,6 +22,10 @@ fail() {
   "$TT" notifications >&2 || true
   echo >&2
   "$TT" compose logs --tail 40 alertmanager >&2 || true
+  if [ -n "$CONSOLE" ]; then
+    "$TT" compose ps -a console >&2 || true
+    "$TT" compose logs --tail 60 console >&2 || true
+  fi
   exit 1
 }
 now_ms() { python3 -c 'import time; print(int(time.time()*1000))'; }
