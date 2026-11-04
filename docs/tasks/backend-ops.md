@@ -17,7 +17,7 @@
 |---|---|---|
 | BE-300 ～ BE-306 im-server 改造 | ✅ 2026-11-04 | 指标（`phase`、`origin_rejected`、`im_build_info`、`im_ready`、`im_draining`、Go 运行时、`im_ops_*`、基数检查）；`internal/opsapi` 5 个只读接口（来源网段 → 并发闸门 → Ed25519 签名 → 2 秒超时）；`internal/disconnects` 环形缓冲；`productionChecks` 启动保护与配置摘要共用；`MigrationReport` CLI 与接口共用、只读连接；pprof 移到 `IM_PPROF_ADDR`；`backup -manifest`；向量 `protocol/vectors/ops-sign.json`；e2e `TestOPS*` |
 | BE-307 压测与对账工具 | 🟡 工具完成，验收待 console-server | `im-loadtest -scenarios opsimpact`、`-metrics-addr` / `-ops-addr` / `-pprof-addr`；`deploy/ops/reconcile`、`deploy/ops/scan-logs`（`deploy/ops/test_tools.py`）。**AC-OPS-90-1、14-6、08-13 还没有验收**：要 1 万连接 + console-server 驱动（BE-321）。目前只做过 100 连接、每段 15 秒的冒烟，运维流量直接打节点接口 |
-| BE-310 ～ BE-314 部署配置 | ⬜ 未开始 | 依赖 BE-300（指标）、BE-306（备份清单） |
+| BE-310 ～ BE-314 部署配置 | 🟡 配置完成，部分验收待测试环境 | `deploy/observability`、`deploy/backup`、`deploy/release.sh`、`deploy/pki`。本机：`deploy/test_deploy.py` 27 个测试（假的 age、mc）；告警和面板用到的指标对真实 `/metrics` 和指标定义核对过。CI 的 `ops-deploy` 用真实工具：`promtool test rules`（AC-OPS-07-1）、`amtool`、MinIO 策略和真实 age（备份、解密、完整性、加密失败、AC-OPS-12-5）、Grafana 导入 14 个面板、Viewer 不能保存和建数据源、不能匿名。MinIO 不再发布公开镜像和二进制，CI 从固定版本的源码构建。**没有验证**：通知真的发到 webhook（07-2～07-6）、面板数据和读数（06-2～06-10）、防火墙规则（17-1、17-5、17-6、17-9，nftables 没有实际加载过）、console-server 对真实 Grafana 的代理、`backup-console.sh` 对真实 Postgres（只有语法检查）、`release.sh` 对真实新迁移（用的假新二进制）。告警接收人和地址是占位，等 P-7 的 F-1 |
 | BE-320 ～ BE-321 测试环境与性能验收 | ⬜ 未开始 | |
 | BE-340 B6 部分 | ⏸ 随 B6 | Postgres 位置脱敏、库大小估算 |
 
