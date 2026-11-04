@@ -24,6 +24,9 @@ type config struct {
 	hold               time.Duration
 	killAfter          time.Duration
 	opsSegment         time.Duration
+	opsPhaseFile       string
+	opsPubkey          string
+	opsIdle            int
 }
 
 func ids(prefix string, n, width int) []string {
@@ -352,17 +355,21 @@ func scenarioGroup(cfg config) result {
 
 // pace 以 perSecond 的速率调用 fn（每次在新的 goroutine 里，不因为等 ack 而降速），直到 ctx 结束。
 func pace(ctx context.Context, perSecond float64, fn func(i int)) {
+	// Ticker 在接收方来不及时会丢节拍，实际发送量就低于目标（2ms 一拍时约少 2%）。按已过时间补齐。
 	t := time.NewTicker(time.Duration(float64(time.Second) / perSecond))
 	defer t.Stop()
 	var wg sync.WaitGroup
-	for i := 0; ; i++ {
+	start := time.Now()
+	for i := 0; ; {
 		select {
 		case <-ctx.Done():
 			wg.Wait()
 			return
 		case <-t.C:
-			wg.Add(1)
-			go func() { defer wg.Done(); fn(i) }()
+			for due := int(time.Since(start).Seconds() * perSecond); i < due; i++ {
+				wg.Add(1)
+				go func() { defer wg.Done(); fn(i) }()
+			}
 		}
 	}
 }

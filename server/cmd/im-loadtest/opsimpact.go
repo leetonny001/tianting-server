@@ -10,6 +10,7 @@ import (
 	"io"
 	mrand "math/rand/v2"
 	"net/http"
+	"os"
 	"slices"
 	"strconv"
 	"sync"
@@ -23,8 +24,8 @@ import (
 // PRD-ops S-OPS-25：运维流量对 IM 主流程的影响。同一轮压测里按"关 / 开 / 关 / 开 / 关 / 开"交替，
 // 比较 3 个开段和 3 个关段 P99 的中位数（AC-OPS-90-1）。
 //
-// 完整验收要 1 万连接 + console-server 驱动 20 个测试账号（BE-321，等 console-server）。这个场景的运维流量
-// 直接对节点运维接口施加，用来在 console-server 就绪之前先看 im-server 这一半的影响。
+// 默认的运维流量直接对节点运维接口施加。完整验收（BE-321）加 -ops-idle 10000 -ops-phase-file：
+// 流量由 console-server 的 tools/ops-accept 驱动 20 个测试账号，这里只写开关段，两边在同一轮里交替。
 
 const opsKeyID = "loadtest"
 
@@ -106,7 +107,11 @@ func median(ds []time.Duration) time.Duration {
 
 func scenarioOpsImpact(cfg config) result {
 	const pairs, perSecond = 50, 500.0
-	r := result{Case: "AC-OPS-90-1（im-server 部分）", Title: "运维接口对 IM 主流程的影响",
+	caseName := "AC-OPS-90-1（im-server 部分）"
+	if cfg.opsPhaseFile != "" {
+		caseName = "AC-OPS-90-1（运维流量经 console-server）"
+	}
+	r := result{Case: caseName, Title: "运维接口对 IM 主流程的影响",
 		Target: fmt.Sprintf("关 / 开交替 6 段、每段 %s；%d 对用户 %g 条/秒：开段 P99 中位数 ≤ 关段 + 20ms，每段 P99 ≤ 1 秒，意外断开 0，吞吐 ≥ 490 条/秒", cfg.opsSegment, pairs, perSecond)}
 	pub, priv, err := ed25519.GenerateKey(rand.Reader)
 	if err != nil {
@@ -115,10 +120,26 @@ func scenarioOpsImpact(cfg config) result {
 	}
 	s := newServer(cfg.bin, cfg.dir, "opsimpact")
 	s.opsAddr = freeAddr()
-	s.env = []string{
-		"IM_OPS_ADDR=" + s.opsAddr, "IM_NODE_ID=loadtest-node",
-		"IM_OPS_PUBKEYS=" + opsKeyID + ":" + base64.StdEncoding.EncodeToString(pub),
+	nodeID, pubkeys := "loadtest-node", opsKeyID+":"+base64.StdEncoding.EncodeToString(pub)
+	external := cfg.opsPhaseFile != ""
+	if external {
+		nodeID, pubkeys = "n1", cfg.opsPubkey
 	}
+	s.env = []string{"IM_OPS_ADDR=" + s.opsAddr, "IM_NODE_ID=" + nodeID, "IM_OPS_PUBKEYS=" + pubkeys}
+	setPhase := func(p string) {
+		if !external {
+			return
+		}
+		tmp := cfg.opsPhaseFile + ".tmp"
+		if err := os.WriteFile(tmp, []byte(p), 0o600); err == nil {
+			err = os.Rename(tmp, cfg.opsPhaseFile)
+			if err != nil {
+				r.note("写开关段失败：%v", err)
+			}
+		}
+	}
+	setPhase("off")
+	defer setPhase("done")
 	if err := s.start(); err != nil {
 		r.note("启动失败：%v", err)
 		return r
@@ -137,6 +158,22 @@ func scenarioOpsImpact(cfg config) result {
 		return r
 	}
 	defer closeAll(cs)
+	if cfg.opsIdle > 0 {
+		idle := ids("c", cfg.opsIdle, 5)
+		idleTokens, err := setupUsers(s, idle)
+		if err != nil {
+			r.note("准备空闲用户失败：%v", err)
+			return r
+		}
+		started := time.Now()
+		idleConns, errs := connectAll(s, idle, idleTokens, 200)
+		if len(errs) > 0 {
+			r.note("空闲连接失败：%d 条，第一条：%v", len(errs), errs[0])
+			return r
+		}
+		defer closeAll(idleConns)
+		r.row("空闲长连接", "%d 条，用时 %s", len(idleConns), time.Since(started).Round(time.Second))
+	}
 
 	var mu sync.Mutex
 	current := &latencies{}
@@ -181,9 +218,14 @@ func scenarioOpsImpact(cfg config) result {
 		mu.Unlock()
 		startSent := sent.Load()
 		segCtx, cancel := context.WithTimeout(context.Background(), cfg.opsSegment)
-		if on {
+		switch {
+		case on && external:
+			setPhase("on")
+			<-segCtx.Done()
+			setPhase("off")
+		case on:
 			driver.run(segCtx, users)
-		} else {
+		default:
 			<-segCtx.Done()
 		}
 		cancel()
@@ -210,10 +252,12 @@ func scenarioOpsImpact(cfg config) result {
 		segOK = segOK && seg.p99 <= time.Second && seg.throughput >= 490
 	}
 	// 压测全程没有人主动断开：连接数少于建立时的数量就是意外断开。
-	disconnects := int(s.scrape()[`im_connections{platform="web"}`]) < len(users)
+	disconnects := int(s.scrape()[`im_connections{platform="web"}`]) < len(users)+cfg.opsIdle
 	diff := median(onP99) - median(offP99)
 	r.row("P99 中位数", "开 %s，关 %s，差 %s", ms(median(onP99)), ms(median(offP99)), ms(diff))
-	r.row("运维请求", "%d 次，异常 %d 次", driver.sent.Load(), driver.bad.Load())
+	if !external {
+		r.row("运维请求", "%d 次，异常 %d 次", driver.sent.Load(), driver.bad.Load())
+	}
 	r.row("发送失败", "%d 次", failed.Load())
 	r.row("意外断开", "%v", disconnects)
 	r.Pass = diff <= 20*time.Millisecond && segOK && !disconnects && driver.bad.Load() == 0 && failed.Load() == 0
