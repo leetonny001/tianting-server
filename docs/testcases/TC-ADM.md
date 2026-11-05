@@ -1,5 +1,7 @@
 # 测试用例：管理后台业务（ADM）
 
+> 2026-11-05：依据升为 PRD-admin v1.1，AC-ADM-50-1～8 的预期不变（push 协议已冻结，对齐表见 PRD-live 4.7 节），用例不用改；协议层的用例见 [TC-PUSH](TC-PUSH.md)。
+
 > 依据：[PRD-admin v1.0](../prd/PRD-admin-v1.0.md) 第 5、6 节、第 9 节性能 AC（冻结）；[PRD-social v1.0](../prd/PRD-social-v1.0.md)（社交管理接口、解散群）；[ERRORS.md](../../protocol/ERRORS.md)。任务：[backend-admin.md](../tasks/backend-admin.md)、[console.md](../tasks/console.md) CS-020～CS-060、[frontend-admin.md](../tasks/frontend-admin.md) FE-410～FE-440，社交接口见 backend-social.md BE-114、BE-115、BE-122、BE-136。
 >
 > 通用约定：

@@ -17,7 +17,7 @@
 |---|---|---|
 | FE-203～FE-206、FE-210 | ✅ 完成 | tianting-sdk-ts `0561001`、`6ced393`：快照引用稳定、`memberCount` + `refreshConversations`（30 秒节流）+ `truncated()`、被移出快照（`reason`、重连推断、截断不推断）、打开未知会话向服务端确认、`avatarColorIndex` / `avatarInitial` 跑 `avatar.json` |
 | FE-207、FE-209 | — | 编号空缺，没有任务 |
-| FE-208 | ✅（pushes 流除外） | sdk-ts `38ed458`；pushes 随 FE-353 等 push 协议 |
+| FE-208 | 🟡 第二批事件完成，pushes 流未开始 | sdk-ts `38ed458`；PRD-live v1.0 已冻结 push 协议，pushes 流按 C1～C12 实现，跑通 `push-sync.json` |
 | FE-223、FE-226、FE-228、FE-234、FE-245～FE-247 | ✅ 完成（Web） | tianting-web `ee5c73d`：昵称登录、截断提示、"群名（N）"与聊天信息页、被移出 / 解散 / 未知会话、axe 扫描零违规、CSP + `uiPrefs`、500 会话 4 倍降速中位数约 376ms。手工项（VoiceOver、iOS Safari）未做 |
 | FE-306～FE-311 | ✅ 完成（Web） | tianting-web `06be970`：发起群聊、群设置（角色 × 托管矩阵）、群公告、成员列表与管理模式、邀请、提示消息、`reason=left`；真实服务端 e2e 覆盖 AC-UI-06-8、33-7、33-8、35-1、36-5～7、37-1、38-1、38-2、38-4、38-5、39-1，新页面已加入 axe 扫描。同时把解散后的禁用条改为 F-UI-33 规则 4 的"群聊已解散"（M3 多写了"，无法发送消息"）。F-UI-39 规则 3 的多条结果合并成一条轻提示（轻提示同时只显示 1 条）。未验证：WebKit、真机 VoiceOver（同 FE-248）。 |
 | FE-238～FE-244 | ✅ 完成（Web） | tianting-web：通讯录（拼音分组，`protocol/vectors/pinyin-groups.json`）、资料卡、新的朋友、添加朋友、申请、备注、黑名单、隐私、私聊权限提示条、群聊列表；群消息发送者昵称、头像图片、官方标识、会话列表备注优先。组件测试 43 个、端到端 6 个、axe 覆盖新页面；2000 好友刷新后约 475ms 显示完成。未做：好友制 / 陌生人限额的提示条端到端（测试服务端是默认开放模式，这两条只有组件测试，服务端行为由 `TestTCSOC08*` 覆盖）、AC-UI-13-9 在 WebKit 上跑一次 |
@@ -25,7 +25,7 @@
 | FE-300～FE-305 | ✅ 2026-11-05（Web） | tianting-web `eb802bf`、sdk-ts `50b4071`，CI 通过。只跑 Chromium，WebKit、真机、VoiceOver、真实拼音输入法没测。已知：Tab 会经过消息头像，消息多时要按很多次才到输入框；SDK 不监听 offline 事件，真实断网时状态条最长约 35 秒才出现 |
 | FE-312、FE-313 Tauri | ⏸ 等 Rust 授权（P-14） | |
 | FE-350～FE-352 | ✅ 2026-11-05 | 随 FE-431～433 实现，AC-UI-41、42、43 已核对有用例 |
-| FE-353 | ⏸ 等 push 协议 | |
+| FE-353 | ⬜ 未开始 | PRD-live v1.0 已冻结 push 协议，不再阻塞 |
 | FE-354 | ⬜ 未开始 | P1，全群禁言 |
 | FE-380～FE-382、FE-386 Android | 🟡 2026-11-05 首版 | tianting-sdk-kotlin `4fe4934`、tianting-android `95b963b`。本机：JVM 21 个、Compose UI 120 个、真实服务端端到端 7 个（3 轮里 1 轮有 1 个失败，判断是测试框架竞态，未证实）。**未验证**：CI 的 android job（等 P-15）、真机、Pixel 7 API 34、输入法组字（AC-UI-10-2、10-7）、多端红点（23-4）、关闭可被搜索（30-1）、600 群（32-2）、断网状态条 |
 | FE-383～FE-385、FE-387 iOS | 🟡 2026-11-05 首版 | tianting-sdk-swift `4815019`、tianting-ios `fba33c7`。适用 AC 223 条，173 条有编号引用（grep 统计，不等于逐条复核）；约 37 条已实现但没有自动化（要改写 ack 或造数据，见 tianting-ios 提交记录）。**未验证**：CI 的 build-and-test（等 P-15）、真机、iOS 17、输入法组字（AC-UI-10-2、10-7）、多端红点（23-4）、Release 真实收发 |
@@ -595,8 +595,9 @@ FE-001（`web/`）→ FE-220 → FE-221 → FE-222 → FE-224 → 页面任务�
 - 里程碑：第二批
 - 仓库：tianting-sdk-ts
 - 依赖：PRD-admin 第二批协议（`muted` / `unmuted`、4031、`msgDeleted`、`deleted` 标记、`kicked{reason:"suspended", until}`、`push`）；FE-004、FE-005
-- AC：AC-UI-41-4、AC-UI-42-1、AC-UI-42-3、AC-UI-43-4、AC-UI-44-2
+- AC：AC-UI-41-4、AC-UI-42-1、AC-UI-42-3、AC-UI-43-4、AC-UI-44-2、AC-PUSH-01-1、AC-PUSH-01-3、AC-PUSH-01-4、AC-PUSH-01-5、AC-PUSH-03-4、AC-PUSH-03-7、AC-PUSH-03-9、AC-PUSH-03-10、AC-PUSH-03-11、AC-PUSH-03-15、AC-PUSH-03-17、AC-PUSH-03-18、AC-PUSH-03-19、AC-PUSH-03-20、AC-PUSH-03-24、AC-PUSH-03-25、AC-PUSH-03-26、AC-PUSH-03-27、AC-PUSH-03-28、AC-PUSH-03-29、AC-PUSH-03-30、AC-PUSH-03-31、AC-PUSH-03-32、AC-PUSH-03-33、AC-PUSH-03-35、AC-PUSH-06-5、AC-PUSH-06-18、AC-PUSH-07-1、AC-PUSH-07-2、AC-PUSH-07-3、AC-PUSH-07-5、AC-PUSH-07-6、AC-PUSH-08-1、AC-PUSH-08-2、AC-PUSH-08-3、AC-PUSH-08-4、AC-PUSH-08-5、AC-PUSH-08-6、AC-PUSH-08-8、AC-PUSH-08-11
 - 内容：`muted` / `unmuted` 事件与禁言状态 `muteStateOf(convId)`（按服务端时间到期自动解除并发事件）；4031 带 `mutedUntil` / `scope` 透传、不自动重发；`msgDeleted` 与 `sync` 的 `deleted=true`：清除本地原文，消息标为 `deleted`，不改未读与 seq；`fatal` 事件携带 `suspended` + `until`；`pushes` 流；`/demo/login` 4034 的 `details.bannedUntil` 可读（错误枚举已含 4034）。测试：Vitest + `FakeTransport` / `FakeClock`。
+- 内容（push，PRD-live v1.0）：单游标规则 C1～C12、暂存区、无 `pushSeq` 队列、账号隔离、`pushSynced`、`pushStart`、自动 `pushSync` 且不被 `convs` 阻塞，跑通 `protocol/vectors/push-sync.json`（`persistence=true` 的用例 sdk-ts 跳过）。
 
 ### FE-350 禁言提示
 - 优先级：P0
@@ -627,8 +628,8 @@ FE-001（`web/`）→ FE-220 → FE-221 → FE-222 → FE-224 → 页面任务�
 - 里程碑：第二批
 - 仓库：tianting-web
 - 依赖：FE-208、FE-237
-- AC：AC-UI-44-1、AC-UI-44-2、AC-UI-44-3
-- 内容：只处理 `push.type = notice`：顶部 5 秒横幅"系统通知：{前 50 码点}"，点击进 `/me/notices`；内存列表（倒序，最多 100）；"我"页入口显示未查看条数；纯文本渲染；其他 `type` 只写日志。依赖二期 `push` 协议定稿，最后交付。测试：组件测试 + Playwright（XSS）；端到端 AC-UI-44-1（需要 PRD-admin F-ADM-50 推送）。
+- AC：AC-UI-44-1、AC-UI-44-2、AC-UI-44-3、AC-PUSH-12-1、AC-PUSH-12-2、AC-PUSH-12-3、AC-PUSH-12-4、AC-PUSH-12-5、AC-PUSH-12-6、AC-PUSH-12-7、AC-PUSH-12-8、AC-PUSH-12-10、AC-PUSH-12-11
+- 内容：只处理 `push.type = notice`：顶部 5 秒横幅"系统通知：{前 50 码点}"，点击进 `/me/notices`；内存列表（倒序，最多 100）；"我"页入口显示未查看条数；纯文本渲染；其他 `type` 只写日志。依赖二期 `push` 协议定稿，最后交付。测试：组件测试 + Playwright（XSS）；端到端 AC-UI-44-1（需要 PRD-admin F-ADM-50 推送）。**2026-11-05 PRD-ui v1.1**：列表、横幅、未查看和 `ui.noticeSeen.{userId}` 按 PRD-live F-PUSH-12；倒序按 `ts`；`uiPrefs.ts` 增加 `removePref` 和这个键的例外说明。
 
 ### FE-354 全群禁言提示（P1）
 - 优先级：P1

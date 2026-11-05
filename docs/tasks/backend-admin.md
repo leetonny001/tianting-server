@@ -28,7 +28,7 @@
 | BE-225 正文授权 | ✅ 完成 | 08-4、08-7、08-8、08-9、32-2、32-5、KEY-02-7 通过。im-server 这边 Q-1 两种方案都一样；Q-1 只决定 console-server 能否持有 `console-msgread` 凭证，影响 CS-041 |
 | BE-226 用户级禁言 | ✅ 完成 | 40-1～40-4、40-6～40-9 通过（40-9 双节点） |
 | BE-227 群成员禁言 | ✅ 完成 | 41-1～41-6 通过 |
-| BE-228、BE-229 系统推送 | ⏸ 等二期 push 协议定稿 | |
+| BE-228、BE-229 系统推送 | ⬜ 未开始 | PRD-live v1.0 已冻结 push 协议，不再阻塞 |
 | BE-240 ～ BE-243 | ⬜ 未开始 | P1 / P2 |
 
 ## 总览
@@ -315,23 +315,23 @@
 - 优先级：P0
 - 批次：第二批
 - 仓库：tianting-server
-- 依赖：**二期 push 协议定稿**（离线补收、`pushId` 去重、多端语义）、BE-221、BE-203
-- AC：AC-ADM-50-1、AC-ADM-50-6
+- 依赖：[PRD-live v1.0](../prd/PRD-live-v1.0.md)（push 协议，已冻结）、BE-221、BE-203。开关 `IM_PUSH_ENABLED`
+- AC：AC-ADM-50-1、AC-ADM-50-6、AC-PUSH-01-1、AC-PUSH-01-2、AC-PUSH-02-1、AC-PUSH-02-2、AC-PUSH-02-3、AC-PUSH-02-4、AC-PUSH-02-5、AC-PUSH-02-6、AC-PUSH-02-8、AC-PUSH-02-9、AC-PUSH-02-10、AC-PUSH-02-11、AC-PUSH-02-12、AC-PUSH-02-13、AC-PUSH-02-14、AC-PUSH-06-1、AC-PUSH-06-2、AC-PUSH-06-4、AC-PUSH-06-7、AC-PUSH-06-8、AC-PUSH-06-9、AC-PUSH-06-10、AC-PUSH-06-11、AC-PUSH-06-12、AC-PUSH-06-14、AC-PUSH-06-16、AC-PUSH-09-1、AC-PUSH-09-2、AC-PUSH-09-3、AC-PUSH-09-4、AC-PUSH-09-5、AC-PUSH-09-6、AC-PUSH-09-7、AC-PUSH-09-8、AC-PUSH-09-9、AC-PUSH-10-1
 - 内容：
   1. `POST /admin/push {target:"user"|"all", userIds?, type, data, pushId}`（scope `push.user` / `push.all`）：`userIds` > 1000 → 400 / 4131；含不存在用户 → 404 / 4042，`details.userIds` 列出，整批不发；`data` ≤ 4KB（模板 Schema 校验在 console 侧，CS-044）。
-  2. 下行 `push` 帧按二期协议；`pushId` 幂等（同一 pushId 重复提交不重复投递）。
-  3. 审计：`summary` 只记目标数量、type、data 长度与 SHA-256。
-  4. 测试：e2e 两个在线用户 3 秒内收到；不存在用户与超量错误码。AC 在 push 协议定稿前为草案，协议结论不同时随 PRD 修改。
+  2. 下行 `push` 帧按 PRD-live 4.2 节，`pushId` 幂等按 4.4 节：幂等表 `push_idempotency`、4094（写入 errors.json 和 Go）、`ttlSeconds` 可选字段、`pushTypes` 白名单（F-PUSH-09 规则 3）。协议、Schema、`frames.json`、`ADMIN.md` 按 PRD-live 第 10 节标 L1 的行落实。
+  3. 审计：`summary` 只记目标数量、`target`、type、`pushId`、data 长度与 SHA-256，走 `auditNote`（现有白名单不含）。
+  4. 测试：e2e 两个在线用户 3 秒内收到；不存在用户与超量错误码。用例见 TC-PUSH。
 
 ### BE-229 按用户推送的离线队列与全员在线投递（2.5 人日）
 - 优先级：P0
 - 批次：第二批
 - 仓库：tianting-server
 - 依赖：BE-228、BE-220
-- AC：AC-ADM-50-2、AC-ADM-50-3
+- AC：AC-ADM-50-2、AC-ADM-50-3、AC-PUSH-03-1、AC-PUSH-03-2、AC-PUSH-03-3、AC-PUSH-03-5、AC-PUSH-03-6、AC-PUSH-03-8、AC-PUSH-03-12、AC-PUSH-03-13、AC-PUSH-03-14、AC-PUSH-03-21、AC-PUSH-03-22、AC-PUSH-03-23、AC-PUSH-04-1、AC-PUSH-04-2、AC-PUSH-04-3、AC-PUSH-04-4、AC-PUSH-04-5、AC-PUSH-04-6、AC-PUSH-07-1、AC-PUSH-07-2、AC-PUSH-07-4、AC-PUSH-11-1、AC-PUSH-11-2、AC-PUSH-11-3、AC-PUSH-11-4、AC-PUSH-11-5、AC-PUSH-11-6
 - 内容：
-  1. 迁移：`push_inbox(user_id, push_id, type, data, created_at, expires_at)`；按用户推送持久化 7 天，离线用户上线后补收（补收帧格式由 push 协议定义），BE-220 每小时清理过期。
-  2. 全员推送只投递当前在线连接（遍历 hub，按批限速下发，集群下经消息总线广播，B6）；多端在线时每个连接各收一次，`pushId` 相同由 SDK 去重。
+  1. 迁移：`push_inbox(user_id, push_seq, push_id, type, data, created_at, expires_at)`、`push_seq(user_id, max_seq)`（不随清理删除）；命令 `pushSync`、读取时按 `expires_at` 过滤、收件箱上限、清理顺序（先收件箱后幂等记录，PRD-live 4.3、4.4 节），BE-220 每小时分批清理。
+  2. 全员推送只投递当前在线连接，异步下发，不另设分批参数（F-PUSH-04 规则 2），集群下经消息总线广播（B6）；多端在线时每个连接各收一次。`im-loadtest` 新增全员场景（AC-PUSH-04-2 要用，`scenarios.go` 现在没有）。
   3. 测试：[IM 钟] 第 6 天上线收到、第 8 天收不到；5 个在线收到、离线用户上线收不到。
 
 ---

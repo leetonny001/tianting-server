@@ -1,5 +1,7 @@
 # 测试用例：客户端 UI（UI，第二批与 P1）
 
+> 2026-11-05：依据升为 PRD-ui v1.1。AC-UI-44-1～3、AC-UI-90-2 不变；F-UI-44 规则 2、3 的回放展示和未查看由 TC-PUSH-12-* 覆盖，TC-UI-44-04 的“列表上限 100”按 `ts` 取最新的 100 条。
+
 > 依据：[PRD-ui v1.0](../prd/PRD-ui-v1.0.md)（冻结），本文件覆盖【第二批】和【P1】AC；数据与规则见 [PRD-core v1.3](../prd/PRD-core-v1.3.md)、[PRD-social v1.0](../prd/PRD-social-v1.0.md)、[PRD-admin v1.0](../prd/PRD-admin-v1.0.md)；SDK 行为见 [SDK 设计说明](../sdk/README.md)；任务见 [frontend-ui.md](../tasks/frontend-ui.md)。
 >
 > 通用约定：

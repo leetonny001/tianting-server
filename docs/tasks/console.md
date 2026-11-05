@@ -19,7 +19,7 @@
 | CS-001 ～ CS-004 | ✅ 2026-11-04（只在本地） | 代码在本机 tianting-console-server，**GitHub 仓库待 Frank 创建**（P-9），还没有 CI。空间与监听、网段与 HTTPS 边界、响应头、迁移与数据库角色、生产启动保护（一次列全）、数据密钥与轮换、Argon2id 限流、im-server 签名客户端；对真实 Postgres 和真实 im-server 的进程级测试。**等后续任务才能验收**：AC-CON-01-3、01-5（登录，CS-007、CS-009）；AC-CON-11-1 全库搜索、11-4 的 RSS（登录，CS-007）。10-1、10-4 已随 FE-400 验收。deploy/ 有 systemd 单元、配置示例和 verify、archive 的定时器 |
 | CS-005 ～ CS-011 | ✅ 2026-11-04（只在本地） | `285957b`。引导、激活、TOTP 防重放、恢复码、密码策略、锁定与 IP 限流（都在 Postgres）、会话与 CSRF、权限注册表与路由强制、step-up、应急授权、账号管理与自我保护；AC-CON-01-3、01-5、11-1、11-4 也已验收。**例外**：弱密码表是手写的暂行版（406 条），不是任务单要求的 SecLists 文件，见 P-10；`assets/weak-passwords.sha256` 随正式文件一起加。 |
 | CS-040 ～ CS-043 第二批 | ✅ 2026-11-05 | 封禁、禁言、删除、正文授权、隔离原文，对真实 im-server 的端到端用例 `e2e/biz2_test.go` 和权限矩阵通过。Q-1 按默认方案：正文走单独的 `console-msgread` 凭证（`CON_IM_MSGREAD_KEY`，没配置时正文接口 503，不退回主凭证）。AC-ADM-08-4 的"推进两边时钟 16 分钟"分两段验：im-server 的过期在 tianting-server `TestAdmMsgGrants`，console 这边用注入的 4039 验透传和绑定作废，没有两边时钟一起推的用例 |
-| CS-044、CS-045 系统通知 | ⏸ 等二期 push 协议定稿 | |
+| CS-044、CS-045 系统通知 | ⬜ 未开始 | PRD-live v1.0 已冻结 push 协议，不再阻塞 |
 | CS-012 审计写入 | ✅ 2026-11-04（只在本地） | 两阶段、哈希链、只追加、故障注入；08-1、08-2、08-4、08-9、08-10、08-11 随业务接口验收。AC-ADM-90-4 开发机通过（7378 条 / 秒，P95 1.43ms，[报告](../reports/perf-audit-2026-11-04.md)），部署后重测 |
 | CS-013 锚定与校验 | ✅ 2026-11-04（只在本地） | `b7ecc32`。AC-CON-08-5、08-6、08-7、08-12 通过，对假 WORM 桶（校验签名、权限、锁定头）。**真实 MinIO 的 CI 任务已写好但没运行过**：本机没有 docker，要等仓库建好（P-9）。实现比规格多的：校验用单独的只读凭证比对外部存储，生产没有读取凭证时拒绝运行（只比对库发现不了连 audit.anchors 一起改）；对象键含 hash，写入凭证覆盖不掉旧锚定 |
 | CS-014 查询与对账 | ✅ 2026-11-04（只在本地） | AC-CON-09-2～09-6、09-9 通过，对账也跑过真实 im-server。AC-ADM-90-3 开发机通过（按 1000 万条的密度灌 200 万条，P95 2.2ms，见报告）。CSV 导出（F-CON-09 规则 7，P1）不在本任务内容里，未做 |
@@ -265,6 +265,7 @@
   1. `GET /console/api/audit?from=&to=&actor=&action=&target=&result=&requestId=&space=&cursor=&limit=`（权限点 `audit.read`）：时间范围必填、≤ 31 天，否则 400 / 4000；按 `seq` 倒序游标分页；查询本身写 `audit.query` 事件（含筛选条件）。管理空间审计员只能看 `space=admin`，指定 `space=ops` → 403 / 4030；运维审计员可选"全部空间"（权限由 ops 空间注册）。
   2. 详情 `GET /console/api/audit/requests/{requestId}`：合并同一 `requestId` 的 intent / result；`GET /console/api/audit/im?requestId=`：经 `imclient` 调 im-server `GET /admin/audit`（写 `audit.query` 事件）。
   3. 只读：审计路由对 `PUT` / `PATCH` / `DELETE` 返回 405（显式注册 405 handler，不依赖默认 404）。
+  - 2026-11-05 PRD-live 第 11 节：对账结论增加“只有 intent”按 `unknown` 处理（系统通知据此重放，随 CS-044）。代码 `internal/app/reconcile.go` 已有 `imIntentOnly`、`partial`，实际改动比这里写的小。
   4. 对账任务（每 10 分钟，[C 钟]，多实例下用 `pg_try_advisory_lock` 只跑一个）：扫描 intent 超过 5 分钟无 result 的记录 → 按 `requestId` 查 im-server 审计：有结论补写 `result`（`params.reconciled=true`）；im-server 也没有 → 补写 `result=failure`、`code=0`、`params.reconciled="notExecuted"`。
   5. 索引：`(space, ts)`、`(account_id, ts)`、`(request_id)`、`(action, ts)`。性能：1000 万条、31 天按操作人筛选 P95 ≤ 2 秒（AC-ADM-90-3）。
   6. 测试：32 天 400；查询后新增 `audit.query`；admin 审计员 `space=ops` 403；PATCH / DELETE 405；[C 钟] 推进 15 分钟对账 `notExecuted`；AC-CON-09-9 在 ops 空间审计员测试桩下验证（运维任务复用）。
@@ -439,13 +440,14 @@
 - 优先级：P0
 - 批次：第二批
 - 仓库：tianting-console-server（待建）
-- 依赖：二期 push 协议定稿；tianting-server BE-228、BE-229
-- AC：AC-ADM-50-1、AC-ADM-50-2、AC-ADM-50-4、AC-ADM-50-6
+- 依赖：PRD-live v1.0（push 协议，已冻结）；tianting-server BE-228、BE-229
+- AC：AC-ADM-50-1、AC-ADM-50-2、AC-ADM-50-4、AC-ADM-50-6、AC-PUSH-06-13、AC-PUSH-06-15、AC-PUSH-06-6
 - 内容：
   1. 模板配置 `CON_PUSH_TEMPLATES`（文件：`type` → `data` 的 JSON Schema），`GET /console/api/push/templates`。
   2. `POST /console/api/push/preview`（目标人数、type、格式化 data）→ `POST /console/api/push/user {userIds≤1000 | importToken, type, data, reason, ticket?}`（`push.user` + 理由）：`data` 按模板 Schema 校验、≤ 4KB，否则 400 / 4000；> 1000 → 400 / 4131；4042 + `details.userIds` 透传、整批不发送。
   3. 表 `biz.push_records(id, kind, type, data 全文, data_sha256, targets, created_by, approved_by, sent_at, im_push_id)`，保留期与审计一致；审计只记 `data` 长度与 SHA-256。
-  4. 测试：e2e 两人 3 秒内收到；[IM 钟] 第 6 / 8 天补收；Schema 不符 / 超长 400；ghost 与 1001。
+  4. `pushId` 由 console 生成（UUID）存 `im_push_id`；按 PRD-live 4.7 节对账表自动重放一次（距首次发送超过 1 小时不重放，标 `unknown`）；工作量 +0.5 人日（粗估）。
+  5. 测试：e2e 两人 3 秒内收到；[IM 钟] 第 6 / 8 天补收；Schema 不符 / 超长 400；ghost 与 1001；AC-PUSH-06-6、06-13、06-15（新注入手段 `imDropResponse`）。
 
 ### CS-045 全员通知：草稿、双人批准、间隔与发送记录（1.5 人日）
 - 优先级：P0
@@ -455,7 +457,7 @@
 - AC：AC-ADM-50-3、AC-ADM-50-5、AC-ADM-50-7、AC-ADM-50-8
 - 内容：
   1. 草稿 `POST /console/api/push/all/drafts {type, data, reason}`（`push.all.request`），24 小时未批准自动作废（读取时按 [C 钟] 判断）。
-  2. 批准 `POST /console/api/push/all/drafts/{id}/approve {confirmText: "全员发送"}`（`push.all.approve` + step-up）：**发起人不能批准自己的草稿**（即使同时有超管角色）→ 403 / 4030；全局两次全员推送间隔 ≥ 5 分钟（表 `biz.push_records` 最近一次全员发送时间，事务内加锁）→ 429 / 4290。
+  2. 批准 `POST /console/api/push/all/drafts/{id}/approve {confirmText: "全员发送"}`（`push.all.approve` + step-up）：**发起人不能批准自己的草稿**（即使同时有超管角色）→ 403 / 4030；全局两次全员推送间隔 ≥ 5 分钟（表 `biz.push_records` 最近一次全员发送时间，事务内加锁）→ 429 / 4290。判断“最近一次全员发送时间”时**排除重放**；全员重放不重走复核（PRD-admin v1.1 F-ADM-50 规则 5）。
   3. 发送记录 `GET /console/api/push/records`（审计员与超管可看全文；权限点在 5.2 节之外新增 `push.records.read` 给 `auditor`、`super_admin`——见文末 PRD 问题 4）。
   4. 测试：5 人在线收到、离线上线收不到；T+4 分钟 429、T+5 分钟成功；自批 403；记录全文与审计 SHA-256 一致。
 
