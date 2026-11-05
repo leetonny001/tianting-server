@@ -292,6 +292,8 @@ type messageMetaJSON struct {
 	BodyLength int    `json:"bodyLength"`
 	TS         int64  `json:"ts"`
 	Deleted    bool   `json:"deleted,omitempty"`
+	DeletedAt  int64  `json:"deletedAt,omitempty"`
+	DeletedBy  string `json:"deletedBy,omitempty"`
 }
 
 // queryMessageMeta 是 POST /admin/convs/messages/query：不受成员关系和 historyVisible 限制，已解散的群照常返回；
@@ -342,7 +344,7 @@ func (a *Admin) queryMessageMeta(w http.ResponseWriter, r *http.Request) {
 	}
 	out := make([]messageMetaJSON, len(msgs))
 	for i, m := range msgs {
-		out[i] = messageMetaJSON{m.Seq, m.MsgID, m.From, m.Type, m.BodyLength, m.TS, m.Deleted}
+		out[i] = messageMetaJSON{m.Seq, m.MsgID, m.From, m.Type, m.BodyLength, m.TS, m.DeletedAt > 0, m.DeletedAt, m.DeletedBy}
 	}
 	noteAuditCount(r.Context(), len(out))
 	writeJSON(w, http.StatusOK, struct {

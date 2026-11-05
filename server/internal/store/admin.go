@@ -61,7 +61,8 @@ type MessageMeta struct {
 	From       string
 	Type       string
 	BodyLength int
-	Deleted    bool
+	DeletedAt  int64
+	DeletedBy  string
 	TS         int64
 }
 

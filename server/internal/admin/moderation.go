@@ -537,7 +537,7 @@ func (a *Admin) readMessageBody(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var (
-		msgs []protocol.Message
+		msgs []bodyMessageJSON
 		more bool
 	)
 	if g.Quarantine {
@@ -556,26 +556,32 @@ func (a *Admin) readMessageBody(w http.ResponseWriter, r *http.Request) {
 	noteAuditFields(r.Context(), fields)
 	noteAuditCount(r.Context(), len(msgs))
 	writeJSON(w, http.StatusOK, struct {
-		Messages []protocol.Message `json:"messages"`
-		HasMore  bool               `json:"hasMore"`
+		Messages []bodyMessageJSON `json:"messages"`
+		HasMore  bool              `json:"hasMore"`
 	}{msgs, more})
 }
 
-func (a *Admin) readBodies(ctx context.Context, convID string, before int64, limit int) ([]protocol.Message, bool, *protocol.Error) {
+// bodyMessageJSON 是正文读取的一条消息：比下发给客户端的多一个删除人。
+type bodyMessageJSON struct {
+	protocol.Message
+	DeletedBy string `json:"deletedBy,omitempty"`
+}
+
+func (a *Admin) readBodies(ctx context.Context, convID string, before int64, limit int) ([]bodyMessageJSON, bool, *protocol.Error) {
 	rows, more, err := a.store.ListMessagesBefore(ctx, convID, before, 1, limit)
 	if err != nil {
 		a.log.Error("list messages for body read", "err", err)
 		return nil, false, protocol.Errorf(protocol.CodeInternal, "internal error")
 	}
-	out := make([]protocol.Message, len(rows))
+	out := make([]bodyMessageJSON, len(rows))
 	for i, m := range rows {
-		out[i] = logic.ToProto(m)
+		out[i] = bodyMessageJSON{logic.ToProto(m), m.DeletedBy}
 	}
 	return out, more, nil
 }
 
 // readQuarantine 解密隔离原文。一条都没有（从未删除或已到期）返回 404 / 4044（F-ADM-32 规则 4）。
-func (a *Admin) readQuarantine(ctx context.Context, convID string, before, now int64, limit int) ([]protocol.Message, bool, *protocol.Error) {
+func (a *Admin) readQuarantine(ctx context.Context, convID string, before, now int64, limit int) ([]bodyMessageJSON, bool, *protocol.Error) {
 	rows, more, err := a.store.ListQuarantined(ctx, convID, before, now, limit)
 	if err != nil {
 		a.log.Error("list quarantined", "err", err)
@@ -584,7 +590,7 @@ func (a *Admin) readQuarantine(ctx context.Context, convID string, before, now i
 	if len(rows) == 0 {
 		return nil, false, protocol.Errorf(protocol.CodeMessageNotFound, "no quarantined messages")
 	}
-	out := make([]protocol.Message, len(rows))
+	out := make([]bodyMessageJSON, len(rows))
 	for i, q := range rows {
 		plain, err := a.mod.Cipher.Open(q.Message.MsgID, q.Message.ConvID, q.Nonce, q.Ciphertext, q.KID)
 		if err != nil { // 不把 msgId 以外的东西写进日志：错误里没有明文
@@ -593,7 +599,7 @@ func (a *Admin) readQuarantine(ctx context.Context, convID string, before, now i
 		}
 		m := q.Message
 		m.Body = plain
-		out[i] = logic.ToProto(m)
+		out[i] = bodyMessageJSON{logic.ToProto(m), m.DeletedBy}
 		out[i].Body = bodyOf(plain) // ToProto 对已删除的消息不带正文；这里是取证查看，要带上
 	}
 	return out, more, nil

@@ -707,14 +707,14 @@ func scanConv(r rowScanner) (ConvRow, error) {
 	return c, err
 }
 
-const msgColumns = `msg_id, client_msg_id, conv_id, seq, from_uid, type, body, ts, deleted_at`
+const msgColumns = `msg_id, client_msg_id, conv_id, seq, from_uid, type, body, ts, deleted_at, deleted_by`
 
 type rowScanner interface{ Scan(dest ...any) error }
 
 func scanMessage(r rowScanner) (Message, error) {
 	var m Message
 	var body string
-	if err := r.Scan(&m.MsgID, &m.ClientMsgID, &m.ConvID, &m.Seq, &m.From, &m.Type, &body, &m.TS, &m.DeletedAt); err != nil {
+	if err := r.Scan(&m.MsgID, &m.ClientMsgID, &m.ConvID, &m.Seq, &m.From, &m.Type, &body, &m.TS, &m.DeletedAt, &m.DeletedBy); err != nil {
 		return Message{}, err
 	}
 	m.Body = []byte(body)

@@ -101,7 +101,7 @@ scope：`POST /admin/users/token` → `token.issue`；`POST /admin/users/import`
 | `POST /admin/msg-grants` | `{convId, operator, reason, ticket, quarantine?}` | `{grantId, expiresAt}` | 群 `msg.body.group`，单聊 `msg.body.c2c`，`quarantine=true` 要 `msg.quarantine`。`operator` 必须等于签名的 `X-IM-Operator`。授权 15 分钟。`IM_C2C_BODY_ACCESS=off` 时单聊 403 / 4030 `reason:"c2cBodyDisabled"`。配额（Asia/Shanghai 自然日）：每操作人 20、每调用方 200，超出 429 / 4292 |
 | `POST /admin/convs/messages/body` | `{grantId, convId, beforeSeq?, limit?}` | `{messages, hasMore}` | 同上。`limit` ≤ 50。授权不存在、过期、换了会话或操作人 403 / 4039。普通授权：被删的消息只有 `deleted=true`，没有 `body`。隔离授权：只返回被删的消息和原文，一条都没有（含已到期）404 / 4044。响应 `Cache-Control: no-store` |
 
-- `GET /admin/users/{userId}`、`GET /admin/users` 增加 `ban`（`null` 或 `{until, reason, by, at}`）和 `mutedUntil`（禁言中才出现，永久为 `null`）；`GET /admin/groups/{groupId}/members` 的成员增加 `mutedUntil`；`POST /admin/convs/messages/query` 的消息增加 `deleted`。过期的记录按没有处理。
+- `GET /admin/users/{userId}`、`GET /admin/users` 增加 `ban`（`null` 或 `{until, reason, by, at}`）和 `mutedUntil`（禁言中才出现，永久为 `null`）；`GET /admin/groups/{groupId}/members` 的成员增加 `mutedUntil`；`POST /admin/convs/messages/query` 的消息增加 `deleted`、`deletedAt`、`deletedBy`（正文读取的响应也有）。过期的记录按没有处理。
 - `POST /admin/users/token`、`POST /demo/login`：封禁中 403 / 4034，`details.bannedUntil`（永久为 `null`）。到期自动解除。
 - `by`、`deletedBy` 的格式是 `{caller}:{operator}`。审计记录这些接口的 `reason`、`msgIds`、`ticket`、时长，不记正文；正文读取的 summary 带 `seqFrom`、`seqTo`、`count`。
 - 配置：`IM_QUARANTINE_KEY`（≥ 32 字节，不能与其他密钥相同，生产必填）、`IM_QUARANTINE_DAYS`（默认 30，1～365）、`IM_C2C_BODY_ACCESS`（默认 `off`，没有管理接口能改）。

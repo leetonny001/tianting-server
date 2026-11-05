@@ -173,7 +173,7 @@ func (s *SQLite) DeleteMessages(ctx context.Context, req DeleteMessagesReq) ([]D
 
 func (s *SQLite) ListQuarantined(ctx context.Context, convID string, beforeSeq, now int64, limit int) ([]QuarantinedMessage, bool, error) {
 	rows, err := s.db.QueryContext(ctx,
-		`SELECT m.msg_id, m.client_msg_id, m.conv_id, m.seq, m.from_uid, m.type, m.ts, m.deleted_at, q.nonce, q.ciphertext, q.kid, q.expires_at
+		`SELECT m.msg_id, m.client_msg_id, m.conv_id, m.seq, m.from_uid, m.type, m.ts, m.deleted_at, m.deleted_by, q.nonce, q.ciphertext, q.kid, q.expires_at
 		 FROM message_quarantine q JOIN messages m ON m.msg_id = q.msg_id
 		 WHERE q.conv_id = ? AND q.expires_at > ? AND m.seq < ? ORDER BY m.seq DESC LIMIT ?`, convID, now, beforeSeq, limit+1)
 	if err != nil {
@@ -184,7 +184,7 @@ func (s *SQLite) ListQuarantined(ctx context.Context, convID string, beforeSeq, 
 	for rows.Next() {
 		var q QuarantinedMessage
 		m := &q.Message
-		if err := rows.Scan(&m.MsgID, &m.ClientMsgID, &m.ConvID, &m.Seq, &m.From, &m.Type, &m.TS, &m.DeletedAt, &q.Nonce, &q.Ciphertext, &q.KID, &q.ExpiresAt); err != nil {
+		if err := rows.Scan(&m.MsgID, &m.ClientMsgID, &m.ConvID, &m.Seq, &m.From, &m.Type, &m.TS, &m.DeletedAt, &m.DeletedBy, &q.Nonce, &q.Ciphertext, &q.KID, &q.ExpiresAt); err != nil {
 			return nil, false, err
 		}
 		out = append(out, q)

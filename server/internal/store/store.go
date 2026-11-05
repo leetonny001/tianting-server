@@ -24,7 +24,8 @@ type Message struct {
 	Type        string
 	Body        json.RawMessage
 	TS          int64
-	DeletedAt   int64 // 软删除的时间（第二批）；0 = 没有删除。删除后 Body 是 {}
+	DeletedAt   int64  // 软删除的时间（第二批）；0 = 没有删除。删除后 Body 是 {}
+	DeletedBy   string // {caller}:{operator}，只给管理接口，不下发给客户端
 
 	// 以下字段只在 SaveMessage 时传入，不随消息读出。
 	Summary   string   // 会话列表里的摘要（调用方截断好，前 100 个码点）

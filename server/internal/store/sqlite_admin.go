@@ -133,7 +133,7 @@ func (s *SQLite) ListMessageMeta(ctx context.Context, q MessageMetaQuery) ([]Mes
 	// SQLite 的 length() 对 TEXT 按字符（码点）计数；正文只参与计算长度，不离开数据库。
 	// #nosec G202 -- where 是常量片段，取值全部走占位符
 	rows, err := s.db.QueryContext(ctx, `SELECT seq, msg_id, from_uid, type,
-		CASE WHEN deleted_at > 0 THEN 0 ELSE COALESCE(length(json_extract(body, '$.text')), length(body)) END, ts, deleted_at > 0
+		CASE WHEN deleted_at > 0 THEN 0 ELSE COALESCE(length(json_extract(body, '$.text')), length(body)) END, ts, deleted_at, deleted_by
 		FROM messages WHERE `+strings.Join(where, " AND ")+` ORDER BY seq DESC LIMIT ?`, args...)
 	if err != nil {
 		return nil, false, err
@@ -142,7 +142,7 @@ func (s *SQLite) ListMessageMeta(ctx context.Context, q MessageMetaQuery) ([]Mes
 	out := []MessageMeta{}
 	for rows.Next() {
 		var m MessageMeta
-		if err := rows.Scan(&m.Seq, &m.MsgID, &m.From, &m.Type, &m.BodyLength, &m.TS, &m.Deleted); err != nil {
+		if err := rows.Scan(&m.Seq, &m.MsgID, &m.From, &m.Type, &m.BodyLength, &m.TS, &m.DeletedAt, &m.DeletedBy); err != nil {
 			return nil, false, err
 		}
 		out = append(out, m)
