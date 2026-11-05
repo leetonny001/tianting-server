@@ -3,7 +3,7 @@
   "version": 1,
   "errors": [
     { "code": 4000, "name": "BAD_REQUEST",                 "http": 400, "scope": ["ws", "admin", "console"], "retryable": false, "message": "参数不合法",           "action": "开发期缺陷；界面提示「请求出错」" },
-    { "code": 4001, "name": "UNKNOWN_CMD",                 "http": null, "scope": ["ws"],          "retryable": false, "message": "未知命令",             "action": "客户端版本与服务端不匹配，提示升级" },
+    { "code": 4001, "name": "UNKNOWN_CMD",                 "http": null, "scope": ["ws"],          "retryable": false, "message": "未知命令",             "action": "客户端版本与服务端不匹配，提示升级；pushSync 的 4001 由 SDK 静默忽略" },
     { "code": 4002, "name": "INVALID_FRAME",               "http": null, "scope": ["ws"],          "retryable": false, "message": "帧格式错误",           "action": "开发期缺陷，记录日志" },
     { "code": 4003, "name": "MISSING_REQUEST_ID",          "http": null, "scope": ["ws"],          "retryable": false, "message": "请求缺少 id",          "action": "开发期缺陷，记录日志" },
     { "code": 4004, "name": "INVALID_ID",                  "http": 400, "scope": ["ws", "admin", "console"], "retryable": false, "message": "ID 格式不合法",        "action": "提示「账号格式不正确」" },
@@ -55,7 +55,7 @@
     { "code": 5000, "name": "INTERNAL",                    "http": 500, "scope": ["ws", "admin", "console"], "retryable": true,  "message": "服务器内部错误",       "action": "消息标记发送失败，允许手动重发" },
     { "code": 5030, "name": "SERVICE_UNAVAILABLE",         "http": 503, "scope": ["ws", "admin", "console"], "retryable": true,  "message": "服务暂不可用",         "action": "按退避策略重试" },
     { "code": 5031, "name": "AUDIT_UNAVAILABLE", "http": 503, "scope": ["console"], "retryable": true, "message": "审计写入失败，操作未执行", "action": "提示「审计服务不可用，操作未执行，请稍后重试」" },
-    { "code": 5040, "name": "UPSTREAM_RESULT_UNKNOWN", "http": 504, "scope": ["console"], "retryable": false, "message": "调用 im-server 超时，操作结果未知", "action": "提示「操作结果未知，请刷新确认，不要重复提交」" }
+    { "code": 5040, "name": "UPSTREAM_RESULT_UNKNOWN", "http": 504, "scope": ["console"], "retryable": false, "message": "调用 im-server 超时，操作结果未知", "action": "提示「操作结果未知，请刷新确认，不要重复提交」；pushId 幂等的接口由对账任务重放" }
   ],
   "closeCodes": [
     { "code": 1000, "name": "NORMAL",              "reconnect": false, "meaning": "正常关闭（客户端主动退出登录）" },

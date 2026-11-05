@@ -59,7 +59,7 @@
 | code | 名称 | HTTP | 通道 | 可重试 | 含义 | 客户端处理 |
 |---|---|---|---|---|---|---|
 | 4000 | BAD_REQUEST | 400 | ws / admin / console | 否 | 参数不合法 | 开发期缺陷；提示「请求出错」 |
-| 4001 | UNKNOWN_CMD | — | ws | 否 | 未知命令 | 提示升级客户端 |
+| 4001 | UNKNOWN_CMD | — | ws | 否 | 未知命令 | 提示升级客户端；`pushSync` 的 4001 由 SDK 静默忽略 |
 | 4002 | INVALID_FRAME | — | ws | 否 | 帧格式错误 | 记录日志 |
 | 4003 | MISSING_REQUEST_ID | — | ws | 否 | 请求缺少 id | 记录日志 |
 | 4004 | INVALID_ID | 400 | ws / admin / console | 否 | ID 格式不合法 | 提示「账号格式不正确」 |
@@ -111,7 +111,7 @@
 | 5000 | INTERNAL | 500 | ws / admin / console | 是 | 服务器内部错误 | 消息标记失败，允许重发 |
 | 5030 | SERVICE_UNAVAILABLE | 503 | ws / admin / console | 是 | 服务暂不可用 | 按退避策略重试 |
 | 5031 | AUDIT_UNAVAILABLE | 503 | console | 是 | 审计写入失败，操作未执行 | 提示「审计服务不可用，操作未执行，请稍后重试」 |
-| 5040 | UPSTREAM_RESULT_UNKNOWN | 504 | console | 否 | 调用 im-server 超时，操作结果未知 | 提示「操作结果未知，请刷新确认，不要重复提交」 |
+| 5040 | UPSTREAM_RESULT_UNKNOWN | 504 | console | 否 | 调用 im-server 超时，操作结果未知 | 提示「操作结果未知，请刷新确认，不要重复提交」；`pushId` 幂等的接口由对账任务重放 |
 
 ## 4. WebSocket 关闭码
 

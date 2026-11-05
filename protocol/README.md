@@ -50,7 +50,8 @@ ws(s)://{host}/ws?platform={android|ios|web|pc}
 | `groupLeave` / `groupTransfer` / `groupSetAdmin` / `groupDissolve` / `groupUpdate` | 上行 | 退群、转让群主、设置管理员、解散、改群名 / 公告 | `{}` |
 | `groupInfo` | 上行 | 群资料 | `{groupId, name, notice, noticeBy, noticeAt, owner, managed, myRole, memberCount, maxMembers, historyVisible, createdAt}` |
 | `groupMembers` | 上行 | 成员分页：群主 → 管理员 → 成员，`limit` 1～100 | `{members, nextCursor}` |
-| `joinRoom` / `leaveRoom` / `push` | — | 二期（聊天室、系统推送） | — |
+| `joinRoom` / `leaveRoom` | — | 二期（聊天室） | — |
+| `push` / `pushSync` | 下行帧；`pushSync` 上行，有应答 | 系统推送，定义见 [PRD-live v1.0](../docs/prd/PRD-live-v1.0.md) 第 4 节，Schema 和向量随 BE-228、BE-229 落地；SDK 行为用例 `vectors/push-sync.json` | — |
 
 ## 3. 交互规则
 
@@ -70,4 +71,4 @@ ws(s)://{host}/ws?platform={android|ios|web|pc}
 
 - 新增可选字段：向后兼容，直接加。
 - 删除或改名字段、改变语义：协议版本号 +1，服务端同时兼容新旧两个版本，至少保留一个发版周期。
-- 每次修改协议，都要同步更新 `vectors/` 里的用例；错误码只增不改。
+- 每次修改协议，都要同步更新 `vectors/` 里的用例；错误码只增不改（`action` 是给调用方的处理建议，改文案不算改码）。不认识的顶层 `cmd` 和不认识的事件类型、字段、枚举值一样，三套 SDK 都要忽略。
