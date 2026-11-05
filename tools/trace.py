@@ -20,7 +20,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 PRDS = [ROOT / "docs/prd" / n for n in (
     "PRD-core-v1.3.md", "PRD-social-v1.0.md", "PRD-ui-v1.1.md", "PRD-admin-v1.1.md", "PRD-ops-v1.1.md",
-    "PRD-live-v1.0.md")]
+    "PRD-live-v1.1.md")]
 # PRD-live v1.0 3.2 节：L2、L3 的 AC 随对应里程碑分发任务和用例
 FROZEN_PUSH_EXCLUDE = {
     "AC-PUSH-02-7", "AC-PUSH-06-17",
@@ -43,7 +43,7 @@ def load_acs():
             if not m:
                 continue
             rest = m.group(2)
-            if name == "live-v1.0" and (not m.group(1).startswith("AC-PUSH-") or m.group(1) in FROZEN_PUSH_EXCLUDE):
+            if name == "live-v1.1" and (not m.group(1).startswith("AC-PUSH-") or m.group(1) in FROZEN_PUSH_EXCLUDE):
                 continue
             layer = "后端" if "【后端】" in rest[:8] else "前端" if "【前端】" in rest[:8] else "手工" if "（手工）" in rest[:8] else "端到端"
             acs.append((m.group(1), layer, name))

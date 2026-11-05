@@ -194,7 +194,7 @@ func scenarioPushAll(cfg config) result {
 
 // scenarioPushUser：AC-PUSH-04-4。关 / 开交替 6 段，同一轮内对照。
 func scenarioPushUser(cfg config) result {
-	r := result{Case: "TC-PUSH-04-04", Title: "按用户推送（P-开发机）", Target: fmt.Sprintf("后台 600 条/秒单聊，1000 人 / 次、每秒 1 次，开、关各 3 段、每段 %s 交替：接口 P99 ≤ 2 秒；单聊 ack P99 增幅 ≤ 20%%", cfg.pushSegment)}
+	r := result{Case: "TC-PUSH-04-04", Title: "按用户推送（P-开发机）", Target: fmt.Sprintf("后台 600 条/秒单聊，1000 人 / 次、每秒 1 次，开、关各 3 段、每段 %s 交替：接口 P99 ≤ 2 秒；单聊 ack P99 ≤ 200ms", cfg.pushSegment)}
 	s := newServer(cfg.bin, cfg.dir, "push-user")
 	ac, err := newPushCaller(s, cfg.dir)
 	if err != nil {
@@ -266,10 +266,10 @@ func scenarioPushUser(cfg config) result {
 	r.row("POST /admin/push", "%s，失败 %d（%s）", apiS, apiErr.total(), apiErr.String())
 	r.row("基线单聊 ack（不推送）", "%s，错误 %d", offS, off.errs.total())
 	r.row("推送时单聊 ack", "%s，错误 %d", onS, on.errs.total())
-	r.row("P99 增幅", "%.1f%%", growth)
+	r.row("P99 增幅（只记录，不判定）", "%.1f%%", growth)
 	r.row("实时帧到达（1000 个在线目标）", "%s，%d / %d", arr.lat.summary(), arr.n.Load(), want)
 	r.row("意外断开", "%d（%s）", unexpected.total(), unexpected.String())
-	r.Pass = len(errs) == 0 && apiS.N > 0 && apiS.P99 <= 2*time.Second && growth <= 20 && apiErr.total() == 0 && off.errs.total() == 0 && on.errs.total() == 0 && arr.n.Load() == want && unexpected.total() == 0
+	r.Pass = len(errs) == 0 && apiS.N > 0 && apiS.P99 <= 2*time.Second && onS.P99 <= 200*time.Millisecond && apiErr.total() == 0 && off.errs.total() == 0 && on.errs.total() == 0 && arr.n.Load() == want && unexpected.total() == 0
 	return r
 }
 

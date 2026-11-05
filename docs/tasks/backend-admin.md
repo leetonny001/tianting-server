@@ -28,7 +28,7 @@
 | BE-225 正文授权 | ✅ 完成 | 08-4、08-7、08-8、08-9、32-2、32-5、KEY-02-7 通过。im-server 这边 Q-1 两种方案都一样；Q-1 只决定 console-server 能否持有 `console-msgread` 凭证，影响 CS-041 |
 | BE-226 用户级禁言 | ✅ 完成 | 40-1～40-4、40-6～40-9 通过（40-9 双节点） |
 | BE-227 群成员禁言 | ✅ 完成 | 41-1～41-6 通过 |
-| BE-228、BE-229 系统推送 | 🟡 2026-11-05 服务端完成 | 开关 `IM_PUSH_ENABLED` 默认关闭。AC-PUSH-04-5、04-2 开发机通过；**AC-PUSH-04-4 未通过**（单聊 ack P99 增幅 136%，见 [压测报告](../reports/perf-push-2026-11-05.md)、P-20）。改坏验证 32 处全部发现。sdk-ts 和 console 的联调 AC（01-1、07-1、11-2、ADM-50-1、50-3）未验证 |
+| BE-228、BE-229 系统推送 | 🟡 2026-11-05 服务端完成 | 开关 `IM_PUSH_ENABLED` 默认关闭。AC-PUSH-04-5、04-2 开发机通过；AC-PUSH-04-4 按 v1.1 改为单聊 ack P99 ≤ 200ms（P-20 已定），上一轮实测 60.9ms，新判定待重跑（[压测报告](../reports/perf-push-2026-11-05.md)）。改坏验证 32 处全部发现。sdk-ts 和 console 的联调 AC（01-1、07-1、11-2、ADM-50-1、50-3）未验证 |
 | BE-240 ～ BE-243 | ⬜ 未开始 | P1 / P2 |
 
 ## 总览
@@ -315,7 +315,7 @@
 - 优先级：P0
 - 批次：第二批
 - 仓库：tianting-server
-- 依赖：[PRD-live v1.0](../prd/PRD-live-v1.0.md)（push 协议，已冻结）、BE-221、BE-203。开关 `IM_PUSH_ENABLED`
+- 依赖：[PRD-live v1.1](../prd/PRD-live-v1.1.md)（push 协议，已冻结）、BE-221、BE-203。开关 `IM_PUSH_ENABLED`
 - AC：AC-ADM-50-1、AC-ADM-50-6、AC-PUSH-01-1、AC-PUSH-01-2、AC-PUSH-02-1、AC-PUSH-02-2、AC-PUSH-02-3、AC-PUSH-02-4、AC-PUSH-02-5、AC-PUSH-02-6、AC-PUSH-02-8、AC-PUSH-02-9、AC-PUSH-02-10、AC-PUSH-02-11、AC-PUSH-02-12、AC-PUSH-02-13、AC-PUSH-02-14、AC-PUSH-06-1、AC-PUSH-06-2、AC-PUSH-06-4、AC-PUSH-06-7、AC-PUSH-06-8、AC-PUSH-06-9、AC-PUSH-06-10、AC-PUSH-06-11、AC-PUSH-06-12、AC-PUSH-06-14、AC-PUSH-06-16、AC-PUSH-09-1、AC-PUSH-09-2、AC-PUSH-09-3、AC-PUSH-09-4、AC-PUSH-09-5、AC-PUSH-09-6、AC-PUSH-09-7、AC-PUSH-09-8、AC-PUSH-09-9、AC-PUSH-10-1
 - 内容：
   1. `POST /admin/push {target:"user"|"all", userIds?, type, data, pushId}`（scope `push.user` / `push.all`）：`userIds` > 1000 → 400 / 4131；含不存在用户 → 404 / 4042，`details.userIds` 列出，整批不发；`data` ≤ 4KB（模板 Schema 校验在 console 侧，CS-044）。
