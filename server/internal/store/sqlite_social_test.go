@@ -390,7 +390,7 @@ func TestPushLockOrder(t *testing.T) {
 	write := func(id string, users ...string) {
 		t.Helper()
 		if _, err := s.WritePushInbox(ctx, PushInboxWrite{
-			Record: PushRecord{PushID: id, Caller: "c", ContentHash: "h", Target: "user", FirstTS: 1, CreatedAt: 1},
+			Record:  PushRecord{PushID: id, Caller: "c", ContentHash: "h", Target: "user", FirstTS: 1, CreatedAt: 1},
 			UserIDs: users, Type: "notice", Data: []byte(`{}`), ExpiresAt: 2,
 		}); err != nil {
 			t.Fatal(err)
