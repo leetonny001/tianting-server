@@ -302,6 +302,83 @@ class Dashboards(unittest.TestCase):
         self.assertEqual(run("jq", "-S", "-f", OBS / "grafana/normalize.jq", f).stdout, a)
 
 
+class AdminCallersExample(unittest.TestCase):
+    """im-admin-callers.example.json：PRD-admin F-KEY-02 规则 4；持有 push.all 必须配 pushTypes（PRD-live F-PUSH-09 规则 3）。"""
+
+    FILE = ROOT / "im-admin-callers.example.json"
+
+    def callers(self):
+        return json.loads(self.FILE.read_text())
+
+    def test_console_scopes_follow_the_prd(self):
+        by_id = {c["id"]: c for c in self.callers()}
+        console = set(by_id["console"]["scopes"])
+        self.assertEqual(console, {
+            "user.read", "user.write", "user.kick", "user.sessions", "group.read", "group.write", "group.dissolve",
+            "social.settings", "social.friends", "msg.meta", "audit.read", "user.ban", "msg.delete", "mute.write", "push.user", "push.all",
+        })
+        self.assertEqual(set(by_id["console-msgread"]["scopes"]), {"msg.body.group", "msg.quarantine"})
+        self.assertTrue(by_id["console-msgread"]["bodyAccess"])
+
+    def test_push_all_has_push_types_and_no_key_is_committed(self):
+        for c in self.callers():
+            if "push.all" in c["scopes"]:
+                self.assertTrue(c.get("pushTypes"), c["id"])
+            self.assertTrue(c["publicKey"].startswith("CHANGE_ME"), c["id"])
+            self.assertNotIn("secret", c)
+
+    def test_push_types_match_console_templates(self):
+        console_dir = pathlib.Path(os.environ.get("TIANTING_CONSOLE_DIR", ROOT.parent.parent / "tianting-console-server"))
+        templates = console_dir / "deploy/push-templates.example.json"
+        if not templates.exists():
+            self.skipTest("tianting-console-server is not available")
+        want = set(json.loads(templates.read_text()))
+        for c in self.callers():
+            if "push.all" in c["scopes"]:
+                self.assertEqual(set(c["pushTypes"]), want, c["id"])
+
+    def test_real_server_starts_with_it_and_refuses_without_push_types(self):
+        with tempfile.TemporaryDirectory() as d:
+            run("go", "build", "-o", f"{d}/im", "./cmd/im-server", cwd=ROOT.parent / "server")
+            callers = self.callers()
+            for c in callers:
+                pair = run("go", "run", "genkey.go", cwd=ROOT / "testenv").stdout.split()
+                c["publicKey"] = pair[1]
+                c.pop("allowedCIDRs", None)
+            path = pathlib.Path(d) / "callers.json"
+
+            def start(items):
+                path.write_text(json.dumps(items))
+                path.chmod(0o600)
+                db = pathlib.Path(d) / "a.db"
+                db.unlink(missing_ok=True)
+                env = {**os.environ, "IM_DB": str(db), "IM_ADDR": "127.0.0.1:18721", "IM_ADMIN_ADDR": "127.0.0.1:18722", "IM_METRICS_ADDR": "127.0.0.1:18723", "IM_PPROF_ADDR": "off", "IM_OPS_ADDR": "off",
+                       "IM_ADMIN_CALLERS": str(path), "IM_PUSH_ENABLED": "1", "IM_V13_ADMIN_FEATURES": "1"}
+                return subprocess.Popen([f"{d}/im"], env=env, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
+
+            p = start(callers)
+            try:
+                for _ in range(100):
+                    try:
+                        urllib.request.urlopen("http://127.0.0.1:18723/metrics").read()
+                        break
+                    except OSError:
+                        self.assertIsNone(p.poll(), "im-server exited with the example config")
+                        time.sleep(0.1)
+                else:
+                    raise AssertionError("im-server did not start")
+            finally:
+                p.kill()
+                p.communicate()
+            del callers[0]["pushTypes"]
+            p = start(callers)
+            out, _ = p.communicate(timeout=30)
+            self.assertNotEqual(p.returncode, 0)
+            self.assertIn("console", out)
+            self.assertIn("pushTypes", out)
+            self.assertNotIn(callers[0]["publicKey"], out)
+
+
 class MetricsExist(unittest.TestCase):
     """告警和面板用到的指标必须真实存在：写错名字时 PromQL 不报错，只是永远没有数据。"""
 

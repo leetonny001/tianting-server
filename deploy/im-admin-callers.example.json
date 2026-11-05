@@ -1,0 +1,24 @@
+[
+  {
+    "id": "console",
+    "alg": "ed25519",
+    "publicKey": "CHANGE_ME_BASE64_ED25519_PUBLIC_KEY",
+    "scopes": [
+      "user.read", "user.write", "user.kick", "user.sessions", "user.ban",
+      "group.read", "group.write", "group.dissolve",
+      "social.settings", "social.friends",
+      "msg.meta", "msg.delete", "mute.write", "audit.read",
+      "push.user", "push.all"
+    ],
+    "pushTypes": ["notice", "activity"],
+    "allowedCIDRs": ["10.0.0.0/8"]
+  },
+  {
+    "id": "console-msgread",
+    "alg": "ed25519",
+    "publicKey": "CHANGE_ME_BASE64_ED25519_PUBLIC_KEY",
+    "bodyAccess": true,
+    "scopes": ["msg.body.group", "msg.quarantine"],
+    "allowedCIDRs": ["10.0.0.0/8"]
+  }
+]

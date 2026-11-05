@@ -33,6 +33,12 @@ deploy/testenv/tt bootstrap eng1
 
 抓取清单由生产的 `gen-targets` 从节点表（`.run/nodes/nodes.json`）生成。节点运维接口走 TLS，证书由生产的 `deploy/pki/issue-node-cert.sh` 签发（console-server 不接受非回环地址走明文）；CA 私钥留在 `.run/pki/`，不挂载给任何容器。密钥都是 `tt` 随机生成的，放在 `.run/`（不进仓库）。
 
+## 系统通知（push）的调用方配置
+
+测试环境现在**没有**配置 `IM_ADMIN_CALLERS` 和 `IM_PUSH_ENABLED`：`tt` 只用旧管理密钥调测试接口，console-server 只开运维空间，不调用 `POST /admin/push`，所以这里没有 `pushTypes` 要配。
+
+要在这里联调管理后台的系统通知时，配置以 `deploy/im-admin-callers.example.json` 为准：`IM_PUSH_ENABLED=1` 时持有 `push.all` 的调用方必须配非空的 `pushTypes`，否则 im-server 启动失败；名单要和 console-server 的 `CON_PUSH_TEMPLATES`（示例在 tianting-console-server 的 `deploy/push-templates.example.json`）的 type 一致，否则发送返回 403 / 4030。
+
 ## 注意
 
 - `verify.sh` 的 TC-PERF-00-01 要求 seq 从 1 开始，只能在新环境里跑一次（`verify.sh` 自己会先 `tt down`）。
