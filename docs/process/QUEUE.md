@@ -49,4 +49,4 @@
 | Q16 | PC（Tauri 壳）——需要安装 Rust，**需授权** | ⏸ | 见 P-14 |
 | Q17 | `sdk-kotlin` + Android（Kotlin + Compose） | 🔄 | 2026-11-05 sdk-kotlin 首版 `4fe4934`（持久化用自有 LocalDatabase 接口，不用 Room，核心模块保持纯 JVM）；集成测试本机通过，CI 上等部署密钥（P-15）。Android App 首版 `95b963b`（M3、M4、第二批提示；UI 测试 120 个、真实服务端端到端 7 个）；CI 的 lint、单测、assemble 也等 P-15，真机和输入法组字未验证 |
 | Q18 | `sdk-swift` + iOS（Swift + SwiftUI） | 🔄 | 2026-11-05 sdk-swift 首版 `4815019`（用系统 SQLite3，不用 GRDB，没有第三方依赖）；集成测试本机通过，CI 上等部署密钥（P-15）。iOS App 首版 `fba33c7`（M3、M4、第二批提示；单测 51 个，真实服务端端到端 39 个，iOS 27 和 iOS 18.5 两台模拟器）；CI 的构建和单测也等 P-15，真机、iOS 17、输入法组字未验证 |
-| Q19 | 聊天室与系统推送（二期，替换腾讯 IM 的直播聊天室和站内推送） | 🔄 | 2026-11-05 push 协议（L1）随 PRD-live v1.0 冻结，PRD-ui、PRD-admin 升 v1.1，任务和用例已同步，系统通知（BE-228、BE-229、CS-044、CS-045、FE-208、FE-353、FE-424、FE-434）不再阻塞，代码未开始。聊天室和迁移仍是草稿，13.2 节 14 项待拍板（P-19） |
+| Q19 | 聊天室与系统推送（二期，替换腾讯 IM 的直播聊天室和站内推送） | 🔄 | 2026-11-05 **系统推送 L1 完成**：协议随 PRD-live v1.1 冻结；im-server `4df27d2`、sdk-ts `f78d5f1`、H5 `edb54df`、console `48b93b5`、管理后台 `54a7fcc`，开关默认关闭。性能 AC 只有开发机结果，发布结论等 P-12。**聊天室和迁移（L2～L4）等 P-19 的 14 项拍板**和业务方数据（N-1～N-5）；原生 SDK 的 `pushes`（L3）未做 |
