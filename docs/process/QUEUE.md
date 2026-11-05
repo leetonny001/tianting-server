@@ -49,4 +49,4 @@
 | Q16 | PC（Tauri 壳）——需要安装 Rust，**需授权** | ⏸ | 见 P-14 |
 | Q17 | `sdk-kotlin` + Android（Kotlin + Compose） | 🔄 | 2026-11-05 sdk-kotlin 首版 `4fe4934`（持久化用自有 LocalDatabase 接口，不用 Room，核心模块保持纯 JVM）；集成测试本机通过，CI 上等部署密钥（P-15）。Android App 首版 `95b963b`（M3、M4、第二批提示；UI 测试 120 个、真实服务端端到端 7 个）；CI 的 lint、单测、assemble 也等 P-15，真机和输入法组字未验证 |
 | Q18 | `sdk-swift` + iOS（Swift + SwiftUI） | 🔄 | 2026-11-05 sdk-swift 首版 `4815019`（用系统 SQLite3，不用 GRDB，没有第三方依赖）；集成测试本机通过，CI 上等部署密钥（P-15）。iOS App 首版 `fba33c7`（M3、M4、第二批提示；单测 51 个，真实服务端端到端 39 个，iOS 27 和 iOS 18.5 两台模拟器）；CI 的构建和单测也等 P-15，真机、iOS 17、输入法组字未验证 |
-| Q19 | 聊天室与系统推送（二期，替换腾讯 IM 的直播聊天室和站内推送） | ⬜ | |
+| Q19 | 聊天室与系统推送（二期，替换腾讯 IM 的直播聊天室和站内推送） | 🔄 | 2026-11-05 PRD-live v0.1 草稿（含 push 协议建议，17 项待拍板），独立评审中 |
