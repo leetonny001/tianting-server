@@ -209,6 +209,7 @@ func tipTable() []tipCase {
 		{Me: "alice", Tip: tipBody{Kind: "joined", Actor: "bob", Targets: []string{"a", "b", "c", "d"}}, Text: "bob 邀请 a、b、c 等 4 人 加入了群聊"},
 		{Me: "x", Tip: tipBody{Kind: "ownerChanged", Actor: "alice", Targets: []string{"bob"}}, Text: "alice 将群主转让给 bob"},
 		{Me: "x", Tip: tipBody{Kind: "ownerChanged", Actor: "", Targets: []string{"bob"}}, Text: "bob 已成为群主"},
+		{Me: "x", Tip: tipBody{Kind: "ownerChanged", Actor: "", Targets: []string{"x"}}, Text: "你已成为群主"},
 		{Me: "x", Tip: tipBody{Kind: "ownerChanged", Actor: "", Targets: []string{}}, Text: "群主已退出群聊"},
 		{Me: "x", Tip: tipBody{Kind: "adminSet", Actor: "alice", Targets: []string{"bob"}}, Text: "alice 将 bob 设为管理员"},
 		{Me: "x", Tip: tipBody{Kind: "adminUnset", Actor: "alice", Targets: []string{"bob"}}, Text: "alice 取消了 bob 的管理员"},
