@@ -249,7 +249,7 @@ func (s *SQLite) SetMute(ctx context.Context, m Mute) error {
 }
 
 func muteTargetTx(ctx context.Context, tx *sql.Tx, scope, userID, groupID string) error {
-	if scope == MuteGroup {
+	if scope == MuteGroup || scope == MuteGroupAll {
 		return groupExistsTx(ctx, tx, groupID)
 	}
 	return userExistsTx(ctx, tx, userID)
@@ -303,6 +303,35 @@ func (s *SQLite) UserMutes(ctx context.Context, userID string) ([]Mute, error) {
 	return scanMutes(rows)
 }
 
+func (s *SQLite) GroupAllMute(ctx context.Context, groupID string) (*Mute, error) {
+	rows, err := s.db.QueryContext(ctx, `SELECT `+muteColumns+` FROM mutes WHERE scope = ? AND user_id = '' AND group_id = ?`, MuteGroupAll, groupID)
+	if err != nil {
+		return nil, err
+	}
+	list, err := scanMutes(rows)
+	if err != nil || len(list) == 0 {
+		return nil, err
+	}
+	return &list[0], nil
+}
+
+func (s *SQLite) UserGroupAllMutes(ctx context.Context, userID string) (map[string]Mute, error) {
+	rows, err := s.db.QueryContext(ctx, `SELECT `+muteColumns+` FROM mutes WHERE scope = ? AND user_id = ''
+		AND group_id IN (SELECT group_id FROM group_members WHERE user_id = ?)`, MuteGroupAll, userID)
+	if err != nil {
+		return nil, err
+	}
+	list, err := scanMutes(rows)
+	if err != nil {
+		return nil, err
+	}
+	out := make(map[string]Mute, len(list))
+	for _, m := range list {
+		out[m.GroupID] = m
+	}
+	return out, nil
+}
+
 func (s *SQLite) GroupMutes(ctx context.Context, groupID string) (map[string]Mute, error) {
 	rows, err := s.db.QueryContext(ctx, `SELECT `+muteColumns+` FROM mutes WHERE group_id = ? AND scope = ?`, groupID, MuteGroup)
 	if err != nil {
@@ -319,10 +348,10 @@ func (s *SQLite) GroupMutes(ctx context.Context, groupID string) (map[string]Mut
 	return out, nil
 }
 
-// deleteGroupMutesTx 在成员离开群的同一事务里清除禁言记录（F-ADM-41 规则 4）。userID 为空表示整个群（解散）。
+// deleteGroupMutesTx 在成员离开群的同一事务里清除禁言记录（F-ADM-41 规则 4）。userID 为空表示整个群（解散），全群禁言也一起清除。
 func deleteGroupMutesTx(ctx context.Context, tx *sql.Tx, groupID, userID string) error {
 	if userID == "" {
-		_, err := tx.ExecContext(ctx, `DELETE FROM mutes WHERE group_id = ? AND scope = ?`, groupID, MuteGroup)
+		_, err := tx.ExecContext(ctx, `DELETE FROM mutes WHERE group_id = ? AND scope IN (?, ?)`, groupID, MuteGroup, MuteGroupAll)
 		return err
 	}
 	_, err := tx.ExecContext(ctx, `DELETE FROM mutes WHERE group_id = ? AND user_id = ? AND scope = ?`, groupID, userID, MuteGroup)

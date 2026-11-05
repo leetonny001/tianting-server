@@ -7,7 +7,7 @@
       "user.read", "user.write", "user.kick", "user.sessions", "user.ban",
       "group.read", "group.write", "group.dissolve",
       "social.settings", "social.friends",
-      "msg.meta", "msg.delete", "mute.write", "audit.read",
+      "msg.meta", "msg.delete", "mute.write", "audit.read", "stats.read",
       "push.user", "push.all"
     ],
     "pushTypes": ["notice", "activity"],

@@ -555,13 +555,16 @@ func (s *Service) notifyConvAdded(ctx context.Context, convID string, userIDs []
 		s.log.Error("load conversations for convAdded", "err", err, "conv", convID)
 		return
 	}
+	allMuted := s.withAllMuted(ctx, conv.A)
 	for _, uid := range userIDs {
 		if r, ok := rows[uid]; ok {
 			except := ""
 			if uid == actor {
 				except = exceptConn
 			}
-			s.pushEvent(uid, protocol.ConvAddedEvent{Type: protocol.EventConvAdded, Conv: toConversation(r)}, except)
+			c := toConversation(r)
+			c.AllMuted = allMuted
+			s.pushEvent(uid, protocol.ConvAddedEvent{Type: protocol.EventConvAdded, Conv: c}, except)
 		}
 	}
 }

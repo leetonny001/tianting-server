@@ -85,6 +85,14 @@ scope：`POST /admin/users/token` → `token.issue`；`POST /admin/users/import`
 | `GET /admin/groups/{groupId}/members` | `cursor`、`limit`、`prefix` | `{members:[{userId, role, joinedAt}], nextCursor}` | `group.read`。按 userId 升序（和客户端 `groupMembers` 的顺序不同），`prefix` 是 userId 前缀。已解散或不存在 404 / 4043 |
 | `POST /admin/convs/messages/query` | `{convId, beforeSeq?, limit?, from?, sinceTs?, untilTs?}` | `{messages:[{seq, msgId, from, type, bodyLength, ts}], hasMore}` | `msg.meta`，写审计。**响应没有正文**；`bodyLength` 是文本的码点数（非文本消息是 body JSON 的码点数）。`limit` 1～50，默认 50；按 seq 倒序；时间是闭区间。不受成员关系和 `historyVisible` 限制，已解散的群照常返回；会话不存在返回空列表；`convId` 格式错误 400 / 4007 |
 
+P1（PRD-admin G-ADM-07、G-ADM-13、G-ADM-17）：
+
+| 接口 | 请求 / 查询参数 | 响应 | scope 与说明 |
+|---|---|---|---|
+| `GET /admin/users/{userId}/groups` | `cursor`、`limit` | `{groups:[{groupId, name, type, owner, memberCount, historyVisible, createdAt, role, joinedAt}], nextCursor}` | `group.read`，不写审计。用户当前所在的群，不含已解散的，按 groupId 升序。`limit` 只接受 20 / 50 / 100，默认 50。用户不存在 404 / 4042 |
+| `POST /admin/users/convs/query` | `{userId, cursor?, limit?}` | `{convs:[{convId, type, peerId?, groupId?, groupName?, myRole?, memberCount?, maxSeq, readSeq, updatedAt, lastTs?, lastFrom?, lastType?}], nextCursor}` | `msg.meta`，写审计（`targets` 是 userId，result 的 summary 带 `count`）。userId 只在请求体里，不进 URL。**响应没有正文和摘要文本**。排序和客户端会话列表相同：`updatedAt` 倒序，同一时间按 convId 升序。用户已退出的群、已解散的群不在列表里。`limit` 只接受 20 / 50 / 100，默认 50，`cursor` 解不开 400 / 4000。用户不存在 404 / 4042。理由（F-ADM-30 规则 3）由 console-server 负责 |
+| `GET /admin/stats` | — | `{online:{total, byPlatform:{web?, pc?, ios?, android?}, partial, scope}, newUsersToday, messagesToday, groupsTotal, dayStart, serverTime}` | `stats.read`，不写审计。不读 `/metrics`。没有连接的平台不出现在 `byPlatform` 里。B6 之前 `partial: true, scope: "localNode"`：连接数只覆盖接收请求的节点。"今日"是 Asia/Shanghai 自然日（`dayStart` 是当天零点的毫秒时间戳，IM 钟）。`messagesToday` 不含群提示消息，含之后被删除的消息；`groupsTotal` 不含已解散的群 |
+
 `limit`（前四个接口）只接受 20 / 50 / 100，默认 50；`cursor` 是上一页响应里的 `nextCursor`，对调用方不透明，空字符串表示没有更多，解不开 400 / 4000。这些接口旧密钥都不能调用（403 / 4030）。
 
 ## 封禁、禁言、删除、正文查看（PRD-admin 第二批）
@@ -96,7 +104,8 @@ scope：`POST /admin/users/token` → `token.issue`；`POST /admin/users/import`
 | `POST /admin/users/{userId}/ban` | `{durationSeconds \| null, reason}` | `{userId, ban:{until, reason, by, at}}` | `user.ban`。`durationSeconds` 必须传：60 秒～30 天，`null` 表示永久。立即踢掉全部连接（`kicked {reason:"suspended", until}`，关闭码 4012），此前的 token 作废。不存在 404 / 4042。重复封禁以最后一次为准 |
 | `POST /admin/users/{userId}/unban` | `{reason}` | `{}` | `user.ban`。解封后要重新签发 token |
 | `POST /admin/mute` | `{scope:"user"\|"group", userId, groupId?, durationSeconds \| null, reason}` | `{mutedUntil}` | `mute.write`。时长同上。用户不存在 404 / 4042；群不存在 404 / 4043；不是群成员 404 / 4046。只有本人收到 `muted` 事件 |
-| `POST /admin/unmute` | `{scope, userId, groupId?, reason}` | `{}` | `mute.write`。幂等；真有一条生效中的禁言才发 `unmuted` |
+| `POST /admin/mute`（全群，P1） | `{scope:"groupAll", groupId, reason}` | `{mutedUntil: null}` | `mute.write`。开关，手动关闭前一直生效：传 `userId` 或非 null 的 `durationSeconds` 是 400 / 4000。群不存在 404 / 4043。群主、管理员仍可发言，其他成员 `send` 返回 4031，`details = {scope:"groupAll", groupId, mutedUntil:null}`。全群在线成员（含群主、管理员）收到 `muted {scope:"groupAll", groupId, mutedUntil:null}`；已经开着时再开不重复通知。`convs` 和 `convAdded` 的群会话带 `allMuted: true`。用户级、群内禁言优先：被单独禁言的群主、管理员仍然 4031（`scope` 是 `user` / `group`）。解散群时清除 |
+| `POST /admin/unmute` | `{scope, userId, groupId?, reason}` | `{}` | `mute.write`。幂等；真有一条生效中的禁言才发 `unmuted`。全群（P1）：`{scope:"groupAll", groupId, reason}`，全群在线成员收到 `unmuted {scope:"groupAll", groupId}` |
 | `POST /admin/messages/delete` | `{convId, msgIds, reason}` | `{deleted:[{msgId, seq}]}` | `msg.delete`。单次 ≤ 50（4131）；不存在 404 / 4044；不在该会话或是群提示消息 400 / 4000，任何一条不合法整批不删。已删除的幂等成功，不再发事件。原文加密进隔离区 |
 | `POST /admin/msg-grants` | `{convId, operator, reason, ticket, quarantine?}` | `{grantId, expiresAt}` | 群 `msg.body.group`，单聊 `msg.body.c2c`，`quarantine=true` 要 `msg.quarantine`。`operator` 必须等于签名的 `X-IM-Operator`。授权 15 分钟。`IM_C2C_BODY_ACCESS=off` 时单聊 403 / 4030 `reason:"c2cBodyDisabled"`。配额（Asia/Shanghai 自然日）：每操作人 20、每调用方 200，超出 429 / 4292 |
 | `POST /admin/convs/messages/body` | `{grantId, convId, beforeSeq?, limit?}` | `{messages, hasMore}` | 同上。`limit` ≤ 50。授权不存在、过期、换了会话或操作人 403 / 4039。普通授权：被删的消息只有 `deleted=true`，没有 `body`。隔离授权：只返回被删的消息和原文，一条都没有（含已到期）404 / 4044。响应 `Cache-Control: no-store` |

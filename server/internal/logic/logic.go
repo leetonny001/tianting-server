@@ -368,9 +368,12 @@ func (s *Service) NotifyConvAdded(ctx context.Context, convID string, userIDs []
 		s.log.Error("load conversations for convAdded", "err", err, "conv", convID)
 		return
 	}
+	allMuted := s.withAllMuted(ctx, conv.A)
 	for _, uid := range userIDs {
 		if r, ok := rows[uid]; ok { // 不在结果里：刚加入又被移除了
-			s.pushEvent(uid, protocol.ConvAddedEvent{Type: protocol.EventConvAdded, Conv: toConversation(r)}, "")
+			c := toConversation(r)
+			c.AllMuted = allMuted
+			s.pushEvent(uid, protocol.ConvAddedEvent{Type: protocol.EventConvAdded, Conv: c}, "")
 		}
 	}
 }

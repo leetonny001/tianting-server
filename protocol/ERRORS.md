@@ -77,7 +77,7 @@
 | 4016 | CONSOLE_SETUP_REQUIRED | 401 | console | 否 | 会话处于首次设置状态（未绑定 TOTP） | 跳「绑定二次验证」页 |
 | 4017 | ADMIN_SIGNATURE_INVALID | 401 | admin | 否 | 管理接口签名无效：缺签名头、调用方不存在或停用、签名错误、时间戳超出 5 分钟、nonce 重复、目标节点不符（PRD-admin F-KEY-03） | 业务服务端检查时钟、调用方密钥和签名 |
 | 4030 | FORBIDDEN | 403 | ws / admin / console | 否 | 无权限（通用） | 提示「无权限」 |
-| 4031 | MUTED | — | ws | 否 | 被禁言，不能发言 | 提示禁言及解除时间（details.mutedUntil）；ack 的 error 带 details: {scope, groupId?, mutedUntil} |
+| 4031 | MUTED | — | ws | 否 | 被禁言，不能发言 | 提示禁言及解除时间（details.mutedUntil）；ack 的 error 带 details: {scope, groupId?, mutedUntil}；scope 是 user / group / groupAll（全群禁言，此时 mutedUntil 为 null，提示"群主已开启全员禁言"） |
 | 4032 | NOT_CONV_PARTICIPANT | — | ws | 否 | 不是该单聊的参与者 | 记录日志 |
 | 4033 | NOT_GROUP_MEMBER | — | ws | 否 | 不是群成员 | 提示「你已不在该群」，禁用输入框 |
 | 4034 | USER_BANNED | 403 | admin | 否 | 用户被封禁，不能签发 token / 演示登录（details.bannedUntil，永久为 null） | 业务方提示用户「账号已被封禁」 |

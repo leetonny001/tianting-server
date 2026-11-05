@@ -2,6 +2,7 @@ package store
 
 import (
 	"context"
+	"fmt"
 	"strings"
 )
 
@@ -167,4 +168,75 @@ func (s *SQLite) PurgeAdminAuditBefore(ctx context.Context, before int64) (int, 
 	}
 	n, err := res.RowsAffected()
 	return int(n), err
+}
+
+func (s *SQLite) ListUserGroups(ctx context.Context, userID, after string, limit int) ([]UserGroupRow, string, error) {
+	cols := "g." + strings.ReplaceAll(groupColumns, ", ", ", g.")
+	// #nosec G202 -- cols 是常量片段，取值全部走占位符
+	rows, err := s.db.QueryContext(ctx, `SELECT `+cols+`, gm.role, gm.joined_at
+		FROM group_members gm JOIN chat_groups g ON g.group_id = gm.group_id AND g.dissolved_at = 0
+		WHERE gm.user_id = ? AND gm.group_id > ? ORDER BY gm.group_id LIMIT ?`, userID, after, limit+1)
+	if err != nil {
+		return nil, "", err
+	}
+	defer rows.Close()
+	out := []UserGroupRow{}
+	for rows.Next() {
+		var g UserGroupRow
+		if err := rows.Scan(&g.GroupID, &g.Name, &g.HistoryVisible, &g.CreatedAt, &g.MemberCount, &g.OwnerID, &g.CreatedBy,
+			&g.Notice, &g.NoticeBy, &g.NoticeAt, &g.MaxMembers, &g.Role, &g.JoinedAt); err != nil {
+			return nil, "", err
+		}
+		out = append(out, g)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, "", err
+	}
+	if len(out) > limit {
+		return out[:limit], out[limit-1].GroupID, nil
+	}
+	return out, "", nil
+}
+
+func (s *SQLite) ListUserConvMeta(ctx context.Context, userID string, after *ConvCursor, limit int) ([]ConvRow, *ConvCursor, error) {
+	inner := fmt.Sprintf(c2cConvSelect, "uc.user_id = ?") + " UNION ALL " + fmt.Sprintf(groupConvSelect, "gm.user_id = ?")
+	args := []any{userID, userID}
+	where := ""
+	if after != nil {
+		where = ` WHERE updated_at < ? OR (updated_at = ? AND conv_id > ?)`
+		args = append(args, after.UpdatedAt, after.UpdatedAt, after.ConvID)
+	}
+	args = append(args, limit+1)
+	// #nosec G202 -- 拼接的都是常量片段，取值全部走占位符
+	q := `SELECT * FROM (SELECT ` + convColumns + ` FROM (` + inner + `))` + where + ` ORDER BY updated_at DESC, conv_id ASC LIMIT ?`
+	rows, err := s.db.QueryContext(ctx, q, args...)
+	if err != nil {
+		return nil, nil, err
+	}
+	defer rows.Close()
+	out := []ConvRow{}
+	for rows.Next() {
+		c, err := scanConv(rows)
+		if err != nil {
+			return nil, nil, err
+		}
+		out = append(out, c)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, nil, err
+	}
+	if len(out) > limit {
+		last := out[limit-1]
+		return out[:limit], &ConvCursor{UpdatedAt: last.UpdatedAt, ConvID: last.ConvID}, nil
+	}
+	return out, nil, nil
+}
+
+func (s *SQLite) AdminStats(ctx context.Context, from, to int64) (AdminStats, error) {
+	var st AdminStats
+	err := s.db.QueryRowContext(ctx, `SELECT
+		(SELECT count(*) FROM users WHERE created_at >= ? AND created_at < ?),
+		(SELECT count(*) FROM messages WHERE ts >= ? AND ts < ? AND type <> 'tip'),
+		(SELECT count(*) FROM chat_groups WHERE dissolved_at = 0)`, from, to, from, to).Scan(&st.NewUsers, &st.Messages, &st.Groups)
+	return st, err
 }

@@ -219,6 +219,9 @@ var adminSamples = map[string]adminSample{
 	"GET /admin/groups/{groupId}/members":     {func(e *env) { e.createGroup("g1") }, "GET", "/admin/groups/g1/members", nil, 200},
 	"POST /admin/convs/messages/query":        {nil, "POST", "/admin/convs/messages/query", map[string]any{"convId": "group:g1"}, 200},
 	"DELETE /admin/groups/{groupId}":          {func(e *env) { e.createGroup("g1") }, "DELETE", "/admin/groups/g1", nil, 200},
+	"GET /admin/users/{userId}/groups":        {func(e *env) { e.users("alice") }, "GET", "/admin/users/alice/groups", nil, 200},
+	"POST /admin/users/convs/query":           {func(e *env) { e.users("alice") }, "POST", "/admin/users/convs/query", map[string]any{"userId": "alice"}, 200},
+	"GET /admin/stats":                        {nil, "GET", "/admin/stats", nil, 200},
 	// PRD-social M3（BE-114、BE-115、5.6 节测试设施）
 	"GET /admin/settings/social":          {nil, "GET", "/admin/settings/social", nil, 200},
 	"PATCH /admin/settings/social":        {nil, "PATCH", "/admin/settings/social", map[string]any{"mode": "open"}, 200},

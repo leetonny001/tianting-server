@@ -315,7 +315,7 @@ class AdminCallersExample(unittest.TestCase):
         console = set(by_id["console"]["scopes"])
         self.assertEqual(console, {
             "user.read", "user.write", "user.kick", "user.sessions", "group.read", "group.write", "group.dissolve",
-            "social.settings", "social.friends", "msg.meta", "audit.read", "user.ban", "msg.delete", "mute.write", "push.user", "push.all",
+            "social.settings", "social.friends", "msg.meta", "audit.read", "stats.read", "user.ban", "msg.delete", "mute.write", "push.user", "push.all",
         })
         self.assertEqual(set(by_id["console-msgread"]["scopes"]), {"msg.body.group", "msg.quarantine"})
         self.assertTrue(by_id["console-msgread"]["bodyAccess"])

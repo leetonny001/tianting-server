@@ -14,6 +14,33 @@ type AdminQueryStore interface {
 	ListGroupMembersByID(ctx context.Context, groupID, after, prefix string, limit int) (rows []GroupMemberRow, next string, err error)
 	// ListMessageMeta 按 seq 倒序返回元数据，不读取、不返回正文。不受成员关系和 historyVisible 限制。
 	ListMessageMeta(ctx context.Context, q MessageMetaQuery) (msgs []MessageMeta, hasMore bool, err error)
+	// ListUserGroups 返回用户当前所在、没有解散的群，按 groupId 升序（G-ADM-07）。不检查用户是否存在。
+	ListUserGroups(ctx context.Context, userID, after string, limit int) (groups []UserGroupRow, next string, err error)
+	// ListUserConvMeta 返回用户的会话，排序和客户端会话列表相同（updatedAt 倒序，同一时间按 convId 升序）（G-ADM-13）。不检查用户是否存在。
+	// 调用方不能把 Last.Text 返回出去。
+	ListUserConvMeta(ctx context.Context, userID string, after *ConvCursor, limit int) (convs []ConvRow, next *ConvCursor, err error)
+	// AdminStats 返回 [from, to) 内新增的用户数、消息数（不含群提示消息），以及没有解散的群总数（G-ADM-17）。
+	AdminStats(ctx context.Context, from, to int64) (AdminStats, error)
+}
+
+// UserGroupRow 是用户所在的一个群和他在群里的角色、入群时间。
+type UserGroupRow struct {
+	Group
+	Role     string
+	JoinedAt int64
+}
+
+// ConvCursor 是用户会话列表的游标。
+type ConvCursor struct {
+	UpdatedAt int64
+	ConvID    string
+}
+
+// AdminStats 是数据概览里来自数据库的部分。
+type AdminStats struct {
+	NewUsers int64
+	Messages int64
+	Groups   int64
 }
 
 // UserSearch 是用户搜索条件。After 是上一页最后一个 userId。

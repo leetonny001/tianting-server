@@ -22,8 +22,9 @@ func TestMaskIP(t *testing.T) {
 
 type fakeSource []Conn
 
-func (f fakeSource) ListUserConns(string) []Conn { return f }
-func (f fakeSource) ConnCount(string) int        { return len(f) }
+func (f fakeSource) ListUserConns(string) []Conn    { return f }
+func (f fakeSource) ConnCount(string) int           { return len(f) }
+func (f fakeSource) PlatformCounts() map[string]int { return nil }
 
 func TestQuerySortsAndMarksPartial(t *testing.T) {
 	r := Query(fakeSource{{ConnID: "b", ConnectedAt: 2}, {ConnID: "c", ConnectedAt: 1}, {ConnID: "a", ConnectedAt: 2}}, "u")

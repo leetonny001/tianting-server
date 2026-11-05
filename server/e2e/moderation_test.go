@@ -741,7 +741,7 @@ func TestAdmMuteValidation(t *testing.T) {
 		{"nobody", map[string]any{"scope": "user", "userId": "nobody", "durationSeconds": 600, "reason": "spam"}, 404, protocol.CodeUserNotFound},
 		{"not member", map[string]any{"scope": "group", "groupId": "g1", "userId": "u9", "durationSeconds": 600, "reason": "spam"}, 404, protocol.CodeTargetNotGroupMember},
 		{"no group", map[string]any{"scope": "group", "groupId": "gx", "userId": "u9", "durationSeconds": 600, "reason": "spam"}, 404, protocol.CodeGroupNotFound},
-		{"bad scope", map[string]any{"scope": "groupAll", "groupId": "g1", "userId": "u1", "durationSeconds": 600, "reason": "spam"}, 400, protocol.CodeBadRequest},
+		{"bad scope", map[string]any{"scope": "everyone", "groupId": "g1", "userId": "u1", "durationSeconds": 600, "reason": "spam"}, 400, protocol.CodeBadRequest},
 		{"too short", map[string]any{"scope": "user", "userId": "u1", "durationSeconds": 59, "reason": "spam"}, 400, protocol.CodeBadRequest},
 		{"too long", map[string]any{"scope": "user", "userId": "u1", "durationSeconds": 30*24*3600 + 1, "reason": "spam"}, 400, protocol.CodeBadRequest},
 		{"no duration", map[string]any{"scope": "user", "userId": "u1", "reason": "spam"}, 400, protocol.CodeBadRequest},

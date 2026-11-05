@@ -320,6 +320,8 @@ type Conversation struct {
 	MyRole string `json:"myRole,omitempty"`
 	// MutedUntil：我在该群被禁言时才出现，永久禁言为 null（第二批，F-ADM-41 规则 5）。
 	MutedUntil json.RawMessage `json:"mutedUntil,omitempty"`
+	// AllMuted：该群开启了全群禁言时才出现（P1，F-ADM-42）。所有成员都带，含不受限的群主、管理员；结合 MyRole 判断自己能否发言。
+	AllMuted bool `json:"allMuted,omitempty"`
 }
 
 // ConvsAck 是 convs 的应答。
@@ -354,11 +356,12 @@ type MsgDeletedEvent struct {
 
 // 禁言范围。
 const (
-	MuteScopeUser  = "user"
-	MuteScopeGroup = "group"
+	MuteScopeUser     = "user"
+	MuteScopeGroup    = "group"
+	MuteScopeGroupAll = "groupAll" // 全群禁言（P1，F-ADM-42）
 )
 
-// MutedEvent 通知本人被禁言（第二批，F-ADM-40 规则 4、F-ADM-41 规则 5）。MutedUntil 永久为 null。
+// MutedEvent 通知本人被禁言（第二批，F-ADM-40 规则 4、F-ADM-41 规则 5）；scope=groupAll 时发给全群在线成员（F-ADM-42）。MutedUntil 永久为 null。
 type MutedEvent struct {
 	Type       string `json:"type"`
 	Scope      string `json:"scope"`
@@ -366,7 +369,7 @@ type MutedEvent struct {
 	MutedUntil *int64 `json:"mutedUntil"`
 }
 
-// UnmutedEvent 通知本人禁言已解除。
+// UnmutedEvent 通知本人禁言已解除；scope=groupAll 时发给全群在线成员。
 type UnmutedEvent struct {
 	Type    string `json:"type"`
 	Scope   string `json:"scope"`

@@ -2,6 +2,7 @@ package storetest
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"slices"
 	"testing"
@@ -266,5 +267,158 @@ func testAdminMessageMeta(t *testing.T, open Opener) {
 	}
 	if after, _, err := s.ListMessageMeta(ctx, store.MessageMetaQuery{ConvID: conv, Limit: 50}); err != nil || len(after) != 4 {
 		t.Errorf("after dissolve: %d err=%v", len(after), err)
+	}
+}
+
+func testAdminUserGroups(t *testing.T, open Opener) {
+	s, c := open(t), context.Background()
+	s.UpsertUsers(c, []store.User{{UserID: "u1"}, {UserID: "u2"}})
+	for _, g := range []string{"g3", "g1", "g2", "gone"} {
+		if err := s.CreateGroup(c, store.Group{GroupID: g, Name: "n" + g, CreatedAt: 1}, []string{"u1"}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	s.CreateGroup(c, store.Group{GroupID: "other", Name: "o", CreatedAt: 1}, []string{"u2"})
+	if _, err := s.DissolveGroup(c, "gone", 5); err != nil {
+		t.Fatal(err)
+	}
+	p1, next, err := s.ListUserGroups(c, "u1", "", 2)
+	if err != nil || len(p1) != 2 || p1[0].GroupID != "g1" || p1[1].GroupID != "g2" || next != "g2" || p1[0].Name != "ng1" || p1[0].Role != store.RoleMember {
+		t.Fatalf("page 1 = %+v next %q err %v", p1, next, err)
+	}
+	p2, next, err := s.ListUserGroups(c, "u1", next, 2)
+	if err != nil || len(p2) != 1 || p2[0].GroupID != "g3" || next != "" {
+		t.Fatalf("page 2 = %+v next %q err %v", p2, next, err)
+	}
+}
+
+func testAdminUserConvMeta(t *testing.T, open Opener) {
+	s, c := open(t), context.Background()
+	s.UpsertUsers(c, []store.User{{UserID: "a"}, {UserID: "b"}, {UserID: "z"}})
+	msg := func(id, conv string, ts int64, users ...string) {
+		t.Helper()
+		m := newMsg(id, conv, "a", "client-"+id)
+		m.TS, m.ConvUsers = ts, users
+		if _, _, err := s.SaveMessage(c, m); err != nil {
+			t.Fatal(err)
+		}
+	}
+	for _, g := range []string{"g1", "g2"} {
+		if err := s.CreateGroup(c, store.Group{GroupID: g, Name: g, CreatedAt: 1}, []string{"a"}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	msg("m1", "c2c:a:b", 300, "a", "b")
+	msg("m2", "group:g1", 500)
+	msg("m3", "group:g2", 300)
+	msg("m4", "c2c:a:z", 100, "a", "z")
+	var ids []string
+	var after *store.ConvCursor
+	for {
+		rows, next, err := s.ListUserConvMeta(c, "a", after, 2)
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, r := range rows {
+			ids = append(ids, r.ConvID)
+		}
+		if next == nil {
+			break
+		}
+		after = next
+	}
+	// updatedAt 倒序；同为 300 时按 convId 升序（翻页也不丢）。
+	if want := []string{"group:g1", "c2c:a:b", "group:g2", "c2c:a:z"}; !slices.Equal(ids, want) {
+		t.Fatalf("order = %v, want %v", ids, want)
+	}
+}
+
+func testAdminStats(t *testing.T, open Opener) {
+	s, c := open(t), context.Background()
+	s.UpsertUsers(c, []store.User{{UserID: "a"}, {UserID: "b"}})
+	save := func(id string, ts int64, typ string) {
+		t.Helper()
+		m := newMsg(id, "c2c:a:b", "a", "client-"+id)
+		m.TS, m.Type, m.ConvUsers = ts, typ, []string{"a", "b"}
+		if _, _, err := s.SaveMessage(c, m); err != nil {
+			t.Fatal(err)
+		}
+	}
+	save("m0", 999, "text")    // 区间之前
+	save("m1", 1000, "text")   // 下界算
+	save("m2", 1500, "tip")    // 提示消息不算
+	save("m3", 1999, "custom") // 自定义消息算
+	save("m4", 2000, "text")   // 上界不算
+	for _, g := range []string{"g1", "g2"} {
+		if err := s.CreateGroup(c, store.Group{GroupID: g, Name: g, CreatedAt: 1}, []string{"a"}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if _, err := s.DissolveGroup(c, "g2", 5); err != nil {
+		t.Fatal(err)
+	}
+	st, err := s.AdminStats(c, 1000, 2000)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if st.Messages != 2 || st.Groups != 1 {
+		t.Errorf("stats = %+v, want 2 messages, 1 group", st)
+	}
+}
+
+func testGroupAllMute(t *testing.T, open Opener) {
+	s, c := open(t), context.Background()
+	s.UpsertUsers(c, []store.User{{UserID: "a"}, {UserID: "b"}})
+	for _, g := range []string{"g1", "g2"} {
+		if err := s.CreateGroup(c, store.Group{GroupID: g, Name: g, CreatedAt: 1}, []string{"a"}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	mute := store.Mute{Scope: store.MuteGroupAll, GroupID: "g1", Reason: "r", By: "c:o", At: 7}
+	if err := s.SetMute(c, mute); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.SetMute(c, store.Mute{Scope: store.MuteGroupAll, GroupID: "nope", Reason: "r", By: "c:o", At: 7}); !errors.Is(err, store.ErrNotFound) {
+		t.Errorf("mute missing group: %v", err)
+	}
+	if m, err := s.GroupAllMute(c, "g1"); err != nil || m == nil || m.Until != nil || m.UserID != "" || m.At != 7 {
+		t.Fatalf("GroupAllMute = %+v, %v", m, err)
+	}
+	if m, err := s.GroupAllMute(c, "g2"); err != nil || m != nil {
+		t.Errorf("g2 = %+v, %v", m, err)
+	}
+	// UserGroupAllMutes 只返回用户所在的群；UserMutes、GroupMutes 不受影响。
+	if got, err := s.UserGroupAllMutes(c, "a"); err != nil || len(got) != 1 || got["g1"].At != 7 {
+		t.Errorf("a = %+v, %v", got, err)
+	}
+	if got, err := s.UserGroupAllMutes(c, "b"); err != nil || len(got) != 0 {
+		t.Errorf("b = %+v, %v", got, err)
+	}
+	if got, _ := s.UserMutes(c, "a"); len(got) != 0 {
+		t.Errorf("UserMutes = %+v", got)
+	}
+	if got, _ := s.GroupMutes(c, "g1"); len(got) != 0 {
+		t.Errorf("GroupMutes = %+v", got)
+	}
+	// 解除返回旧记录；再解除返回 nil。
+	if old, err := s.DeleteMute(c, store.MuteGroupAll, "", "g1"); err != nil || old == nil || old.At != 7 {
+		t.Errorf("DeleteMute = %+v, %v", old, err)
+	}
+	if old, err := s.DeleteMute(c, store.MuteGroupAll, "", "g1"); err != nil || old != nil {
+		t.Errorf("second DeleteMute = %+v, %v", old, err)
+	}
+	// 解散清除：成员退群不清除全群禁言，解散才清除。
+	s.SetMute(c, mute)
+	if _, _, err := s.RemoveGroupMembers(c, "g1", []string{"a"}, 8); err != nil {
+		t.Fatal(err)
+	}
+	if m, _ := s.GroupAllMute(c, "g1"); m == nil {
+		t.Error("removing a member must not clear the group mute")
+	}
+	if _, err := s.DissolveGroup(c, "g1", 9); err != nil {
+		t.Fatal(err)
+	}
+	if m, _ := s.GroupAllMute(c, "g1"); m != nil {
+		t.Errorf("dissolve left %+v", m)
 	}
 }

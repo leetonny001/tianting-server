@@ -24,6 +24,8 @@ type Conn struct {
 type Source interface {
 	ListUserConns(userID string) []Conn
 	ConnCount(userID string) int
+	// PlatformCounts 返回按平台的连接数，没有连接的平台不出现（数据概览，F-ADM-70）。
+	PlatformCounts() map[string]int
 }
 
 // ScopeLocalNode 表示结果只覆盖接收请求的节点（B6 之前，F-ADM-14 规则 5）。

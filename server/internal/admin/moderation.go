@@ -45,6 +45,8 @@ func dayStart(t time.Time) int64 {
 type ModerationService interface {
 	NotifyMuted(uid, scope, groupID string, until *int64)
 	NotifyUnmuted(uid, scope, groupID string)
+	NotifyGroupAllMuted(ctx context.Context, groupID string, until *int64)
+	NotifyGroupAllUnmuted(ctx context.Context, groupID string)
 	NotifyMsgDeleted(ctx context.Context, convID string, msgIDs []string, seqs []int64)
 }
 
@@ -320,8 +322,19 @@ func (m *muteReq) validate() (string, *protocol.Error) {
 		if !protocol.ValidID(m.GroupID) {
 			return "", protocol.Errorf(protocol.CodeInvalidID, "invalid groupId")
 		}
+	case protocol.MuteScopeGroupAll: // 全群禁言针对群，没有 userId；是开关，没有时长（F-ADM-42）
+		if !protocol.ValidID(m.GroupID) {
+			return "", protocol.Errorf(protocol.CodeInvalidID, "invalid groupId")
+		}
+		if m.UserID != "" {
+			return "", protocol.Errorf(protocol.CodeBadRequest, "userId is not for scope groupAll")
+		}
+		if m.DurationSeconds.seconds != nil {
+			return "", protocol.Errorf(protocol.CodeBadRequest, "durationSeconds is not for scope groupAll")
+		}
+		return validReason(m.Reason)
 	default:
-		return "", protocol.Errorf(protocol.CodeBadRequest, "scope must be user or group")
+		return "", protocol.Errorf(protocol.CodeBadRequest, "scope must be user, group or groupAll")
 	}
 	if !protocol.ValidID(m.UserID) {
 		return "", protocol.Errorf(protocol.CodeInvalidID, "invalid userId")
@@ -334,7 +347,7 @@ func (a *Admin) writeMuteErr(w http.ResponseWriter, m *muteReq, err error) bool 
 	switch {
 	case err == nil:
 		return false
-	case errors.Is(err, store.ErrNotFound) && m.Scope == protocol.MuteScopeGroup:
+	case errors.Is(err, store.ErrNotFound) && (m.Scope == protocol.MuteScopeGroup || m.Scope == protocol.MuteScopeGroupAll):
 		writeErr(w, protocol.Errorf(protocol.CodeGroupNotFound, "group %s not found", m.GroupID))
 	case errors.Is(err, store.ErrNotFound):
 		writeErr(w, protocol.Errorf(protocol.CodeUserNotFound, "user %s not found", m.UserID))
@@ -357,6 +370,10 @@ func (a *Admin) mute(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	now := a.clock.Now()
+	if req.Scope == protocol.MuteScopeGroupAll {
+		a.muteGroupAll(w, r, &req, reason, now)
+		return
+	}
 	until, perr := req.DurationSeconds.until(now)
 	if perr != nil {
 		writeErr(w, perr)
@@ -371,6 +388,26 @@ func (a *Admin) mute(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, struct {
 		MutedUntil *int64 `json:"mutedUntil"`
 	}{until})
+}
+
+// muteGroupAll 开启全群禁言。重复开启幂等：已经开着时不再通知（和解除的"真有才通知"对称）。
+func (a *Admin) muteGroupAll(w http.ResponseWriter, r *http.Request, req *muteReq, reason string, now time.Time) {
+	old, err := a.store.GroupAllMute(r.Context(), req.GroupID)
+	if err != nil {
+		a.internal(w, "group mute", err)
+		return
+	}
+	err = a.store.SetMute(r.Context(), store.Mute{Scope: req.Scope, GroupID: req.GroupID, Reason: reason, By: byOf(AuthFrom(r.Context())), At: now.UnixMilli()})
+	if a.writeMuteErr(w, req, err) {
+		return
+	}
+	a.inv.Invalidate(logic.TopicGroupAllMutes, req.GroupID)
+	if !old.Active(now.UnixMilli()) {
+		a.mod.Service.NotifyGroupAllMuted(r.Context(), req.GroupID, nil)
+	}
+	writeJSON(w, http.StatusOK, struct {
+		MutedUntil *int64 `json:"mutedUntil"`
+	}{nil})
 }
 
 func (a *Admin) unmute(w http.ResponseWriter, r *http.Request) {
@@ -388,6 +425,14 @@ func (a *Admin) unmute(w http.ResponseWriter, r *http.Request) {
 	}
 	old, err := a.store.DeleteMute(r.Context(), req.Scope, req.UserID, req.GroupID)
 	if a.writeMuteErr(w, &req, err) {
+		return
+	}
+	if req.Scope == protocol.MuteScopeGroupAll {
+		a.inv.Invalidate(logic.TopicGroupAllMutes, req.GroupID)
+		if old.Active(a.clock.Now().UnixMilli()) {
+			a.mod.Service.NotifyGroupAllUnmuted(r.Context(), req.GroupID)
+		}
+		writeJSON(w, http.StatusOK, struct{}{})
 		return
 	}
 	a.inv.Invalidate(logic.TopicMutes, req.UserID)

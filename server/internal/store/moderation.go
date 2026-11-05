@@ -27,11 +27,12 @@ func (b *Ban) Active(now int64) bool { return b != nil && (b.Until == nil || *b.
 
 // 禁言范围（和协议一致）。
 const (
-	MuteUser  = "user"
-	MuteGroup = "group"
+	MuteUser     = "user"
+	MuteGroup    = "group"
+	MuteGroupAll = "groupAll" // 全群禁言（F-ADM-42）：一个群一条，UserID 为空
 )
 
-// Mute 是一条禁言记录。Scope 为 user 时 GroupID 为空；Until 为 nil 表示永久。
+// Mute 是一条禁言记录。Scope 为 user 时 GroupID 为空，为 groupAll 时 UserID 为空；Until 为 nil 表示永久。
 type Mute struct {
 	Scope   string
 	UserID  string
@@ -113,10 +114,14 @@ type ModerationStore interface {
 	// ListQuarantined 返回 seq < beforeSeq、在 now 时还没到期的隔离原文（按 seq 升序，最近的 limit 条）。
 	ListQuarantined(ctx context.Context, convID string, beforeSeq, now int64, limit int) (msgs []QuarantinedMessage, hasMore bool, err error)
 
-	// SetMute 写入或覆盖禁言。错误：用户级用户不存在、群内群不存在 ErrNotFound；群内对象不是成员 ErrTargetNotMember。
+	// SetMute 写入或覆盖禁言。错误：用户级用户不存在、群内 / 全群群不存在 ErrNotFound；群内对象不是成员 ErrTargetNotMember。
 	SetMute(ctx context.Context, m Mute) error
-	// DeleteMute 解除禁言，返回被删的记录（没有时为 nil）。用户级用户不存在、群内群不存在返回 ErrNotFound。
+	// DeleteMute 解除禁言，返回被删的记录（没有时为 nil）。用户级用户不存在、群内 / 全群群不存在返回 ErrNotFound。
 	DeleteMute(ctx context.Context, scope, userID, groupID string) (*Mute, error)
+	// GroupAllMute 返回群的全群禁言记录（可能已过期）；没有时为 nil。
+	GroupAllMute(ctx context.Context, groupID string) (*Mute, error)
+	// UserGroupAllMutes 返回用户所在的、有全群禁言记录的群（可能已过期），key 是 groupId。
+	UserGroupAllMutes(ctx context.Context, userID string) (map[string]Mute, error)
 	// UserMutes 返回用户的全部禁言记录（用户级和群内，可能已过期）。
 	UserMutes(ctx context.Context, userID string) ([]Mute, error)
 	// GroupMutes 返回群里的全部禁言记录（可能已过期），key 是 userId。

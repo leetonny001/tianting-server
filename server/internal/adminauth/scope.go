@@ -28,6 +28,7 @@ const (
 	ScopePushAll        Scope = "push.all"
 	ScopePushRoom       Scope = "push.room" // 随 L1 进目录；L1 时 target=room 由开关挡住（PRD-live AC-PUSH-02-8）
 	ScopeAuditRead      Scope = "audit.read"
+	ScopeStatsRead      Scope = "stats.read" // 数据概览（F-ADM-70，P1）
 	ScopeTest           Scope = "test"
 )
 
@@ -36,7 +37,7 @@ var AllScopes = []Scope{
 	ScopeTokenIssue, ScopeUserRead, ScopeUserWrite, ScopeUserKick, ScopeUserSessions, ScopeUserBan,
 	ScopeGroupRead, ScopeGroupWrite, ScopeGroupDissolve, ScopeSocialSettings, ScopeSocialFriends,
 	ScopeMsgMeta, ScopeMsgBodyGroup, ScopeMsgBodyC2C, ScopeMsgQuarantine, ScopeMsgDelete,
-	ScopeMuteWrite, ScopePushUser, ScopePushAll, ScopePushRoom, ScopeAuditRead, ScopeTest,
+	ScopeMuteWrite, ScopePushUser, ScopePushAll, ScopePushRoom, ScopeAuditRead, ScopeStatsRead, ScopeTest,
 }
 
 // IsBodyScope 报告 scope 是否能读消息正文。正文类 scope 只能配置在唯一的 bodyAccess 调用方上，
