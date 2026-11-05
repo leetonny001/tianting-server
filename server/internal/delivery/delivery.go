@@ -18,6 +18,8 @@ type Router interface {
 	DeliverToUser(userID string, frame []byte, exceptConn string)
 	// KickUser 给用户的所有连接下发 kicked 并关闭。
 	KickUser(userID, reason string)
+	// SuspendUser 给用户的所有连接下发 kicked {reason: suspended, until}（永久为 nil）并关闭（封禁，F-ADM-13 规则 2）。
+	SuspendUser(userID string, until *int64)
 }
 
 // Broadcaster 是可选能力：投递给全部在线连接（socialSettingsChanged，尽力而为）。

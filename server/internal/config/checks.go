@@ -7,6 +7,8 @@ import (
 	"runtime/debug"
 	"slices"
 	"strings"
+
+	"tianting/server/internal/quarantine"
 )
 
 // Check 是一项生产启动保护（PRD-ops F-OPS-10、S-OPS-16）。ID 稳定；Detail 是"实际检查了什么"，不含任何密钥的值或哈希。
@@ -72,6 +74,26 @@ func productionChecks(cfg Server) []Check {
 		admin = append(admin, "admin callers are required in production: set IM_ADMIN_CALLERS (or IM_ADMIN_KEY with IM_ADMIN_LEGACY=1)")
 	}
 	add("admin_auth", fmt.Sprintf("签名调用方 %d 个；旧密钥%s", len(a.AdminCallers), enabledText(!a.AdminLegacyDisabled)), admin...)
+
+	// 被删原文的隔离密钥（AC-ADM-32-4）：不管第二批开没开都检查，避免打开开关时才发现没配。
+	var qk []string
+	qk = append(qk, secretProblems("IM_QUARANTINE_KEY", a.QuarantineKey, DevQuarantineKey)...)
+	if a.QuarantineKey != "" {
+		if len(a.QuarantineKey) < quarantine.MinKeyLen {
+			qk = append(qk, fmt.Sprintf("IM_QUARANTINE_KEY must be at least %d bytes", quarantine.MinKeyLen))
+		}
+		same := a.QuarantineKey == a.JWTSecret || a.QuarantineKey == a.AdminKey
+		for _, k := range a.JWTKeys {
+			same = same || a.QuarantineKey == string(k.Secret)
+		}
+		for _, c := range a.AdminCallers {
+			same = same || a.QuarantineKey == string(c.Secret)
+		}
+		if same {
+			qk = append(qk, "IM_QUARANTINE_KEY must differ from the JWT keys, IM_ADMIN_KEY and caller secrets")
+		}
+	}
+	add("quarantine_key", fmt.Sprintf("IM_QUARANTINE_KEY：%d 字节，与其他密钥逐把比较", len(a.QuarantineKey)), qk...)
 
 	var tls []string
 	// 管理端口只有绑定回环地址（同机部署的业务服务端）时允许明文（PRD-admin F-KEY-01 规则 2）。

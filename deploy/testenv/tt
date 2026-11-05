@@ -69,6 +69,7 @@ cmd_config() {
     {
       echo "JWT_SECRET=$(secret)"
       echo "ADMIN_KEY=$(secret)"
+      echo "QUARANTINE_KEY=$(secret)"
       echo "MINIO_ROOT=$(secret)"
       echo "WRITER=$(secret)"
       echo "READER=$(secret)"
@@ -91,6 +92,8 @@ IM_PPROF_ADDR=off
 IM_DB=/data/im.db
 IM_ADMIN_KEY=$ADMIN_KEY
 IM_JWT_SECRET=$JWT_SECRET
+IM_QUARANTINE_KEY=$QUARANTINE_KEY
+IM_V13_ADMIN_FEATURES=1
 IM_ALLOWED_ORIGINS=*
 ENV
   local rows="" n seed pub pair

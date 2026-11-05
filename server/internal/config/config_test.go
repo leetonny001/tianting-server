@@ -60,8 +60,8 @@ func TestDevelopmentDefaults(t *testing.T) {
 	if cfg.Env != EnvDevelopment || cfg.App.JWTSecret != DevJWTSecret || cfg.App.AdminKey != DevAdminKey || !cfg.App.AutoMigrate {
 		t.Errorf("cfg = %+v", cfg)
 	}
-	if len(warnings) != 3 {
-		t.Errorf("warnings = %v, want 3 (default keys, ops API not listening)", warnings)
+	if len(warnings) != 4 {
+		t.Errorf("warnings = %v, want 4 (default keys, ops API not listening)", warnings)
 	}
 	if cfg.App.Gateway.MaxConnsPerUser != 10 || len(cfg.App.Gateway.AllowedOrigins) == 0 {
 		t.Errorf("gateway defaults = %+v", cfg.App.Gateway)
@@ -71,7 +71,7 @@ func TestDevelopmentDefaults(t *testing.T) {
 // ARCH S4：生产环境的每一种不安全配置都拒绝启动，并在一条错误里全部列出。
 func TestProductionRejectsUnsafeConfig(t *testing.T) {
 	_, _, err := Load(envOf(map[string]string{
-		"IM_ENV":             "production",
+		"IM_ENV": "production", "IM_QUARANTINE_KEY": strongQuarantine,
 		"IM_JWT_SECRET":      DevJWTSecret,
 		"IM_ADMIN_KEY":       "short",
 		"IM_TEST_MODE":       "1",
@@ -99,7 +99,7 @@ func TestProductionRequiresKeys(t *testing.T) {
 	if err == nil || !strings.Contains(err.Error(), "IM_JWT_SECRET is required") || !strings.Contains(err.Error(), "admin callers are required in production") {
 		t.Fatalf("err = %v", err)
 	}
-	_, _, err = Load(envOf(map[string]string{"IM_ENV": "production", "IM_JWT_SECRET": strongJWT, "IM_ADMIN_KEY": strongJWT, "IM_ADMIN_LEGACY": "1"}))
+	_, _, err = Load(envOf(map[string]string{"IM_ENV": "production", "IM_QUARANTINE_KEY": strongQuarantine, "IM_JWT_SECRET": strongJWT, "IM_ADMIN_KEY": strongJWT, "IM_ADMIN_LEGACY": "1"}))
 	if err == nil || !strings.Contains(err.Error(), "must be different") {
 		t.Fatalf("same secret for jwt and admin: err = %v", err)
 	}
@@ -107,7 +107,7 @@ func TestProductionRequiresKeys(t *testing.T) {
 
 func TestProductionValid(t *testing.T) {
 	cfg, warnings, err := Load(envOf(map[string]string{
-		"IM_ENV":             "production",
+		"IM_ENV": "production", "IM_QUARANTINE_KEY": strongQuarantine,
 		"IM_JWT_KEYS":        "k1:" + strongJWT + ",k2:" + strongJWT + "x",
 		"IM_JWT_ACTIVE_KID":  "k2",
 		"IM_ADMIN_CALLERS":   callersFile(t, `[{"id":"biz1","alg":"hmac-sha256","secret":"`+bizSecret+`","scopes":["token.issue"]}]`),
@@ -209,7 +209,7 @@ func TestAdminAddr(t *testing.T) {
 // AC-KEY-01-2、AC-KEY-01-3：生产环境管理地址不是回环地址时必须配置 TLS；回环地址允许明文。
 func TestProductionAdminTLS(t *testing.T) {
 	prod := func(extra map[string]string) error {
-		m := map[string]string{"IM_ENV": "production", "IM_JWT_SECRET": strongJWT, "IM_ADMIN_KEY": strongAdmin, "IM_ADMIN_LEGACY": "1"}
+		m := map[string]string{"IM_ENV": "production", "IM_QUARANTINE_KEY": strongQuarantine, "IM_JWT_SECRET": strongJWT, "IM_ADMIN_KEY": strongAdmin, "IM_ADMIN_LEGACY": "1"}
 		for k, v := range extra {
 			m[k] = v
 		}
@@ -255,7 +255,7 @@ func TestAddrConflicts(t *testing.T) {
 
 // PRD-admin F-KEY-05 规则 3：生产环境只有 IM_ADMIN_LEGACY=1 才接受旧密钥，并告警；/readyz 带 legacyAdminKey。
 func TestProductionLegacyAdminKey(t *testing.T) {
-	base := map[string]string{"IM_ENV": "production", "IM_JWT_SECRET": strongJWT, "IM_ADMIN_KEY": strongAdmin,
+	base := map[string]string{"IM_ENV": "production", "IM_QUARANTINE_KEY": strongQuarantine, "IM_JWT_SECRET": strongJWT, "IM_ADMIN_KEY": strongAdmin,
 		"IM_ADMIN_CALLERS": callersFile(t, `[{"id":"biz1","alg":"hmac-sha256","secret":"`+bizSecret+`","scopes":["token.issue"]}]`)}
 	cfg, warnings, err := Load(envOf(base))
 	if err != nil || !cfg.App.AdminLegacyDisabled || cfg.App.ReportLegacyAdmin || len(warnings) != 0 {
@@ -306,7 +306,7 @@ var opsKeyB64 = base64.StdEncoding.EncodeToString(make([]byte, ed25519.PublicKey
 func prodOps(t *testing.T, extra map[string]string) (Server, error) {
 	t.Helper()
 	m := map[string]string{
-		"IM_ENV": "production", "IM_JWT_SECRET": strongJWT, "IM_ALLOWED_ORIGINS": "https://im.example.com",
+		"IM_ENV": "production", "IM_QUARANTINE_KEY": strongQuarantine, "IM_JWT_SECRET": strongJWT, "IM_ALLOWED_ORIGINS": "https://im.example.com",
 		"IM_ADMIN_CALLERS": callersFile(t, `[{"id":"biz1","alg":"hmac-sha256","secret":"`+bizSecret+`","scopes":["token.issue"]}]`),
 		"IM_OPS_PUBKEYS":   "k1:" + opsKeyB64,
 	}
@@ -372,7 +372,7 @@ func TestOpsDefaults(t *testing.T) {
 // AC-OPS-10-8：某一把 JWT 密钥和管理密钥相同：拒绝启动，只报 kid，不打印密钥。
 func TestJWTKeySameAsAdminKey(t *testing.T) {
 	_, _, err := Load(envOf(map[string]string{
-		"IM_ENV": "production", "IM_JWT_KEYS": "k1:" + strongJWT + ",k2:" + strongAdmin, "IM_JWT_ACTIVE_KID": "k1",
+		"IM_ENV": "production", "IM_QUARANTINE_KEY": strongQuarantine, "IM_JWT_KEYS": "k1:" + strongJWT + ",k2:" + strongAdmin, "IM_JWT_ACTIVE_KID": "k1",
 		"IM_ADMIN_KEY": strongAdmin, "IM_ADMIN_LEGACY": "1", "IM_ALLOWED_ORIGINS": "https://im.example.com",
 	}))
 	if err == nil || !strings.Contains(err.Error(), "IM_JWT_KEYS[k2]") {
@@ -435,5 +435,42 @@ func TestSummaryHasNoSecrets(t *testing.T) {
 	}
 	if !slices.Equal(sum.Keys.JWTKids, []string{"k1", "k2"}) || sum.Keys.JWTActiveKid != "k2" || !slices.Equal(sum.Keys.OpsKids, []string{"ops1"}) {
 		t.Errorf("keys = %+v", sum.Keys)
+	}
+}
+
+const strongQuarantine = "quarantine-key-for-config-tests-0123456789"
+
+// AC-ADM-32-4：生产环境没配、太短、开发默认值、和其他密钥相同，都拒绝启动。
+func TestProductionQuarantineKey(t *testing.T) {
+	secret := base64.StdEncoding.EncodeToString([]byte(strongQuarantine))
+	base := func() map[string]string {
+		return map[string]string{"IM_ENV": "production", "IM_JWT_SECRET": strongJWT, "IM_ALLOWED_ORIGINS": "https://im.example.com", "IM_NODE_ID": "n1", "IM_OPS_ADDR": "off",
+			"IM_ADMIN_CALLERS": callersFile(t, `[{"id":"biz1","alg":"hmac-sha256","secret":"`+secret+`","scopes":["token.issue"]}]`)}
+	}
+	for name, key := range map[string]string{"missing": "", "short": strings.Repeat("k", 31), "dev default": DevQuarantineKey, "same as jwt": strongJWT, "same as caller": strongQuarantine} {
+		m := base()
+		m["IM_QUARANTINE_KEY"] = key
+		_, _, err := Load(envOf(m))
+		if err == nil || !strings.Contains(err.Error(), "IM_QUARANTINE_KEY") {
+			t.Errorf("%s: err = %v", name, err)
+		}
+		if err != nil && key != "" && strings.Contains(err.Error(), key) {
+			t.Errorf("%s: key leaked into the error", name)
+		}
+	}
+	m := base()
+	m["IM_QUARANTINE_KEY"] = strings.Repeat("q", 40)
+	cfg, _, err := Load(envOf(m))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.App.QuarantineDays != 30 {
+		t.Errorf("days = %d", cfg.App.QuarantineDays)
+	}
+	for _, v := range []string{"0", "366", "x"} {
+		m["IM_QUARANTINE_DAYS"] = v
+		if _, _, err := Load(envOf(m)); err == nil {
+			t.Errorf("IM_QUARANTINE_DAYS=%s accepted", v)
+		}
 	}
 }

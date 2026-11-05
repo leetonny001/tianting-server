@@ -180,6 +180,8 @@ class Testenv(unittest.TestCase):
             parse = lambda f: dict(l.split("=", 1) for l in (r / f).read_text().splitlines())
             # 两个节点同一份 JWT 密钥（都读 im.env），各自的运维公钥。
             self.assertEqual(len(parse("im.env")["IM_JWT_SECRET"]), 64)
+            self.assertEqual(len(parse("im.env")["IM_QUARANTINE_KEY"]), 64)
+            self.assertNotEqual(parse("im.env")["IM_QUARANTINE_KEY"], parse("im.env")["IM_JWT_SECRET"])
             n1, n2 = parse("n1.env"), parse("n2.env")
             self.assertEqual((n1["IM_NODE_ID"], n2["IM_NODE_ID"]), ("n1", "n2"))
             self.assertNotEqual(n1["IM_OPS_PUBKEYS"], n2["IM_OPS_PUBKEYS"])

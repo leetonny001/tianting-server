@@ -33,7 +33,9 @@ const (
 // 开发默认密钥：只允许在非生产环境使用，生产环境检测到这两个值会拒绝启动。
 const (
 	DevJWTSecret = "dev-secret-change-me-0123456789"
-	DevAdminKey  = "dev-admin-key"
+	// DevQuarantineKey 只用于开发环境，生产启动保护拒绝（AC-ADM-32-4）。
+	DevQuarantineKey = "dev-quarantine-key-change-me-0123456789"
+	DevAdminKey      = "dev-admin-key"
 )
 
 // MinProductionSecretLen 是生产环境密钥的最小长度（32 字节 ≈ 256 位）。
@@ -166,6 +168,17 @@ func Load(getenv func(string) string) (cfg Server, warnings []string, err error)
 		}
 		a.SocialDefaults = raw
 	}
+	a.V13AdminFeatures = boolEnv(getenv, "IM_V13_ADMIN_FEATURES", false, bad)
+	a.QuarantineKey = getenv("IM_QUARANTINE_KEY")
+	a.QuarantineDays = 30
+	if v := getenv("IM_QUARANTINE_DAYS"); v != "" {
+		n, err := strconv.Atoi(v)
+		if err != nil || n < 1 || n > 365 {
+			bad("IM_QUARANTINE_DAYS must be 1..365, got %q", v)
+		} else {
+			a.QuarantineDays = n
+		}
+	}
 	switch v := getenv("IM_C2C_BODY_ACCESS"); v {
 	case "", "off":
 	case "on":
@@ -182,6 +195,10 @@ func Load(getenv func(string) string) (cfg Server, warnings []string, err error)
 		if a.AdminKey == "" {
 			a.AdminKey = DevAdminKey
 			warnings = append(warnings, "IM_ADMIN_KEY not set, using the development default")
+		}
+		if a.QuarantineKey == "" {
+			a.QuarantineKey = DevQuarantineKey
+			warnings = append(warnings, "IM_QUARANTINE_KEY not set, using the development default")
 		}
 	}
 

@@ -9,6 +9,7 @@ import (
 	"io"
 	"net/http"
 	"regexp"
+	"slices"
 	"strconv"
 	"time"
 
@@ -112,17 +113,33 @@ func (a *Admin) route(mux *http.ServeMux, method, pattern string, scope adminaut
 	mux.Handle(key, a.authenticate(scope, legacy, h))
 }
 
+// routeAny 注册一个"有其中任一 scope 就能进入"的路由；处理函数按请求内容再判断具体 scope（正文授权按会话类型，BE-225）。
+// RouteInfo.Scope 记第一个。
+func (a *Admin) routeAny(mux *http.ServeMux, method, pattern string, scopes []adminauth.Scope, h http.HandlerFunc) {
+	key := method + " " + pattern
+	audit := audited(method, scopes[0])
+	a.routes = append(a.routes, RouteInfo{Method: method, Pattern: pattern, Scope: scopes[0], Audited: audit})
+	if audit {
+		h = a.withAudit(key, h)
+	}
+	mux.Handle(key, a.authenticateAny(scopes, false, h))
+}
+
 // Routes 返回已注册的管理路由（测试用：遍历全部路由检查 scope）。
 func (a *Admin) Routes() []RouteInfo { return append([]RouteInfo(nil), a.routes...) }
 
 // authenticate：带 X-IM-Caller 的走签名鉴权；不带的按旧密钥判定（PRD-admin F-KEY-03 规则 6、F-KEY-05 规则 5：
 // 两种头同时出现时以签名为准，忽略 X-Admin-Key）。
 func (a *Admin) authenticate(scope adminauth.Scope, legacy bool, next http.HandlerFunc) http.Handler {
+	return a.authenticateAny([]adminauth.Scope{scope}, legacy, next)
+}
+
+func (a *Admin) authenticateAny(scopes []adminauth.Scope, legacy bool, next http.HandlerFunc) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		var info AuthInfo
 		if r.Header.Get(HeaderCaller) != "" {
 			var ok bool
-			if info, ok = a.verifySigned(w, r, scope); !ok {
+			if info, ok = a.verifySigned(w, r, scopes); !ok {
 				return
 			}
 		} else {
@@ -143,7 +160,7 @@ func (a *Admin) authenticate(scope adminauth.Scope, legacy bool, next http.Handl
 
 // verifySigned 校验签名请求。顺序：调用方 → 来源网段 → 时间窗口 → 签名 → 目标节点 → nonce → scope。
 // nonce 只在签名通过之后登记，垃圾请求挤不掉合法请求的 nonce；scope 在签名之后判断，未认证的请求探测不到权限配置。
-func (a *Admin) verifySigned(w http.ResponseWriter, r *http.Request, scope adminauth.Scope) (AuthInfo, bool) {
+func (a *Admin) verifySigned(w http.ResponseWriter, r *http.Request, scopes []adminauth.Scope) (AuthInfo, bool) {
 	h := r.Header
 	callerID, ts, nonce, sig := h.Get(HeaderCaller), h.Get(HeaderTimestamp), h.Get(HeaderNonce), h.Get(HeaderSignature)
 	operator, requestID, node := h.Get(HeaderOperator), h.Get(HeaderRequestID), h.Get(HeaderTargetNode)
@@ -201,8 +218,8 @@ func (a *Admin) verifySigned(w http.ResponseWriter, r *http.Request, scope admin
 		a.authFail(w, failNonce, "nonce already used")
 		return AuthInfo{}, false
 	}
-	if !c.Has(scope) {
-		writeErr(w, protocol.Errorf(protocol.CodeForbidden, "caller %s lacks scope %s", c.ID, scope))
+	if !slices.ContainsFunc(scopes, c.Has) {
+		writeErr(w, protocol.Errorf(protocol.CodeForbidden, "caller %s lacks scope %s", c.ID, scopes[0]))
 		return AuthInfo{}, false
 	}
 	return AuthInfo{Caller: c.ID, Operator: operator, RequestID: requestID}, true

@@ -61,6 +61,8 @@ type Metrics struct {
 	AdminAuthFailures *prometheus.CounterVec
 	OpsRequests       *prometheus.CounterVec // 运维接口请求数，按接口和结果
 	OpsInflight       prometheus.Gauge       // 正在处理的运维请求数
+	JobRuns           *prometheus.CounterVec // 定时任务运行次数，按任务和结果（BE-220）
+	JobDuration       *prometheus.HistogramVec
 }
 
 // New 创建并注册全部指标，另外带上 Go 运行时和进程指标。
@@ -104,7 +106,17 @@ func New() *Metrics {
 		OpsInflight: prometheus.NewGauge(prometheus.GaugeOpts{
 			Name: "im_ops_inflight", Help: "Node ops API requests being processed.",
 		}),
+		JobRuns: prometheus.NewCounterVec(prometheus.CounterOpts{
+			Name: "im_job_runs_total", Help: "Scheduled job runs by job and result.",
+		}, []string{"job", "result"}),
+		JobDuration: prometheus.NewHistogramVec(prometheus.HistogramOpts{
+			Name:    "im_job_duration_seconds",
+			Help:    "Scheduled job duration.",
+			Buckets: []float64{.01, .05, .1, .5, 1, 5, 15, 60, 300},
+		}, []string{"job"}),
 	}
+	f(m.JobRuns)
+	f(m.JobDuration)
 	f(m.OpsRequests)
 	f(m.OpsInflight)
 	f(m.Connections)

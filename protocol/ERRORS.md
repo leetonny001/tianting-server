@@ -85,7 +85,7 @@
 | 4036 | REJECTED_BY_PEER | — | ws | 否 | 私聊被对方拉黑（只用于 `send`） | 消息标记失败，提示「消息已发出，但被对方拒收了」 |
 | 4037 | CSRF_INVALID | 403 | console | 否 | CSRF 令牌缺失或错误，或 Origin 不匹配 | 重新取会话信息后重放一次，仍失败提示刷新 |
 | 4038 | STEP_UP_REQUIRED | 403 | console | 否 | 该操作需要重新验证 | 弹 TOTP 框，通过后自动重放 |
-| 4039 | MSG_READ_GRANT_REQUIRED | 403 | console | 否 | 没有该会话有效的正文 / 隔离原文查看授权 | 弹「工单号 + 理由 + 动态码」框 |
+| 4039 | MSG_READ_GRANT_REQUIRED | 403 | admin / console | 否 | 没有该会话有效的正文 / 隔离原文查看授权 | 弹「工单号 + 理由 + 动态码」框 |
 | 4040 | NOT_FOUND | 404 | ws / admin / console | 否 | 资源不存在（通用） | 提示「内容不存在」 |
 | 4041 | NOT_IN_ROOM | — | ws | 否 | 未加入聊天室（二期） | 重新进房 |
 | 4042 | USER_NOT_FOUND | 404 | ws / admin | 否 | 用户不存在 | 提示「用户不存在」 |

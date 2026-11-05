@@ -230,6 +230,7 @@ var adminSamples = map[string]adminSample{
 	"POST /admin/test/social/purge":       {nil, "POST", "/admin/test/social/purge", map[string]any{}, 200},
 	"POST /admin/test/social/seed":        {nil, "POST", "/admin/test/social/seed", map[string]any{"friends": []any{map[string]any{"owner": "alice", "peer": "bob"}}}, 200},
 	"POST /admin/test/invalidate":         {nil, "POST", "/admin/test/invalidate", map[string]any{"topic": "socialSettings", "key": ""}, 200},
+	"POST /admin/test/jobs/{name}/run":    {nil, "POST", "/admin/test/jobs/social_purge/run", map[string]any{}, 200},
 	"POST /admin/test/limits/reset":       {nil, "POST", "/admin/test/limits/reset", map[string]any{"userId": "alice"}, 200},
 }
 

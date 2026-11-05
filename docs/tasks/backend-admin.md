@@ -20,7 +20,16 @@
 | BE-203 im-server 侧审计 `admin_audit` | ✅ 完成 | 迁移 0004（PRD-social 的迁移顺延到 0005 起）；intent 写失败 503 不执行；summary 只记字段名；`GET /admin/audit`；Store 只有追加和查询（契约测试反射断言）；`/admin/test/faults`；6 个变异全部被测试发现。AC-KEY-04-3 的好友备注 / 推送 data 部分随 PRD-social 好友导入和 BE-229 补测；AC-KEY-05-2 其余接口随 BE-205、BE-209、BE-210 和 PRD-social 补测 |
 | BE-205 ～ BE-210 第一批查询接口 | ✅ 2026-11-04 | 用户搜索、在线设备（`internal/sessions.Query` 唯一入口，连接只存脱敏 IP）、群列表、成员分页、解散收口、消息元数据（响应类型没有正文字段）；迁移 0008（虚拟生成列 `nickname_fold` / `name_fold`，写路径不用改）；存储契约 5 组、e2e `TestTCADM*`；SQLite 规模压测见 [perf-admin-2026-11-04](../reports/perf-admin-2026-11-04.md)。**未验收**：AC-ADM-90-1、90-2 的 Postgres 规模（随 BE-070）、AC-ADM-14-6（依赖 B6） |
 | BE-211 第一批协议 | ✅ 2026-11-04 | errors.json 新增 13 个码（4017 已在 X-5 加入）、10.2 节扩展、`closeCodes` 1011、`kickReasons` suspended；im-server 跳过只含 console 的码，SDK 生成器同样跳过；ERRORS.md、ADMIN.md、Schema `Error.details` 同步 |
-| BE-220 ～ BE-243 | ⬜ 未开始 | 第二批及 P1 / P2 |
+| BE-220 进程内定时任务 | ✅ 完成 | `internal/scheduler`：注入时钟、失败不影响下次、`Locker` 接口给 B6 预留；社交清理也挂上来；`POST /admin/test/jobs/{name}/run`、`im_job_runs_total`、`im_job_duration_seconds` |
+| BE-221 第二批协议 | ✅ 完成 | Schema、向量、ADMIN.md、ERRORS.md、开关 `IM_V13_ADMIN_FEATURES`。旧的二期 `msgDeleted`、`muted` 形状按 PRD 11.1 改掉。4039 的 scope 增加 `admin`：BE-225 要求 im-server 同码，PRD 10.4 第 5 条写的只含 console 与此冲突，以任务单为准。SDK 侧在 FE-431～436 |
+| BE-222 封禁 / 解封 | ✅ 完成 | 13-1～13-8 用例通过。版本号和封禁一条查询读出（否则并发时能签发绕过封禁的 token）；握手区分 banned / suspended；进入在线表后再查一次版本号，封禁和强制下线都不留漏网连接（这一行没有自动化用例：时序窗口测不稳） |
+| BE-223 删除消息 | ✅ 完成 | 31-1、31-2、31-5～31-9 用例通过 |
+| BE-224 加密隔离 | ✅ 完成 | 32-1（文件原始字节，含 `secure_delete`，变异验证过）、32-3、32-4 通过。WAL 旧帧要等检查点才被覆盖，写入 ADMIN.md |
+| BE-225 正文授权 | ✅ 完成 | 08-4、08-7、08-8、08-9、32-2、32-5、KEY-02-7 通过。im-server 这边 Q-1 两种方案都一样；Q-1 只决定 console-server 能否持有 `console-msgread` 凭证，影响 CS-041 |
+| BE-226 用户级禁言 | ✅ 完成 | 40-1～40-4、40-6～40-9 通过（40-9 双节点） |
+| BE-227 群成员禁言 | ✅ 完成 | 41-1～41-6 通过 |
+| BE-228、BE-229 系统推送 | ⏸ 等二期 push 协议定稿 | |
+| BE-240 ～ BE-243 | ⬜ 未开始 | P1 / P2 |
 
 ## 总览
 

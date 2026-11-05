@@ -22,6 +22,7 @@ const (
 	CodeAdminSignatureInvalid    = 4017
 	CodeUserBanned               = 4034
 	CodeMessageNotFound          = 4044
+	CodeMsgReadGrantRequired     = 4039
 	CodeForbidden                = 4030
 	CodeMuted                    = 4031
 	CodeNotConvParticipant       = 4032
@@ -73,6 +74,7 @@ var codes = map[int]codeInfo{
 	CodeAdminSignatureInvalid:    {"ADMIN_SIGNATURE_INVALID", 401},
 	CodeUserBanned:               {"USER_BANNED", 403},
 	CodeMessageNotFound:          {"MESSAGE_NOT_FOUND", 404},
+	CodeMsgReadGrantRequired:     {"MSG_READ_GRANT_REQUIRED", 403},
 	CodeForbidden:                {"FORBIDDEN", 403},
 	CodeMuted:                    {"MUTED", 0},
 	CodeNotConvParticipant:       {"NOT_CONV_PARTICIPANT", 0},

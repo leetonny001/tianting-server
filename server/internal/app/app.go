@@ -2,6 +2,7 @@
 package app
 
 import (
+	"cmp"
 	"context"
 	"crypto/rand"
 	"database/sql"
@@ -28,7 +29,9 @@ import (
 	"tianting/server/internal/metrics"
 	"tianting/server/internal/opsapi"
 	"tianting/server/internal/protocol"
+	"tianting/server/internal/quarantine"
 	"tianting/server/internal/ratelimit"
+	"tianting/server/internal/scheduler"
 	"tianting/server/internal/social"
 	"tianting/server/internal/store"
 )
@@ -57,11 +60,17 @@ type Config struct {
 	// TestPeers / TestInvalidationOff：测试模式的双节点环境（IM_TEST_PEERS、IM_TEST_INVALIDATION=off，PRD-social 5.6 节）。
 	TestPeers           []string
 	TestInvalidationOff bool
-	TestMode            bool // 开启故障注入、时钟注入、短有效期 token（PRD 6.1 节），生产必须关闭
-	DemoLogin           bool // 开启演示登录 /demo/login（PRD F-AUTH-04），生产必须关闭
-	SendRate            int  // 每个用户每秒可发消息数，0 表示默认值 20（PRD F-MSG-07）
-	Version             string
-	Logger              *slog.Logger
+	// V13AdminFeatures 对应 IM_V13_ADMIN_FEATURES（默认关闭，PRD-admin 11.1 节）：开启后才注册第二批管理接口、下发第二批事件。
+	// sdk-ts 对应版本发布之后再打开；关闭时禁言不生效，但已有的封禁仍然生效（封禁是安全措施，不跟开关走）。
+	V13AdminFeatures bool
+	// QuarantineKey / QuarantineDays：被删原文的加密隔离（IM_QUARANTINE_KEY、IM_QUARANTINE_DAYS，BE-224）。
+	QuarantineKey  string
+	QuarantineDays int
+	TestMode       bool // 开启故障注入、时钟注入、短有效期 token（PRD 6.1 节），生产必须关闭
+	DemoLogin      bool // 开启演示登录 /demo/login（PRD F-AUTH-04），生产必须关闭
+	SendRate       int  // 每个用户每秒可发消息数，0 表示默认值 20（PRD F-MSG-07）
+	Version        string
+	Logger         *slog.Logger
 	// 节点运维接口（PRD-ops F-OPS-16）：OpsKeys 为空时不提供。ConfigSummary 生成脱敏的配置摘要（由 config 包提供）。
 	OpsKeys         []opsapi.Key
 	OpsAllowedCIDRs []netip.Prefix
@@ -80,7 +89,7 @@ type App struct {
 	hub         *hub.Hub
 	metrics     *metrics.Metrics
 	draining    atomic.Bool
-	stop        chan struct{} // 关闭后台任务（社交清理）
+	stop        chan struct{} // 关闭后台任务（定时任务）
 	loopback    *cache.HTTPLoopback
 	ops         *opsapi.Server
 	opsDB       *sql.DB // 运维接口的只读连接，不和消息写入共用
@@ -146,8 +155,18 @@ func New(cfg Config) (*App, error) {
 		}
 	}
 
+	var cipher *quarantine.Cipher
+	if cfg.V13AdminFeatures {
+		if cipher, err = quarantine.New(cfg.QuarantineKey); err != nil {
+			st.Close()
+			return nil, fmt.Errorf("IM_QUARANTINE_KEY: %w", err)
+		}
+		svc.EnableAdminFeatures()
+	}
 	a := &App{store: st, hub: h, metrics: m, stop: make(chan struct{}), loopback: loopback}
-	go svc.RunSocialPurge(a.stop)
+	jobs := scheduler.New(clk, nil, m.JobRuns, m.JobDuration, cfg.Logger)
+	registerJobs(jobs, st, svc, clk)
+	go jobs.Start(a.stop)
 	info := api.Info{Version: cfg.Version, StartedAt: time.Now(), Ready: a.ready}
 	if cfg.ReportLegacyAdmin {
 		info.Details = map[string]any{"legacyAdminKey": true}
@@ -190,6 +209,10 @@ func New(cfg Config) (*App, error) {
 	adm.WithSocial(svc)
 	adm.WithSessions(h)
 	adm.WithTestFaults(a)
+	adm.WithJobs(jobs)
+	if cfg.V13AdminFeatures {
+		adm.WithModeration(admin.ModerationConfig{Service: svc, Cipher: cipher, QuarantineDays: cmp.Or(cfg.QuarantineDays, defaultQuarantineDays), C2CBodyAccess: cfg.C2CBodyAccess})
+	}
 	adminMux := http.NewServeMux()
 	adm.Register(adminMux)
 	if cfg.TestMode {
@@ -203,6 +226,30 @@ func New(cfg Config) (*App, error) {
 	a.admin = admin.AllowCIDRs(cfg.AdminAllowedCIDRs, adminMux)
 	a.adminRoutes = adm.Routes()
 	return a, nil
+}
+
+// 定时任务的周期和保留时间。
+const (
+	jobPeriod             = time.Hour
+	auditRetention        = 365 * 24 * time.Hour // PRD-admin F-KEY-04：保留 1 年
+	grantRetention        = 48 * time.Hour       // 授权只有 15 分钟、配额只看当天；审计另有 admin_audit
+	defaultQuarantineDays = 30
+)
+
+// registerJobs 注册全部定时任务（BE-220）。任务名是测试接口和指标标签里的稳定名字。
+func registerJobs(s *scheduler.Scheduler, st *store.SQLite, svc *logic.Service, clk clock.Clock) {
+	s.Register("social_purge", jobPeriod, svc.PurgeSocialNow)
+	s.Register("group_req_purge", jobPeriod, svc.PurgeGroupReqs)
+	s.Register("admin_audit_purge", jobPeriod, func(ctx context.Context) (int, error) {
+		return st.PurgeAdminAuditBefore(ctx, clk.Now().Add(-auditRetention).UnixMilli())
+	})
+	// 不跟 IM_V13_ADMIN_FEATURES：开关关掉之后，已经隔离的原文也要按时物理删除。
+	s.Register("quarantine_purge", jobPeriod, func(ctx context.Context) (int, error) {
+		return st.PurgeQuarantine(ctx, clk.Now().UnixMilli())
+	})
+	s.Register("msg_grants_purge", jobPeriod, func(ctx context.Context) (int, error) {
+		return st.PurgeMsgGrants(ctx, clk.Now().Add(-grantRetention).UnixMilli())
+	})
 }
 
 // Handler 是对外端口：/ws、/healthz、/readyz，以及演示环境的 /demo/login。

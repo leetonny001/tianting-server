@@ -49,6 +49,8 @@ type Admin struct {
 	social   SocialService // nil 时不注册社交路由
 	sessions sessions.Source
 	faults   TestFaults
+	jobs     JobRunner
+	mod      *ModerationConfig // 第二批开启时非 nil（IM_V13_ADMIN_FEATURES）
 	clock    clock.Clock
 	log      *slog.Logger
 	testMode bool
@@ -61,6 +63,14 @@ type TestFaults interface {
 	SetOpsDelay(ms int64)
 	SetPingFail(fail bool)
 }
+
+// JobRunner 手动触发定时任务（测试模式 POST /admin/test/jobs/{name}/run，BE-220）。
+type JobRunner interface {
+	Run(ctx context.Context, name string) error
+}
+
+// WithJobs 接上定时任务。
+func (a *Admin) WithJobs(j JobRunner) { a.jobs = j }
 
 // WithTestFaults 接上节点级故障注入。
 func (a *Admin) WithTestFaults(f TestFaults) { a.faults = f }
@@ -104,6 +114,7 @@ func (a *Admin) Register(mux *http.ServeMux) {
 	a.route(mux, "GET", "/admin/audit", adminauth.ScopeAuditRead, a.queryAudit)
 	a.registerSocial(mux)
 	a.registerQueries(mux)
+	a.registerModeration(mux)
 }
 
 // RegisterTestRoutes 注册故障注入和时钟接口，只能在测试模式下调用（PRD 6.1 节）。
@@ -172,6 +183,17 @@ func (a *Admin) RegisterTestRoutes(mux *http.ServeMux, faults *logic.Faults, clk
 		}
 		writeJSON(w, http.StatusOK, struct{}{})
 	})
+	a.route(mux, "POST", "/admin/test/jobs/{name}/run", adminauth.ScopeTest, func(w http.ResponseWriter, r *http.Request) {
+		if a.jobs == nil {
+			writeErr(w, protocol.Errorf(protocol.CodeBadRequest, "no scheduler"))
+			return
+		}
+		if err := a.jobs.Run(r.Context(), r.PathValue("name")); err != nil {
+			writeErr(w, protocol.Errorf(protocol.CodeBadRequest, "job %s: %v", r.PathValue("name"), err))
+			return
+		}
+		writeJSON(w, http.StatusOK, struct{}{})
+	})
 	a.registerSocialTestRoutes(mux)
 }
 
@@ -204,9 +226,14 @@ func (a *Admin) issueFor(w http.ResponseWriter, r *http.Request, userID string, 
 		a.internal(w, "ensure user", err)
 		return
 	}
-	version, err := a.store.TokenVersion(r.Context(), userID)
+	// 版本号和封禁一次读出（见 IssueState）；到期按 [IM 钟] 判断，不需要定时任务（F-ADM-13 规则 4）。
+	version, ban, err := a.store.IssueState(r.Context(), userID)
 	if err != nil {
 		a.internal(w, "token version", err)
+		return
+	}
+	if ban.Active(a.clock.Now().UnixMilli()) {
+		writeErr(w, bannedErr(ban.Until))
 		return
 	}
 	tok, exp, err := a.signer.Issue(userID, version, ttl)
@@ -224,6 +251,18 @@ type userJSON struct {
 	CreatedAt int64  `json:"createdAt,omitempty"`
 	Official  bool   `json:"official"` // PRD-social F-SOC-13；导入时忽略
 	Online    bool   `json:"online"`   // 只出现在响应里：来自 hub（B6 之后是 Presence），不缓存（F-ADM-10 规则 3）
+}
+
+// userOutJSON 是响应里的用户：比导入请求多第二批的 ban、mutedUntil（第二批关闭时不出现）。
+type userOutJSON struct {
+	userJSON
+	Ban        json.RawMessage `json:"ban,omitempty"`
+	MutedUntil json.RawMessage `json:"mutedUntil,omitempty"`
+}
+
+func (a *Admin) userOut(ctx context.Context, u store.User) (userOutJSON, error) {
+	ban, muted, err := a.userModeration(ctx, u.UserID)
+	return userOutJSON{userJSON{UserID: u.UserID, Nickname: u.Nickname, Avatar: u.Avatar, CreatedAt: u.CreatedAt, Official: u.Official, Online: a.online(u.UserID)}, ban, muted}, err
 }
 
 // importUsers 批量导入用户（PRD F-USER-01、C-16、C-17）。任何一项不合法则整批不写入。
@@ -287,7 +326,12 @@ func (a *Admin) getUser(w http.ResponseWriter, r *http.Request) {
 	case err != nil:
 		a.internal(w, "get user", err)
 	default:
-		writeJSON(w, http.StatusOK, userJSON{UserID: u.UserID, Nickname: u.Nickname, Avatar: u.Avatar, CreatedAt: u.CreatedAt, Official: u.Official, Online: a.online(u.UserID)})
+		out, err := a.userOut(r.Context(), u)
+		if err != nil {
+			a.internal(w, "user moderation", err)
+			return
+		}
+		writeJSON(w, http.StatusOK, out)
 	}
 }
 
@@ -330,6 +374,14 @@ func (a *Admin) RegisterDemoLogin(mux *http.ServeMux) {
 		uid := protocol.TrimText(req.Username)
 		if !protocol.ValidID(uid) {
 			writeErr(w, protocol.Errorf(protocol.CodeInvalidID, "invalid username"))
+			return
+		}
+		// 被封禁的用户：先拒绝，不能先改了昵称再报错（封禁不改变资料，F-ADM-13 规则 5）。
+		if ban, err := a.store.UserBan(r.Context(), uid); err != nil {
+			a.internal(w, "check ban", err)
+			return
+		} else if ban.Active(a.clock.Now().UnixMilli()) {
+			writeErr(w, bannedErr(ban.Until))
 			return
 		}
 		// 可选昵称（BE-091、PRD-ui G-UI-23）：去首尾空白后 1～32 个码点，登录（自动注册）时覆盖原昵称；

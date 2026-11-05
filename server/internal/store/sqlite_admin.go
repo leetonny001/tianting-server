@@ -133,7 +133,7 @@ func (s *SQLite) ListMessageMeta(ctx context.Context, q MessageMetaQuery) ([]Mes
 	// SQLite 的 length() 对 TEXT 按字符（码点）计数；正文只参与计算长度，不离开数据库。
 	// #nosec G202 -- where 是常量片段，取值全部走占位符
 	rows, err := s.db.QueryContext(ctx, `SELECT seq, msg_id, from_uid, type,
-		COALESCE(length(json_extract(body, '$.text')), length(body)), ts
+		CASE WHEN deleted_at > 0 THEN 0 ELSE COALESCE(length(json_extract(body, '$.text')), length(body)) END, ts, deleted_at > 0
 		FROM messages WHERE `+strings.Join(where, " AND ")+` ORDER BY seq DESC LIMIT ?`, args...)
 	if err != nil {
 		return nil, false, err
@@ -142,7 +142,7 @@ func (s *SQLite) ListMessageMeta(ctx context.Context, q MessageMetaQuery) ([]Mes
 	out := []MessageMeta{}
 	for rows.Next() {
 		var m MessageMeta
-		if err := rows.Scan(&m.Seq, &m.MsgID, &m.From, &m.Type, &m.BodyLength, &m.TS); err != nil {
+		if err := rows.Scan(&m.Seq, &m.MsgID, &m.From, &m.Type, &m.BodyLength, &m.TS, &m.Deleted); err != nil {
 			return nil, false, err
 		}
 		out = append(out, m)
@@ -157,3 +157,14 @@ func (s *SQLite) ListMessageMeta(ctx context.Context, q MessageMetaQuery) ([]Mes
 }
 
 var _ AdminQueryStore = (*SQLite)(nil)
+
+// PurgeAdminAuditBefore 物理删除 ts < before 的审计记录（保留 1 年，BE-220）。
+// 故意不在 Store 接口上：审计对业务代码只有追加和查询，只有清理任务拿到这个窄接口（storetest 断言）。
+func (s *SQLite) PurgeAdminAuditBefore(ctx context.Context, before int64) (int, error) {
+	res, err := s.db.ExecContext(ctx, `DELETE FROM admin_audit WHERE ts < ?`, before)
+	if err != nil {
+		return 0, err
+	}
+	n, err := res.RowsAffected()
+	return int(n), err
+}

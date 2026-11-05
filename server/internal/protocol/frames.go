@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"regexp"
+	"strconv"
 	"strings"
 	"unicode"
 	"unicode/utf8"
@@ -49,6 +50,9 @@ const (
 	EventConvAdded    = "convAdded"
 	EventConvRemoved  = "convRemoved"
 	EventReadUpdated  = "readUpdated"
+	EventMsgDeleted   = "msgDeleted"
+	EventMuted        = "muted"
+	EventUnmuted      = "unmuted"
 	EventGroupChanged = "groupChanged"
 )
 
@@ -77,6 +81,10 @@ type Error struct {
 	Msg  string `json:"msg"`
 	// UserID 指出是哪个人（建群失败，PRD-social 9.2 节）；没有时不出现。
 	UserID string `json:"userId,omitempty"`
+	// Reason 细分同一个错误码（4030 的 c2cBodyDisabled，PRD-admin 10.3 节）。
+	Reason string `json:"reason,omitempty"`
+	// Details 是可选扩展（4031 的 {scope, groupId?, mutedUntil}，4034 的 {bannedUntil}，PRD-admin 11.1 节）。SDK 忽略不认识的键。
+	Details map[string]any `json:"details,omitempty"`
 }
 
 func (e *Error) Error() string { return fmt.Sprintf("%d %s", e.Code, e.Msg) }
@@ -134,8 +142,10 @@ type Message struct {
 	Seq         int64   `json:"seq,omitempty"`
 	From        string  `json:"from"`
 	Type        string  `json:"type"`
-	Body        MsgBody `json:"body"`
+	Body        MsgBody `json:"body,omitzero"` // 被删除的消息没有 body（第二批，F-MSG-05 规则 7）
 	TS          int64   `json:"ts"`
+	Deleted     bool    `json:"deleted,omitempty"`
+	DeletedAt   int64   `json:"deletedAt,omitempty"`
 }
 
 // SendReq 对应 cmd=send。
@@ -192,6 +202,8 @@ type AuthReq struct {
 type AuthAck struct {
 	UserID     string `json:"userId"`
 	ServerTime int64  `json:"serverTime"`
+	// MutedUntil 只在用户被用户级禁言时出现，永久禁言为 null（第二批，F-ADM-40 规则 4）。
+	MutedUntil json.RawMessage `json:"mutedUntil,omitempty"`
 }
 
 // SendAck 是 send 成功的应答。聊天室消息没有 seq。
@@ -263,6 +275,23 @@ type LastMsg struct {
 	Type  string `json:"type"`
 	Text  string `json:"text"`
 	TS    int64  `json:"ts"`
+	// Deleted：最后一条消息被删除（第二批，F-ADM-31 规则 3）；这时 JSON 里没有 text。
+	Deleted bool `json:"deleted,omitempty"`
+}
+
+// MarshalJSON：被删除的消息不带 text，其他情况 text 一定出现（可以是空字符串）。
+func (m LastMsg) MarshalJSON() ([]byte, error) {
+	if !m.Deleted {
+		type plain LastMsg
+		return json.Marshal(plain(m))
+	}
+	return json.Marshal(struct {
+		MsgID   string `json:"msgId"`
+		From    string `json:"from"`
+		Type    string `json:"type"`
+		TS      int64  `json:"ts"`
+		Deleted bool   `json:"deleted"`
+	}{m.MsgID, m.From, m.Type, m.TS, true})
 }
 
 // Summary 截取消息摘要（前 100 个码点）。
@@ -289,6 +318,8 @@ type Conversation struct {
 	MemberCount *int `json:"memberCount,omitempty"`
 	// MyRole 是群里我的角色（M4）：owner / admin / member；单聊不带。
 	MyRole string `json:"myRole,omitempty"`
+	// MutedUntil：我在该群被禁言时才出现，永久禁言为 null（第二批，F-ADM-41 规则 5）。
+	MutedUntil json.RawMessage `json:"mutedUntil,omitempty"`
 }
 
 // ConvsAck 是 convs 的应答。
@@ -301,6 +332,45 @@ type ConvsAck struct {
 type KickedEvent struct {
 	Type   string `json:"type"`
 	Reason string `json:"reason"`
+	// Until 只在 reason=suspended 时出现：封禁到期的毫秒时间戳，永久为 null（F-ADM-13 规则 2）。
+	Until json.RawMessage `json:"until,omitempty"`
+}
+
+// NullableMs 把"到期时间，永久为 null"编码成字段值：用于只在特定情况出现、出现时可以是 null 的字段。
+func NullableMs(ms *int64) json.RawMessage {
+	if ms == nil {
+		return json.RawMessage("null")
+	}
+	return json.RawMessage(strconv.FormatInt(*ms, 10))
+}
+
+// MsgDeletedEvent 通知会话参与者消息被删除（第二批，F-ADM-31 规则 5）。
+type MsgDeletedEvent struct {
+	Type   string   `json:"type"`
+	ConvID string   `json:"convId"`
+	MsgIDs []string `json:"msgIds"`
+	Seqs   []int64  `json:"seqs"`
+}
+
+// 禁言范围。
+const (
+	MuteScopeUser  = "user"
+	MuteScopeGroup = "group"
+)
+
+// MutedEvent 通知本人被禁言（第二批，F-ADM-40 规则 4、F-ADM-41 规则 5）。MutedUntil 永久为 null。
+type MutedEvent struct {
+	Type       string `json:"type"`
+	Scope      string `json:"scope"`
+	GroupID    string `json:"groupId,omitempty"`
+	MutedUntil *int64 `json:"mutedUntil"`
+}
+
+// UnmutedEvent 通知本人禁言已解除。
+type UnmutedEvent struct {
+	Type    string `json:"type"`
+	Scope   string `json:"scope"`
+	GroupID string `json:"groupId,omitempty"`
 }
 
 type ConvAddedEvent struct {

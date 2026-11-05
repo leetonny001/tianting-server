@@ -34,6 +34,7 @@ type Service struct {
 	metrics *metrics.Metrics
 	newID   func() string
 	changed *groupChangedMerger
+	mutes   *muteCache // 第二批开启时非 nil（IM_V13_ADMIN_FEATURES）
 }
 
 // New 创建 Service。limiter 按用户限制发送速率（所有连接合计，PRD F-MSG-07）。
@@ -114,6 +115,10 @@ func (s *Service) send(ctx context.Context, c delivery.Session, raw json.RawMess
 			return nil, false, protocol.Errorf(protocol.CodeClientMsgIDConflict, "clientMsgId already used in another conversation")
 		}
 		return protocol.SendAck{MsgID: prev.MsgID, ConvID: prev.ConvID, Seq: prev.Seq, TS: prev.TS}, false, nil
+	}
+	// 禁言在限流之前（C-29）：4031 不扣令牌。
+	if perr := s.checkMuted(ctx, uid, req); perr != nil {
+		return nil, false, perr
 	}
 	// 限流（C-29）：被拒绝的请求不扣令牌。
 	if !s.limiter.Allow(uid) {
@@ -298,6 +303,9 @@ func (s *Service) convs(ctx context.Context, c delivery.Session) (any, *protocol
 	for _, r := range rows {
 		out.Convs = append(out.Convs, toConversation(r))
 	}
+	if perr := s.applyGroupMutes(ctx, c.UserID(), out.Convs); perr != nil {
+		return nil, perr
+	}
 	return out, nil
 }
 
@@ -326,7 +334,7 @@ func toConversation(r store.ConvRow) protocol.Conversation {
 	// 未读 = maxSeq − max(readSeq, joinSeq)，从入群时刻算起，与 historyVisible 无关（C-02）。
 	out.Unread = max(0, r.MaxSeq-max(r.ReadSeq, r.JoinSeq))
 	if r.LastVisible {
-		out.LastMsg = &protocol.LastMsg{MsgID: r.Last.MsgID, From: r.Last.From, Type: r.Last.Type, Text: r.Last.Text, TS: r.Last.TS}
+		out.LastMsg = &protocol.LastMsg{MsgID: r.Last.MsgID, From: r.Last.From, Type: r.Last.Type, Text: r.Last.Text, TS: r.Last.TS, Deleted: r.Last.Deleted}
 	}
 	return out
 }
@@ -436,7 +444,9 @@ func decode[T any](raw json.RawMessage) (T, *protocol.Error) {
 
 func toProto(m store.Message) protocol.Message {
 	var body protocol.MsgBody
-	_ = json.Unmarshal(m.Body, &body) // Body 是我们自己写入的，格式可信
+	if m.DeletedAt == 0 { // 被删除的消息没有 body（F-MSG-05 规则 7）
+		_ = json.Unmarshal(m.Body, &body) // Body 是我们自己写入的，格式可信
+	}
 	return protocol.Message{
 		MsgID:       m.MsgID,
 		ClientMsgID: m.ClientMsgID,
@@ -446,5 +456,7 @@ func toProto(m store.Message) protocol.Message {
 		Type:        m.Type,
 		Body:        body,
 		TS:          m.TS,
+		Deleted:     m.DeletedAt > 0,
+		DeletedAt:   m.DeletedAt,
 	}
 }

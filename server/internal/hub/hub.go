@@ -14,6 +14,7 @@ type Client interface {
 	delivery.Session
 	Send(frame []byte) bool // 发不出去时返回 false
 	Kick(reason string)     // 下发 kicked 并关闭连接
+	Suspend(until *int64)   // 下发 kicked {reason: suspended, until} 并关闭连接
 	Platform() string
 	// SessionInfo 返回连接元数据（IP 已脱敏，PRD-admin F-ADM-14 规则 2）。
 	SessionInfo() sessions.Conn
@@ -102,6 +103,19 @@ var _ delivery.Router = (*Hub)(nil)
 // DeliverToUser 实现 delivery.Router。
 func (h *Hub) DeliverToUser(userID string, frame []byte, exceptConn string) {
 	h.SendToUser(userID, frame, exceptConn)
+}
+
+// SuspendUser 实现 delivery.Router。
+func (h *Hub) SuspendUser(userID string, until *int64) {
+	h.mu.RLock()
+	targets := make([]Client, 0, len(h.users[userID]))
+	for _, e := range h.users[userID] {
+		targets = append(targets, e.c)
+	}
+	h.mu.RUnlock()
+	for _, c := range targets {
+		c.Suspend(until)
+	}
 }
 
 // KickUser 实现 delivery.Router。

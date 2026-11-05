@@ -87,6 +87,26 @@ scope：`POST /admin/users/token` → `token.issue`；`POST /admin/users/import`
 
 `limit`（前四个接口）只接受 20 / 50 / 100，默认 50；`cursor` 是上一页响应里的 `nextCursor`，对调用方不透明，空字符串表示没有更多，解不开 400 / 4000。这些接口旧密钥都不能调用（403 / 4030）。
 
+## 封禁、禁言、删除、正文查看（PRD-admin 第二批）
+
+`IM_V13_ADMIN_FEATURES` 关闭（默认）时这些路由都不存在（404），也不下发新事件。关闭时禁言不生效，已有的封禁仍然生效。
+
+| 接口 | 请求 | 响应 | scope 与说明 |
+|---|---|---|---|
+| `POST /admin/users/{userId}/ban` | `{durationSeconds \| null, reason}` | `{userId, ban:{until, reason, by, at}}` | `user.ban`。`durationSeconds` 必须传：60 秒～30 天，`null` 表示永久。立即踢掉全部连接（`kicked {reason:"suspended", until}`，关闭码 4012），此前的 token 作废。不存在 404 / 4042。重复封禁以最后一次为准 |
+| `POST /admin/users/{userId}/unban` | `{reason}` | `{}` | `user.ban`。解封后要重新签发 token |
+| `POST /admin/mute` | `{scope:"user"\|"group", userId, groupId?, durationSeconds \| null, reason}` | `{mutedUntil}` | `mute.write`。时长同上。用户不存在 404 / 4042；群不存在 404 / 4043；不是群成员 404 / 4046。只有本人收到 `muted` 事件 |
+| `POST /admin/unmute` | `{scope, userId, groupId?, reason}` | `{}` | `mute.write`。幂等；真有一条生效中的禁言才发 `unmuted` |
+| `POST /admin/messages/delete` | `{convId, msgIds, reason}` | `{deleted:[{msgId, seq}]}` | `msg.delete`。单次 ≤ 50（4131）；不存在 404 / 4044；不在该会话或是群提示消息 400 / 4000，任何一条不合法整批不删。已删除的幂等成功，不再发事件。原文加密进隔离区 |
+| `POST /admin/msg-grants` | `{convId, operator, reason, ticket, quarantine?}` | `{grantId, expiresAt}` | 群 `msg.body.group`，单聊 `msg.body.c2c`，`quarantine=true` 要 `msg.quarantine`。`operator` 必须等于签名的 `X-IM-Operator`。授权 15 分钟。`IM_C2C_BODY_ACCESS=off` 时单聊 403 / 4030 `reason:"c2cBodyDisabled"`。配额（Asia/Shanghai 自然日）：每操作人 20、每调用方 200，超出 429 / 4292 |
+| `POST /admin/convs/messages/body` | `{grantId, convId, beforeSeq?, limit?}` | `{messages, hasMore}` | 同上。`limit` ≤ 50。授权不存在、过期、换了会话或操作人 403 / 4039。普通授权：被删的消息只有 `deleted=true`，没有 `body`。隔离授权：只返回被删的消息和原文，一条都没有（含已到期）404 / 4044。响应 `Cache-Control: no-store` |
+
+- `GET /admin/users/{userId}`、`GET /admin/users` 增加 `ban`（`null` 或 `{until, reason, by, at}`）和 `mutedUntil`（禁言中才出现，永久为 `null`）；`GET /admin/groups/{groupId}/members` 的成员增加 `mutedUntil`；`POST /admin/convs/messages/query` 的消息增加 `deleted`。过期的记录按没有处理。
+- `POST /admin/users/token`、`POST /demo/login`：封禁中 403 / 4034，`details.bannedUntil`（永久为 `null`）。到期自动解除。
+- `by`、`deletedBy` 的格式是 `{caller}:{operator}`。审计记录这些接口的 `reason`、`msgIds`、`ticket`、时长，不记正文；正文读取的 summary 带 `seqFrom`、`seqTo`、`count`。
+- 配置：`IM_QUARANTINE_KEY`（≥ 32 字节，不能与其他密钥相同，生产必填）、`IM_QUARANTINE_DAYS`（默认 30，1～365）、`IM_C2C_BODY_ACCESS`（默认 `off`，没有管理接口能改）。
+- 已知限制：删除后 WAL 里的旧帧要等检查点才被覆盖；备份里的原文按备份保留期留存（F-ADM-31 规则 9）。
+
 ## 社交（PRD-social 9.3 节，M3）
 
 只在管理端口注册，按 scope 判定（旧密钥不能调用：403 / 4030）；写接口按下一节审计（摘要只有字段名，备注原文不会进审计）。
@@ -112,6 +132,8 @@ scope：`POST /admin/users/token` → `token.issue`；`POST /admin/users/import`
 | `GET /admin/audit?from=&to=&caller=&operator=&requestId=&cursor=&limit=` | — | `{entries, nextCursor}` | scope `audit.read`（旧密钥不能调用）。`from` / `to` 为毫秒，必填，跨度 ≤ 31 天，否则 400 / 4000；按 id 倒序，`limit` 1～200（默认 50），`nextCursor` 为 0 表示没有更多 |
 
 ## 运维
+
+定时任务（进程内，每小时）：`admin_audit_purge`（审计保留 1 年）、`quarantine_purge`（隔离原文到期物理删除）、`msg_grants_purge`、`social_purge`、`group_req_purge`。指标 `im_job_runs_total{job,result}`、`im_job_duration_seconds{job}`。
 
 | 接口 | 说明 |
 |---|---|
@@ -140,5 +162,7 @@ pprof 只在 `IM_PPROF_ADDR` 上提供（开发默认 `127.0.0.1:6060`，生产�
 每次请求写一行访问日志（`msg="ops request"`）：`endpoint`、`kid`、`operator`、`requestId`、`count`、`durationMs`、`peer`、`result`，失败时带 `failure`；不写 userId、密钥和签名。对账用 `deploy/ops/reconcile`。
 
 ## 仅测试 / 演示环境
+
+`POST /admin/test/jobs/{name}/run`：立即运行一个定时任务。
 
 `POST /admin/test/drop-ack`、`/admin/test/skip-delivery`、`/admin/test/clock`、`/admin/test/faults`（`{adminAuditWrite: "fail" | "", opsDelayMs?, storePing: "fail" | ""}`：模拟审计写失败、运维接口延迟、就绪检查失败）、社交测试设施（PRD-social 5.6 节）`/admin/test/social/drop-events {userId, type, count}`、`/admin/test/social/purge`、`/admin/test/social/seed {friends?, blocks?, requests?, groupMembers?, updatedAt?}`、`/admin/test/limits/reset {userId}`、`/admin/test/invalidate {topic, key}`（双节点测试环境：其他进程转发来的缓存失效，`IM_TEST_PEERS` 配置转发目标，`IM_TEST_INVALIDATION=off` 时不发也不收）（`IM_TEST_MODE=1`），`POST /demo/login {username, nickname?}`（`IM_DEMO_LOGIN=1`，不需要管理密钥；`nickname` 去首尾空白后 1～32 个码点，登录时覆盖该用户的昵称，超长 400 / 4000，不传或为空不改）。生产环境（`IM_ENV=production`）开启这两个开关会拒绝启动。

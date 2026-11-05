@@ -48,6 +48,9 @@ go test -race ./...                    # 单测 + 契约测试 + 端到端测试
 | `IM_ADDR` | `:8080` | 监听地址 |
 | `IM_DB` | `im.db` | SQLite 文件 |
 | `IM_JWT_SECRET` / `IM_ADMIN_KEY` | 开发密钥 | 生产必须设置，至少 32 字节 |
+| `IM_QUARANTINE_KEY` | 开发密钥 | 被删消息原文的加密密钥。生产必须设置，至少 32 字节，不能与其他密钥相同。换密钥后，旧的隔离原文解不开 |
+| `IM_QUARANTINE_DAYS` | `30` | 隔离原文保存天数，1～365 |
+| `IM_V13_ADMIN_FEATURES` | 关闭 | 管理后台第二批（封禁、禁言、删消息、正文授权）。sdk-ts 对应版本发布后再打开 |
 | `IM_ALLOWED_ORIGINS` | 只允许本机 | 浏览器 Origin 白名单 |
 | `IM_ADMIN_ADDR` | `127.0.0.1:8081` | 管理接口 `/admin/*`，只给内网；对外端口上没有 |
 | `IM_METRICS_ADDR` | `127.0.0.1:9090` | Prometheus 指标和 pprof，只给内网 |

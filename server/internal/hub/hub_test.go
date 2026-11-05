@@ -30,6 +30,8 @@ func (f *fakeClient) Send(b []byte) bool {
 	f.got = append(f.got, b)
 	return true
 }
+func (f *fakeClient) Suspend(*int64) { f.Kick("suspended") }
+
 func (f *fakeClient) Kick(reason string) {
 	f.mu.Lock()
 	defer f.mu.Unlock()

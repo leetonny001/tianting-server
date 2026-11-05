@@ -25,10 +25,10 @@ func TestMessageMetaHasNoBody(t *testing.T) {
 }
 
 func TestSummaryWithCount(t *testing.T) {
-	if got := summaryWithCount(`{"fields":["userId"]}`, 2); got != `{"count":2,"fields":["userId"]}` {
+	if got := summaryWithFields(`{"fields":["userId"]}`, map[string]any{"count": 2}); got != `{"count":2,"fields":["userId"]}` {
 		t.Errorf("got %s", got)
 	}
-	if got := summaryWithCount(`not json`, 2); got != `not json` {
+	if got := summaryWithFields(`not json`, map[string]any{"count": 2}); got != `not json` {
 		t.Errorf("got %s", got)
 	}
 }

@@ -42,7 +42,8 @@ func OpenSQLite(path string, opt SQLiteOptions) (*SQLite, error) {
 
 func openSQLiteDB(path string) (*sql.DB, error) {
 	// synchronous=FULL：每次提交都 fsync，返回 ack 的消息一定已经落盘（PRD 第 6 节）。
-	dsn := "file:" + path + "?_pragma=journal_mode(WAL)&_pragma=synchronous(FULL)&_pragma=busy_timeout(5000)&_pragma=foreign_keys(1)"
+	// secure_delete=ON：被删消息的原文不留在数据库文件的空闲页里（AC-ADM-32-1）。WAL 里的旧帧要等检查点之后才被覆盖。
+	dsn := "file:" + path + "?_pragma=journal_mode(WAL)&_pragma=synchronous(FULL)&_pragma=busy_timeout(5000)&_pragma=foreign_keys(1)&_pragma=secure_delete(ON)"
 	db, err := sql.Open("sqlite", dsn)
 	if err != nil {
 		return nil, fmt.Errorf("open sqlite: %w", err)
@@ -155,7 +156,7 @@ func (s *SQLite) SaveMessage(ctx context.Context, m Message) (Message, bool, err
 		 VALUES (?, 1, ?, ?, ?, ?, ?)
 		 ON CONFLICT (conv_id) DO UPDATE SET max_seq = max_seq + 1,
 		   last_msg_id = excluded.last_msg_id, last_from = excluded.last_from, last_type = excluded.last_type,
-		   last_text = excluded.last_text, last_ts = excluded.last_ts
+		   last_text = excluded.last_text, last_ts = excluded.last_ts, last_deleted = 0
 		 RETURNING max_seq`, m.ConvID, m.MsgID, m.From, m.Type, m.Summary, m.TS).Scan(&m.Seq); err != nil {
 		return Message{}, false, fmt.Errorf("allocate seq: %w", err)
 	}
@@ -388,6 +389,9 @@ func (s *SQLite) RemoveGroupMembers(ctx context.Context, groupID string, members
 			return nil, nil, err
 		}
 		if n, _ := res.RowsAffected(); n > 0 {
+			if err := deleteGroupMutesTx(ctx, tx, groupID, uid); err != nil {
+				return nil, nil, err
+			}
 			removed = append(removed, uid)
 			ownerGone = ownerGone || uid == g.OwnerID
 		}
@@ -603,7 +607,7 @@ const (
 	SELECT uc.user_id, uc.conv_id, cs.max_seq, COALESCE(rs.seq, 0) AS read_seq, 0 AS join_seq,
 	       '' AS group_name, 0 AS history_visible, uc.peer_id, COALESCE(u.nickname, '') AS peer_nickname, 0 AS member_count, '' AS my_role,
 	       cs.max_seq > 0 AS last_visible, uc.created_at AS joined_at,
-	       cs.last_msg_id, cs.last_from, cs.last_type, cs.last_text, cs.last_ts
+	       cs.last_msg_id, cs.last_from, cs.last_type, cs.last_text, cs.last_ts, cs.last_deleted
 	FROM user_conv uc
 	JOIN conv_seq cs ON cs.conv_id = uc.conv_id
 	LEFT JOIN read_seq rs ON rs.user_id = uc.user_id AND rs.conv_id = uc.conv_id
@@ -618,7 +622,7 @@ const (
 	       gm.joined_at,
 	       COALESCE(cs.last_msg_id, '') AS last_msg_id, COALESCE(cs.last_from, '') AS last_from,
 	       COALESCE(cs.last_type, '') AS last_type, COALESCE(cs.last_text, '') AS last_text,
-	       COALESCE(cs.last_ts, 0) AS last_ts
+	       COALESCE(cs.last_ts, 0) AS last_ts, COALESCE(cs.last_deleted, 0) AS last_deleted
 	FROM group_members gm
 	JOIN chat_groups g ON g.group_id = gm.group_id AND g.dissolved_at = 0
 	LEFT JOIN conv_seq cs ON cs.conv_id = 'group:' || gm.group_id
@@ -628,7 +632,7 @@ const (
 	// convColumns 是外层统一选出的列，顺序与 scanConv 一致（第一列 user_id）。
 	convColumns = `user_id, conv_id, max_seq, read_seq, join_seq, group_name, history_visible, peer_id, peer_nickname, member_count, my_role,
 	       last_visible, CASE WHEN last_visible THEN last_ts ELSE joined_at END AS updated_at,
-	       last_msg_id, last_from, last_type, last_text, last_ts`
+	       last_msg_id, last_from, last_type, last_text, last_ts, last_deleted`
 )
 
 // convQuery 拼出外层查询：branches 是已经填好条件的分支（UNION ALL）。
@@ -699,18 +703,18 @@ func (s *SQLite) GroupConversations(ctx context.Context, groupID string, userIDs
 func scanConv(r rowScanner) (ConvRow, error) {
 	var c ConvRow
 	err := r.Scan(&c.UserID, &c.ConvID, &c.MaxSeq, &c.ReadSeq, &c.JoinSeq, &c.GroupName, &c.HistoryVisible, &c.PeerID, &c.PeerNickname, &c.MemberCount, &c.MyRole,
-		&c.LastVisible, &c.UpdatedAt, &c.Last.MsgID, &c.Last.From, &c.Last.Type, &c.Last.Text, &c.Last.TS)
+		&c.LastVisible, &c.UpdatedAt, &c.Last.MsgID, &c.Last.From, &c.Last.Type, &c.Last.Text, &c.Last.TS, &c.Last.Deleted)
 	return c, err
 }
 
-const msgColumns = `msg_id, client_msg_id, conv_id, seq, from_uid, type, body, ts`
+const msgColumns = `msg_id, client_msg_id, conv_id, seq, from_uid, type, body, ts, deleted_at`
 
 type rowScanner interface{ Scan(dest ...any) error }
 
 func scanMessage(r rowScanner) (Message, error) {
 	var m Message
 	var body string
-	if err := r.Scan(&m.MsgID, &m.ClientMsgID, &m.ConvID, &m.Seq, &m.From, &m.Type, &body, &m.TS); err != nil {
+	if err := r.Scan(&m.MsgID, &m.ClientMsgID, &m.ConvID, &m.Seq, &m.From, &m.Type, &body, &m.TS, &m.DeletedAt); err != nil {
 		return Message{}, err
 	}
 	m.Body = []byte(body)

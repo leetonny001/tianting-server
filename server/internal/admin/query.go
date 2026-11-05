@@ -105,17 +105,20 @@ func (a *Admin) searchUsers(w http.ResponseWriter, r *http.Request) {
 		a.internal(w, "search users", err)
 		return
 	}
-	out := make([]userJSON, len(users))
+	out := make([]userOutJSON, len(users))
 	for i, u := range users {
-		out[i] = userJSON{UserID: u.UserID, Nickname: u.Nickname, Avatar: u.Avatar, CreatedAt: u.CreatedAt, Official: u.Official, Online: a.online(u.UserID)}
+		if out[i], err = a.userOut(r.Context(), u); err != nil {
+			a.internal(w, "user moderation", err)
+			return
+		}
 	}
 	cursor := ""
 	if next != "" {
 		cursor = encodeCursor(next)
 	}
 	writeJSON(w, http.StatusOK, struct {
-		Users      []userJSON `json:"users"`
-		NextCursor string     `json:"nextCursor"`
+		Users      []userOutJSON `json:"users"`
+		NextCursor string        `json:"nextCursor"`
 	}{out, cursor})
 }
 
@@ -250,13 +253,25 @@ func (a *Admin) listGroupMembers(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	type member struct {
-		UserID   string `json:"userId"`
-		Role     string `json:"role"`
-		JoinedAt int64  `json:"joinedAt"`
+		UserID     string          `json:"userId"`
+		Role       string          `json:"role"`
+		JoinedAt   int64           `json:"joinedAt"`
+		MutedUntil json.RawMessage `json:"mutedUntil,omitempty"` // 第二批：禁言中才出现，永久为 null
 	}
+	var mutes map[string]store.Mute
+	if a.mod != nil {
+		if mutes, err = a.store.GroupMutes(r.Context(), gid); err != nil {
+			a.internal(w, "group mutes", err)
+			return
+		}
+	}
+	nowMs := a.clock.Now().UnixMilli()
 	out := make([]member, len(rows))
 	for i, m := range rows {
-		out[i] = member{m.UserID, m.Role, m.JoinedAt}
+		out[i] = member{UserID: m.UserID, Role: m.Role, JoinedAt: m.JoinedAt}
+		if mu, ok := mutes[m.UserID]; ok && mu.Active(nowMs) {
+			out[i].MutedUntil = protocol.NullableMs(mu.Until)
+		}
 	}
 	cursor := ""
 	if next != "" {
@@ -276,6 +291,7 @@ type messageMetaJSON struct {
 	Type       string `json:"type"`
 	BodyLength int    `json:"bodyLength"`
 	TS         int64  `json:"ts"`
+	Deleted    bool   `json:"deleted,omitempty"`
 }
 
 // queryMessageMeta 是 POST /admin/convs/messages/query：不受成员关系和 historyVisible 限制，已解散的群照常返回；
@@ -326,7 +342,7 @@ func (a *Admin) queryMessageMeta(w http.ResponseWriter, r *http.Request) {
 	}
 	out := make([]messageMetaJSON, len(msgs))
 	for i, m := range msgs {
-		out[i] = messageMetaJSON{m.Seq, m.MsgID, m.From, m.Type, m.BodyLength, m.TS}
+		out[i] = messageMetaJSON{m.Seq, m.MsgID, m.From, m.Type, m.BodyLength, m.TS, m.Deleted}
 	}
 	noteAuditCount(r.Context(), len(out))
 	writeJSON(w, http.StatusOK, struct {
@@ -338,7 +354,17 @@ func (a *Admin) queryMessageMeta(w http.ResponseWriter, r *http.Request) {
 // auditNote 让处理函数把结果条数交给审计（summary.count，PRD-admin F-ADM-14 规则 3）。
 type auditNoteKey struct{}
 
-type auditNote struct{ count *int }
+type auditNote struct {
+	count  *int
+	fields map[string]any
+}
+
+// noteAuditFields 让处理函数把白名单字段并进 result 的 summary（如 seq 范围）。不能传正文。
+func noteAuditFields(ctx context.Context, fields map[string]any) {
+	if note, ok := ctx.Value(auditNoteKey{}).(*auditNote); ok {
+		note.fields = fields
+	}
+}
 
 func noteAuditCount(ctx context.Context, n int) {
 	if note, ok := ctx.Value(auditNoteKey{}).(*auditNote); ok {
@@ -346,13 +372,15 @@ func noteAuditCount(ctx context.Context, n int) {
 	}
 }
 
-// summaryWithCount 把结果条数并进 summary_json；解析不了时保持原样（审计不能因此丢失）。
-func summaryWithCount(summary string, n int) string {
+// summaryWithFields 把字段并进 summary_json；解析不了时保持原样（审计不能因此丢失）。
+func summaryWithFields(summary string, fields map[string]any) string {
 	var s map[string]any
 	if json.Unmarshal([]byte(summary), &s) != nil {
 		return summary
 	}
-	s["count"] = n
+	for k, v := range fields {
+		s[k] = v
+	}
 	b, err := json.Marshal(s)
 	if err != nil {
 		return summary

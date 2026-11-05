@@ -134,7 +134,7 @@ func writeTip(ctx context.Context, tx *sql.Tx, groupID, from, kind string, targe
 		 VALUES (?, 1, ?, ?, 'tip', ?, ?)
 		 ON CONFLICT (conv_id) DO UPDATE SET max_seq = max_seq + 1,
 		   last_msg_id = excluded.last_msg_id, last_from = excluded.last_from, last_type = excluded.last_type,
-		   last_text = excluded.last_text, last_ts = excluded.last_ts
+		   last_text = excluded.last_text, last_ts = excluded.last_ts, last_deleted = 0
 		 RETURNING max_seq`, m.ConvID, m.MsgID, from, truncRunes(summary, 100), now).Scan(&m.Seq); err != nil {
 		return nil, fmt.Errorf("allocate tip seq: %w", err)
 	}
@@ -355,6 +355,9 @@ func (s *SQLite) KickMembers(ctx context.Context, groupID, actor string, members
 		if _, err := tx.ExecContext(ctx, `DELETE FROM group_members WHERE group_id = ? AND user_id = ?`, groupID, m); err != nil {
 			return nil, err
 		}
+		if err := deleteGroupMutesTx(ctx, tx, groupID, m); err != nil {
+			return nil, err
+		}
 		removed = append(removed, m)
 	}
 	if err := updateMemberCount(ctx, tx, groupID); err != nil {
@@ -414,6 +417,9 @@ func (s *SQLite) LeaveGroup(ctx context.Context, groupID, actor string, now int6
 		return LeaveResult{}, err
 	}
 	if _, err := tx.ExecContext(ctx, `DELETE FROM group_members WHERE group_id = ? AND user_id = ?`, groupID, actor); err != nil {
+		return LeaveResult{}, err
+	}
+	if err := deleteGroupMutesTx(ctx, tx, groupID, actor); err != nil {
 		return LeaveResult{}, err
 	}
 	if err := updateMemberCount(ctx, tx, groupID); err != nil {
@@ -501,6 +507,9 @@ func (s *SQLite) SetGroupRole(ctx context.Context, groupID, actor, target string
 // dissolveTx 是解散的实现（F-SOC-26 规则 2）：DissolveGroup、客户端解散、最后一人退群共用。
 func dissolveTx(ctx context.Context, tx *sql.Tx, groupID string, now int64) error {
 	if _, err := tx.ExecContext(ctx, `DELETE FROM group_members WHERE group_id = ?`, groupID); err != nil {
+		return err
+	}
+	if err := deleteGroupMutesTx(ctx, tx, groupID, ""); err != nil {
 		return err
 	}
 	_, err := tx.ExecContext(ctx, `UPDATE chat_groups SET dissolved_at = ?, member_count = 0 WHERE group_id = ?`, max(now, 1), groupID)

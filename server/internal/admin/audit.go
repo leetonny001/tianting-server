@@ -17,9 +17,10 @@ import (
 )
 
 const (
-	maxAuditTargets = 50                  // 超过时只记前 50 个和总数（PRD-admin F-KEY-04 规则 2）
-	maxAuditSpan    = 31 * 24 * time.Hour // 审计查询的最大时间范围
-	maxAuditLimit   = 200
+	maxAuditTargets    = 50                  // 超过时只记前 50 个和总数（PRD-admin F-KEY-04 规则 2）
+	maxAuditSpan       = 31 * 24 * time.Hour // 审计查询的最大时间范围
+	maxAuditLimit      = 200
+	maxAuditValueRunes = 200
 )
 
 // auditedReadScopes 是虽然只读、也要审计的 scope（PRD-admin F-KEY-04 规则 1）：
@@ -47,7 +48,7 @@ func (a *Admin) withAudit(route string, next http.HandlerFunc) http.HandlerFunc 
 			return
 		}
 		r.Body = io.NopCloser(bytes.NewReader(body))
-		targets, summary := auditDigest(r, body)
+		targets, summary := auditDigest(r, route, body)
 		entry := store.AdminAudit{
 			TS: a.clock.Now().UnixMilli(), Caller: info.Caller, Operator: info.Operator, RequestID: info.RequestID,
 			Route: route, TargetsJSON: targets, SummaryJSON: summary, Phase: store.AuditIntent,
@@ -62,7 +63,10 @@ func (a *Admin) withAudit(route string, next http.HandlerFunc) http.HandlerFunc 
 		next(rec, r.WithContext(context.WithValue(r.Context(), auditNoteKey{}, note)))
 		entry.TS, entry.Phase, entry.Code = a.clock.Now().UnixMilli(), store.AuditResult, rec.code()
 		if note.count != nil {
-			entry.SummaryJSON = summaryWithCount(entry.SummaryJSON, *note.count)
+			entry.SummaryJSON = summaryWithFields(entry.SummaryJSON, map[string]any{"count": *note.count})
+		}
+		if note.fields != nil {
+			entry.SummaryJSON = summaryWithFields(entry.SummaryJSON, note.fields)
 		}
 		if err := a.appendAudit(r, entry); err != nil {
 			// 业务已经执行完，不能再回滚：记日志告警，对账（console-server F-CON-09）会发现缺失的 result。
@@ -79,7 +83,7 @@ func (a *Admin) appendAudit(r *http.Request, e store.AdminAudit) error {
 }
 
 // auditDigest 返回 targets_json 和 summary_json。目标来自路径参数和请求体里的 userId / groupId / members / users[].userId。
-func auditDigest(r *http.Request, body []byte) (targets, summary string) {
+func auditDigest(r *http.Request, route string, body []byte) (targets, summary string) {
 	var ids []string
 	add := func(id string) {
 		if id != "" && !slices.Contains(ids, id) {
@@ -140,10 +144,57 @@ func auditDigest(r *http.Request, body []byte) (targets, summary string) {
 	}
 	sort.Strings(names)
 	tb, _ := json.Marshal(t)
-	sb, _ := json.Marshal(struct {
-		Fields []string `json:"fields"`
-	}{names})
+	out := map[string]any{"fields": names}
+	for _, k := range auditValueFields[route] {
+		if v, ok := auditValue(k, fields[k]); ok {
+			out[k] = v
+		}
+	}
+	sb, _ := json.Marshal(out)
 	return string(tb), string(sb)
+}
+
+// auditValueFields 是这些路由要记下**值**的字段（AC-ADM-31-7：msgId 列表和理由）。默认只记字段名；这里都是操作人自己填的说明或 ID，
+// 不会是消息正文。
+var auditValueFields = map[string][]string{
+	"POST /admin/users/{userId}/ban":   {"reason", "durationSeconds"},
+	"POST /admin/users/{userId}/unban": {"reason"},
+	"POST /admin/mute":                 {"reason", "scope", "durationSeconds"},
+	"POST /admin/unmute":               {"reason", "scope"},
+	"POST /admin/messages/delete":      {"reason", "msgIds"},
+	"POST /admin/msg-grants":           {"reason", "ticket", "quarantine"},
+	"POST /admin/convs/messages/body":  {"grantId", "beforeSeq", "limit"},
+}
+
+// auditValue 取字段值并限制大小：intent 在校验之前写，值可能不合法或很长。
+func auditValue(key string, raw json.RawMessage) (any, bool) {
+	if len(raw) == 0 {
+		return nil, false
+	}
+	if key == "msgIds" {
+		var ids []string
+		if json.Unmarshal(raw, &ids) != nil {
+			return nil, false
+		}
+		if len(ids) > maxAuditTargets {
+			return map[string]any{"first": ids[:maxAuditTargets], "count": len(ids)}, true
+		}
+		return ids, true
+	}
+	var v any
+	if json.Unmarshal(raw, &v) != nil {
+		return nil, false
+	}
+	switch t := v.(type) {
+	case string:
+		if r := []rune(t); len(r) > maxAuditValueRunes {
+			return string(r[:maxAuditValueRunes]), true
+		}
+		return t, true
+	case float64, bool, nil:
+		return t, true
+	}
+	return nil, false // 对象、数组：这些字段不该是这种类型，不记
 }
 
 // codeRecorder 记下响应状态码和错误响应里的业务码（错误响应体是 {"code":N,"msg":...}）。

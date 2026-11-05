@@ -30,6 +30,8 @@ import (
 // Handler 处理一条已解析的上行帧（ping 除外），返回要回给客户端的 ack；nil 表示不回复。
 type Handler interface {
 	Handle(ctx context.Context, s delivery.Session, in protocol.InFrame) *protocol.OutFrame
+	// AuthMutedUntil 是 auth ack 的 mutedUntil（第二批）：没有禁言时返回 nil，永久禁言是 null。
+	AuthMutedUntil(ctx context.Context, uid string) json.RawMessage
 }
 
 // TokenVerifier 校验 token。
@@ -40,6 +42,8 @@ type TokenVerifier interface {
 // RevocationChecker 返回用户当前的令牌版本号；token 里的版本号更小，说明是强制下线前签发的。
 type RevocationChecker interface {
 	TokenVersion(ctx context.Context, userID string) (int64, error)
+	// ActiveBan 区分"被强制下线"和"被封禁"：两者都让旧 token 失效，给客户端的原因不同（F-ADM-13）。
+	ActiveBan(ctx context.Context, userID string, now int64) (banned bool, until *int64, err error)
 }
 
 // Config 是网关参数。
@@ -153,10 +157,14 @@ func (g *Gateway) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		gw:   g,
 	}
 	// auth 的 ack 先入队、再登记到在线表：保证客户端先收到 ack，再收到任何推送。
-	c.write(protocol.AckOK(authID, protocol.AuthAck{UserID: uid, ServerTime: g.clock.Now().UnixMilli()}))
+	c.write(protocol.AckOK(authID, protocol.AuthAck{UserID: uid, ServerTime: g.clock.Now().UnixMilli(), MutedUntil: g.handler.AuthMutedUntil(r.Context(), uid)}))
 	for _, old := range g.hub.Register(c, g.cfg.MaxConnsPerUser) {
 		old.Kick(protocol.KickTooManyConns)
 		g.log.Info("conn evicted", "conn", old.ConnID(), "uid", uid, "reason", protocol.KickTooManyConns)
+	}
+	// 校验版本号和进入在线表之间可能刚好发生封禁或强制下线：那次踢人踢不到这个连接，这里再查一次，不留漏网的连接。
+	if v, err := g.revocation.TokenVersion(r.Context(), uid); err == nil && claims.Version < v {
+		g.kickRevoked(r.Context(), c, uid)
 	}
 	g.handshake(metrics.HandshakeOK)
 	g.metrics.Connections.WithLabelValues(platform).Inc()
@@ -266,8 +274,9 @@ func (g *Gateway) authenticate(ctx context.Context, ws *websocket.Conn, ip, mask
 	}
 	if claims.Version < version {
 		g.handshake(metrics.HandshakeTokenRevoked)
-		g.kick(ws, protocol.KickBanned)
-		reject(protocol.CloseTokenRevoked, protocol.KickBanned, claims.UserID)
+		ev := g.revokedEvent(ctx, claims.UserID)
+		g.kickEvent(ws, ev)
+		reject(protocol.CloseTokenRevoked, ev.Reason, claims.UserID)
 		return auth.Claims{}, "", false
 	}
 	if errors.Is(verr, auth.ErrExpiredToken) {
@@ -282,12 +291,40 @@ func (g *Gateway) authenticate(ctx context.Context, ws *websocket.Conn, ip, mask
 // kick 下发 kicked 事件，**写完后**再用对应关闭码关闭连接（PRD F-AUTH-03 规则 3）。
 // 不走异步发送队列：先入队再关闭的话，kicked 帧可能还没发出去连接就断了。
 func (g *Gateway) kick(ws *websocket.Conn, reason string) {
-	g.metrics.Kicks.WithLabelValues(reason).Inc()
-	b, _ := json.Marshal(protocol.Event(protocol.KickedEvent{Type: protocol.EventKicked, Reason: reason}))
+	g.kickEvent(ws, protocol.KickedEvent{Type: protocol.EventKicked, Reason: reason})
+}
+
+func (g *Gateway) kickEvent(ws *websocket.Conn, ev protocol.KickedEvent) {
+	g.metrics.Kicks.WithLabelValues(ev.Reason).Inc()
+	b, _ := json.Marshal(protocol.Event(ev))
 	ctx, cancel := context.WithTimeout(context.Background(), g.cfg.WriteTimeout)
 	defer cancel()
 	_ = ws.Write(ctx, websocket.MessageText, b) // coder/websocket 的 Write 可以并发调用
-	ws.Close(websocket.StatusCode(protocol.KickCloseCode[reason]), reason)
+	ws.Close(websocket.StatusCode(protocol.KickCloseCode[ev.Reason]), ev.Reason)
+}
+
+// revokedEvent：旧 token 失效的原因。正在封禁中是 suspended（带 until），否则是强制下线 banned。查询失败按 banned，反正都要断开。
+func (g *Gateway) revokedEvent(ctx context.Context, uid string) protocol.KickedEvent {
+	banned, until, err := g.revocation.ActiveBan(ctx, uid, g.clock.Now().UnixMilli())
+	if err != nil {
+		g.log.Error("check ban", "err", err, "uid", uid)
+	}
+	if !banned {
+		return protocol.KickedEvent{Type: protocol.EventKicked, Reason: protocol.KickBanned}
+	}
+	return protocol.KickedEvent{Type: protocol.EventKicked, Reason: protocol.KickSuspended, Until: protocol.NullableMs(until)}
+}
+
+// kickRevoked 踢掉已经登记的连接，原因同 revokedEvent。
+func (g *Gateway) kickRevoked(ctx context.Context, c *conn, uid string) {
+	ev := g.revokedEvent(ctx, uid)
+	if ev.Reason == protocol.KickSuspended {
+		var until *int64
+		_ = json.Unmarshal(ev.Until, &until)
+		c.Suspend(until)
+		return
+	}
+	c.Kick(ev.Reason)
 }
 
 // conn 是一个 WebSocket 连接，实现 hub.Client。
@@ -344,6 +381,15 @@ func (c *conn) Kick(reason string) {
 	c.kickOnce.Do(func() {
 		c.closed.CompareAndSwap(nil, &closeReason{code: protocol.KickCloseCode[reason], reason: kickedPrefix + reason, by: "server"})
 		go c.gw.kick(c.ws, reason)
+	})
+}
+
+// Suspend 封禁时踢下线（异步，只生效一次）。
+func (c *conn) Suspend(until *int64) {
+	c.kickOnce.Do(func() {
+		reason := protocol.KickSuspended
+		c.closed.CompareAndSwap(nil, &closeReason{code: protocol.KickCloseCode[reason], reason: kickedPrefix + reason, by: "server"})
+		go c.gw.kickEvent(c.ws, protocol.KickedEvent{Type: protocol.EventKicked, Reason: reason, Until: protocol.NullableMs(until)})
 	})
 }
 

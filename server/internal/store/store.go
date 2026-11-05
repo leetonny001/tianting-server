@@ -24,6 +24,7 @@ type Message struct {
 	Type        string
 	Body        json.RawMessage
 	TS          int64
+	DeletedAt   int64 // 软删除的时间（第二批）；0 = 没有删除。删除后 Body 是 {}
 
 	// 以下字段只在 SaveMessage 时传入，不随消息读出。
 	Summary   string   // 会话列表里的摘要（调用方截断好，前 100 个码点）
@@ -84,11 +85,12 @@ type ConvRow struct {
 
 // LastMessage 是会话最后一条消息的摘要。
 type LastMessage struct {
-	MsgID string
-	From  string
-	Type  string
-	Text  string
-	TS    int64
+	MsgID   string
+	From    string
+	Type    string
+	Text    string
+	TS      int64
+	Deleted bool // 被删除（第二批）：Text 为空
 }
 
 // User 是 IM 用户（PRD F-USER-01）。
@@ -105,6 +107,7 @@ type Store interface {
 	AdminQueryStore
 	SocialStore
 	GroupStore
+	ModerationStore
 
 	// SaveMessage 为消息分配会话内递增 seq 并保存。
 	// 同一发送者重复提交同一 ClientMsgID 时不新建，返回第一次保存的消息且 dup=true。

@@ -813,26 +813,9 @@ func (s *Service) PurgeSocialNow(ctx context.Context) (int, error) {
 	return s.store.PurgeSocial(ctx, s.cutoff())
 }
 
-// RunSocialPurge 每小时执行一次清理任务，直到 stop 关闭（单节点；集群化时改为只在一个节点上跑，记入 ARCH）。
-func (s *Service) RunSocialPurge(stop <-chan struct{}) {
-	t := time.NewTicker(time.Hour)
-	defer t.Stop()
-	for {
-		select {
-		case <-stop:
-			return
-		case <-t.C:
-			if n, err := s.PurgeSocialNow(context.Background()); err != nil {
-				s.log.Error("purge social", "err", err)
-			} else if n > 0 {
-				s.log.Info("purged social rows", "rows", n)
-			}
-			// 建群去重记录保留 7 天（F-SOC-21 规则 1）。
-			if err := s.store.PurgeGroupReqs(context.Background(), s.clock.Now().Add(-7*24*time.Hour).UnixMilli()); err != nil {
-				s.log.Error("purge group requests", "err", err)
-			}
-		}
-	}
+// PurgeGroupReqs 清理 7 天前的建群去重记录（F-SOC-21 规则 1）。由定时任务调用。
+func (s *Service) PurgeGroupReqs(ctx context.Context) (int, error) {
+	return 0, s.store.PurgeGroupReqs(ctx, s.clock.Now().Add(-7*24*time.Hour).UnixMilli())
 }
 
 // ResetLimits 清空某用户的全部令牌桶（/admin/test/limits/reset）：发送限流和 5.2 节全部键。
