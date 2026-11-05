@@ -48,5 +48,5 @@
 | Q15 | 管理后台 H5、运维后台 H5 页面 | ✅ | 2026-11-05 管理后台第一批 FE-400～416、第二批 FE-420～423，运维 FE-500～506 已完成；FE-424 等 push 协议；真机和其他浏览器在 P-13 |
 | Q16 | PC（Tauri 壳）——需要安装 Rust，**需授权** | ⏸ | 见 P-14 |
 | Q17 | `sdk-kotlin` + Android（Kotlin + Compose） | 🔄 | 2026-11-05 sdk-kotlin 首版 `4fe4934`（持久化用自有 LocalDatabase 接口，不用 Room，核心模块保持纯 JVM）；集成测试本机通过，CI 上等部署密钥（P-15）。Android App 首版 `95b963b`（M3、M4、第二批提示；UI 测试 120 个、真实服务端端到端 7 个）；CI 的 lint、单测、assemble 也等 P-15，真机和输入法组字未验证 |
-| Q18 | `sdk-swift` + iOS（Swift + SwiftUI） | 🔄 | 2026-11-05 sdk-swift 首版 `4815019`（用系统 SQLite3，不用 GRDB，没有第三方依赖）；集成测试本机通过，CI 上等部署密钥（P-15）；iOS App 进行中 |
+| Q18 | `sdk-swift` + iOS（Swift + SwiftUI） | 🔄 | 2026-11-05 sdk-swift 首版 `4815019`（用系统 SQLite3，不用 GRDB，没有第三方依赖）；集成测试本机通过，CI 上等部署密钥（P-15）。iOS App 首版 `fba33c7`（M3、M4、第二批提示；单测 51 个，真实服务端端到端 39 个，iOS 27 和 iOS 18.5 两台模拟器）；CI 的构建和单测也等 P-15，真机、iOS 17、输入法组字未验证 |
 | Q19 | 聊天室与系统推送（二期，替换腾讯 IM 的直播聊天室和站内推送） | ⬜ | |

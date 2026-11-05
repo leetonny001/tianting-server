@@ -17,9 +17,10 @@
 | P-12 | 2026-11-04 | 提供 EP 压测用的测试机（Linux，8 核以上，16GB，能装 docker），或决定用付费的 GitHub 大规格 runner | 要花钱或要你的机器。开发机不装 Prometheus、Grafana；GitHub 的标准 runner 配置查不到，按惯例这个私有仓库大概只有 2 核，同机放不下 1 万连接、压测客户端和观测组件 | AC-OPS-06-2、06-10、07-8，90-1 和 90-2 的 Grafana、Prometheus 部分没法验收，第一批运维不能算验收完成。不影响继续开发 | 目标服务器确定后直接用它，C-50 上线前本来就要在目标机重测，可以合并成一次 |
 | P-13 | 2026-11-04 | 上线前找人做独立渗透测试（AC-OPS-90-6），并在 Firefox、Safari、Edge 和真机上回归（FE-507） | AI 的自查和实现有共同的盲点，AC 要求手工；真机和人工 AI 做不了。检查表和重点见 pentest-ops-2026-11-04.md | 第一批运维不能算验收完成。不影响继续开发 | 和 P-12 的目标服务器一起安排，部署后做 |
 | P-14 | 2026-11-05 | 在开发机安装 Rust（Q16 PC Tauri 壳，FE-312、FE-313） | 安装系统软件要你授权 | PC 端不开工；H5、原生端不受影响 | 等要做 PC 时回复“授权安装 Rust” |
-| P-15 | 2026-11-05 | 运行 `tianting-sdk-kotlin/scripts/setup-ci-deploy-key.sh`、`tianting-sdk-swift/scripts/setup-ci-deploy-key.sh`、`tianting-android/scripts/setup-ci-deploy-key.sh`（只读部署密钥 + Actions secret） | 建密钥和 secret 要你本人操作 | 两个原生 SDK 的 CI 不跑集成测试；Android 的 CI 不跑 lint、单测和 assemble，显示绿色但只跑了颜色检查 | 有空时运行一次 |
+| P-15 | 2026-11-05 | 运行 `tianting-sdk-kotlin/scripts/setup-ci-deploy-key.sh`、`tianting-sdk-swift/scripts/setup-ci-deploy-key.sh`、`tianting-android/scripts/setup-ci-deploy-key.sh`、`tianting-ios/scripts/setup-ci-deploy-key.sh`（只读部署密钥 + Actions secret） | 建密钥和 secret 要你本人操作 | 两个原生 SDK 的 CI 不跑集成测试；Android 和 iOS 的 CI 不跑构建和单测，显示绿色但只跑了静态检查 | 有空时运行一次 |
 | P-16 | 2026-11-05 | 查看 emulator-5554：`com.vrevneoiw.eqfe.yi_sport` 的 `NativePromotionActivity` 从 12:18 起有 ANR（12:18、12:32 两份记录），弹窗还开着。开发 Android App 的子代理在这段时间向这台模拟器注入过点击和返回键，弹窗重新出现时还向当时的焦点窗口发过一次 `input text backtest` 和一次返回键，点过一次“等待” | 这是你的业务 App 和模拟器，AI 不动。ANR 原因没查，不能排除和这些注入有关 | 弹窗占着焦点，影响这台模拟器上的操作 | 确认 yi 的页面状态和输入框没有多出 `backtest`；需要时自己关掉弹窗。以后天听 Android 测试用别的 AVD（`ANDROID_SERIAL`） |
 | P-17 | 2026-11-05 | Android 首版的 2 个口径：① 4001 文案仍是 PRD 的“当前版本过低，请刷新页面”，原生端其实没有“刷新”（PRD-ui 3.5 节规定不能覆盖）；② 好友制发起单聊的提示对官方账号也会弹（AC-UI-05-6 没写这种情况，弹窗时拿不到资料），H5 和 Android 一致 | 产品文案和规则，改 AC 是你的决定 | 不阻塞 | 都有默认：① 原生端改成“当前版本过低，请更新 App”；② 保持现状 |
+| P-18 | 2026-11-05 | 是否结束遗留进程 `im-server`（PID 87183，路径在本会话 scratchpad 下，运行约 28 小时，只监听 127.0.0.1:60971～60975，检查时没有已建立的连接） | AI 尝试结束时被权限规则拒绝，所以留给你决定 | 只占少量内存和本机端口，不影响开发 | 确认不需要后运行 `kill 87183` |
 
 ## 已处理
 

@@ -28,7 +28,7 @@
 | FE-353 | ⏸ 等 push 协议 | |
 | FE-354 | ⬜ 未开始 | P1，全群禁言 |
 | FE-380～FE-382、FE-386 Android | 🟡 2026-11-05 首版 | tianting-sdk-kotlin `4fe4934`、tianting-android `95b963b`。本机：JVM 21 个、Compose UI 120 个、真实服务端端到端 7 个（3 轮里 1 轮有 1 个失败，判断是测试框架竞态，未证实）。**未验证**：CI 的 android job（等 P-15）、真机、Pixel 7 API 34、输入法组字（AC-UI-10-2、10-7）、多端红点（23-4）、关闭可被搜索（30-1）、600 群（32-2）、断网状态条 |
-| FE-383～FE-385、FE-387 iOS | 🔄 进行中 | tianting-sdk-swift `4815019`；App 开发中 |
+| FE-383～FE-385、FE-387 iOS | 🟡 2026-11-05 首版 | tianting-sdk-swift `4815019`、tianting-ios `fba33c7`。适用 AC 223 条，173 条有编号引用（grep 统计，不等于逐条复核）；约 37 条已实现但没有自动化（要改写 ack 或造数据，见 tianting-ios 提交记录）。**未验证**：CI 的 build-and-test（等 P-15）、真机、iOS 17、输入法组字（AC-UI-10-2、10-7）、多端红点（23-4）、Release 真实收发 |
 | FE-200～FE-202 SDK 缺口 | ✅ 完成 | tianting-sdk-ts `572312a`、`3eb87f7`：`parseConvIdStrict`（`protocol/vectors/convid.json`）、`peerId`、`totalUnread` / `pendingCount` 事件、`sendFailed` |
 | FE-220～FE-222、FE-224、FE-229～FE-232、FE-235、FE-237（M3 部分） | 🟡 第一批 | tianting-web `3859f45`：工程与 CI 检查（token、对比度、颜色字面量、品牌词、首屏体积）、应用壳、通用组件、气泡、发送状态、消息菜单、输入区、状态条 / 被踢弹窗 / 标题、我与设置。社交页面 FE-238～FE-244 等 PRD-social 服务端 |
 
