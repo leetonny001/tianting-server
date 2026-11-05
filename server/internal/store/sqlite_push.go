@@ -130,6 +130,7 @@ func writePushChunk(ctx context.Context, tx *sql.Tx, users []string, w PushInbox
 	for _, uid := range users {
 		args = append(args, uid)
 	}
+	// #nosec G202 -- 拼接的只有固定的占位符，取值全部走参数绑定
 	rows, err := tx.QueryContext(ctx,
 		`INSERT INTO push_seq (user_id, max_seq) VALUES `+strings.TrimSuffix(strings.Repeat(`(?, 1),`, len(users)), ",")+
 			` ON CONFLICT (user_id) DO UPDATE SET max_seq = max_seq + 1 RETURNING user_id, max_seq`, args...)
@@ -156,6 +157,7 @@ func writePushChunk(ctx context.Context, tx *sql.Tx, users []string, w PushInbox
 	for _, uid := range users {
 		args = append(args, uid, seqs[uid], w.Record.PushID, w.Type, data, w.Record.FirstTS, w.ExpiresAt)
 	}
+	// #nosec G202 -- 拼接的只有固定的占位符，取值全部走参数绑定
 	_, err = tx.ExecContext(ctx, `INSERT INTO push_inbox (user_id, push_seq, push_id, type, data, created_at, expires_at) VALUES `+
 		strings.TrimSuffix(strings.Repeat(row, len(users)), ","), args...)
 	return err

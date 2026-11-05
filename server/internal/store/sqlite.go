@@ -537,6 +537,7 @@ func (s *SQLite) MissingUsers(ctx context.Context, userIDs []string) ([]string, 
 		for i, id := range ids {
 			args[i] = id
 		}
+		// #nosec G202 -- 拼接的只有占位符，取值全部走参数绑定
 		rows, err := s.db.QueryContext(ctx, `SELECT user_id FROM users WHERE user_id IN (`+placeholders(len(ids))+`)`, args...)
 		if err != nil {
 			return nil, err
