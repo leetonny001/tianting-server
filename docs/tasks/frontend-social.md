@@ -18,7 +18,7 @@
 | FE-100 ～ FE-103（sdk-ts，M3） | ✅ 2026-11-04 | tianting-sdk-ts：`SocialState` 纯状态机（与服务端 Go 参考客户端逐条对应，跑 `vectors/social.json`）、同步轮驱动（连接后先 `convs`、200ms 去抖、`restart`、ack 不连续补轮、4290 后 6 秒重试）、`friends` / `friendRequests` / `blocks` / `socialSettings` 快照与事件、好友 / 拉黑 / 搜索 / 隐私命令、`relationOf`、资料缓存（10 分钟，同一事件循环合并、每批 100，没返回的人 10 分钟内不重查）、`loadMyGroups`、`messageFor`、`refreshSocial`。单元测试 142 个、集成测试 9 个 |
 | FE-110 ～ FE-111（sdk-ts，M4） | ✅ 2026-11-04 | tianting-sdk-ts `9c1ae4d`：群接口、`IMError.userId`（同时解析 `details.userId`）、`tip` 消息、`tipText`（`vectors/social.json` 的 `tips` 用例）、`groupChanged` 合并在途请求并把 `GroupInfo` 带给界面。与任务描述的差异：提示消息的会话摘要先由 SDK 按服务端同一规则本地生成，下次 `convs` 时覆盖，不在每条提示后重拉 `convs`（大群里一次操作会让所有在线成员同时请求）。 |
 | FE-130 ～ FE-133（sdk-kotlin，M5） | ✅ 2026-11-05 | `4fe4934`。FE-131 写的 Room 改成自有 `LocalDatabase` 接口（核心模块保持纯 JVM，JVM 和 Android 执行同一份 SQL）。未做：Android 上杀进程的仪器测试（JVM 重开文件和真实 server 冷启动做了）、ktlint / detekt、Maven 发布 |
-| FE-140 ～ FE-143（sdk-swift，M6） | ⬜ 未开始 | 随 Q18 首版 |
+| FE-140 ～ FE-143（sdk-swift，M6） | ✅ 2026-11-05 | `4815019`。FE-141 写的 GRDB 改成系统 SQLite3。未验证：真实弱网和前后台切换、App 挂起恢复、主线程写库的真机性能 |
 
 ## 总览
 
