@@ -815,3 +815,34 @@ func TestTCSOC2009ConcurrentInviteKick(t *testing.T) {
 		t.Fatalf("memberCount=%d total=%d", info.MemberCount, total)
 	}
 }
+
+// 操作者发起群管理操作的连接也要实时收到提示消息（AC-UI-39-1、37-1）：
+// 操作者的提示消息只有一个 ack，ack 里没有消息本身，不下发就要等下一条消息触发缺口补拉才能看到。
+func TestOperatorConnReceivesOwnTip(t *testing.T) {
+	s := newSocEnv(t)
+	s.usersNamed("alice", "bob", "carol", "dave")
+	s.mutual("alice", "bob", "carol", "dave")
+	a, other := s.dial("alice", "web"), s.dial("alice", "ios")
+	gid := createG(t, a, "bob", "carol").GroupID
+	wantTip := func(c *client, kind string) protocol.Message {
+		t.Helper()
+		m := c.waitCmdTimeout(protocol.CmdMsg, 3*time.Second).msg(t)
+		if m.Type != protocol.MsgTip || m.Body.Tip == nil || m.Body.Tip.Kind != kind || m.From != "alice" {
+			t.Fatalf("want %s tip from alice, got %+v", kind, m)
+		}
+		return m
+	}
+	wantTip(a, "created")
+	wantTip(other, "created")
+	mustAck[protocol.Empty](t, a.call(protocol.CmdGroupUpdate, map[string]any{"groupId": gid, "name": "周末球局"}))
+	m := wantTip(a, "renamed")
+	wantTip(other, "renamed")
+	mustAck[protocol.GroupInviteAck](t, a.call(protocol.CmdGroupInvite, map[string]any{"groupId": gid, "members": []string{"dave"}}))
+	if n := wantTip(a, "joined"); n.Seq <= m.Seq {
+		t.Fatalf("seq %d after %d", n.Seq, m.Seq)
+	}
+	// 操作者自己的未读不增加（发言即已读，F-SOC-29 规则 5）。
+	if got := convOf(t, a, gid); got.Unread != 0 {
+		t.Fatalf("operator unread = %d", got.Unread)
+	}
+}

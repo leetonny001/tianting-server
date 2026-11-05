@@ -105,7 +105,7 @@ func (s *Service) deliverTip(ctx context.Context, tip *store.Message, exceptConn
 		s.log.Error("load members for tip", "err", err)
 		return
 	}
-	s.fanout(*tip, members, exceptConn)
+	s.fanout(*tip, members, "") // 操作者的连接也要收到：ack 里没有提示消息本身（AC-UI-39-1）
 	if tip.From != "" {
 		s.pushReadUpdated(tip.From, tip.ConvID, tip.Seq, exceptConn) // 发言即已读（F-SOC-29 规则 5）
 	}

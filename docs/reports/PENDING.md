@@ -14,16 +14,18 @@
 | P-2 | 2026-11-02 | 创建"自主开发"定时任务 `im-autodev`（每天 09:30、14:30） | 安全分类器要求本人确认：任务会自动改代码并推送 | 只有日报，开发要在聊天里让 AI 做 | 按 [AUTODEV_TASK.md](../process/AUTODEV_TASK.md) 在应用里创建，或允许 AI 创建 |
 | P-1 | 2026-11-02 | gh 令牌补 `workflow` 权限：`gh auth refresh -h github.com -s workflow` | 账号权限变更 | 无阻塞：AI 修改 `.github/workflows/` 时改用 SSH 推送即可 | 有空时做一次 |
 | P-11 | 2026-11-04 | AC-OPS-04-2 今日累计的验收条件。PRD-ops v1.1 已放宽到 3%，但 5 轮实测 1229.5、1237.2、1262.9、1251.4、1296.8（误差 2.5%～8.1%） | `increase()` 的外推误差取决于抓取历史和当时的抓取相位，波动大，约 13 分钟的历史时超过 3%，最大到 8.1%。AC 的前提“干净的 Prometheus”本身不成立，要改 AC，属于产品决定 | testenv 工作流持续失败（只有这一项），其他项都通过 | 保留 3%，前提改为“已抓取该节点 30 分钟以上”，验收时把这一步排到后面（按外推估算约 1.4%，要跑了才知道）。原来的 5% 方案已被实测否定。**2026-11-05 更正**：CI 日志实际是 5 轮，还有 `1b6e284` 的 1297.6（误差 8.1%），范围是 2.5%～8.1%。建议先实测再定；仍不稳定就改用计数器差值验收 |
-| P-14 | 2026-11-05 | 确认主仓库未提交改动的归属：BE-220 起的第二批（`scheduler/`、`quarantine/`、`moderation.go`、迁移 0009～0012 等），2026-11-05 09:01 起出现，日报检查期间从 12 个文件增加到 35 个 | 规则要求不动不是自己留下的改动，AI 无法判断归属 | 主仓库的其他工作要等它；如果是残留，有丢失风险 | 先看运行中的会话"AI 使用技能分享会"是不是在做；让它收尾并推送 |
 | P-12 | 2026-11-04 | 提供 EP 压测用的测试机（Linux，8 核以上，16GB，能装 docker），或决定用付费的 GitHub 大规格 runner | 要花钱或要你的机器。开发机不装 Prometheus、Grafana；GitHub 的标准 runner 配置查不到，按惯例这个私有仓库大概只有 2 核，同机放不下 1 万连接、压测客户端和观测组件 | AC-OPS-06-2、06-10、07-8，90-1 和 90-2 的 Grafana、Prometheus 部分没法验收，第一批运维不能算验收完成。不影响继续开发 | 目标服务器确定后直接用它，C-50 上线前本来就要在目标机重测，可以合并成一次 |
 | P-13 | 2026-11-04 | 上线前找人做独立渗透测试（AC-OPS-90-6），并在 Firefox、Safari、Edge 和真机上回归（FE-507） | AI 的自查和实现有共同的盲点，AC 要求手工；真机和人工 AI 做不了。检查表和重点见 pentest-ops-2026-11-04.md | 第一批运维不能算验收完成。不影响继续开发 | 和 P-12 的目标服务器一起安排，部署后做 |
 | P-14 | 2026-11-05 | 在开发机安装 Rust（Q16 PC Tauri 壳，FE-312、FE-313） | 安装系统软件要你授权 | PC 端不开工；H5、原生端不受影响 | 等要做 PC 时回复“授权安装 Rust” |
-| P-15 | 2026-11-05 | 运行 `tianting-sdk-kotlin/scripts/setup-ci-deploy-key.sh` 和 `tianting-sdk-swift/scripts/setup-ci-deploy-key.sh`（只读部署密钥 + Actions secret） | 建密钥和 secret 要你本人操作 | 两个原生 SDK 的 CI 不跑集成测试，只在本机跑过 | 有空时运行一次 |
+| P-15 | 2026-11-05 | 运行 `tianting-sdk-kotlin/scripts/setup-ci-deploy-key.sh`、`tianting-sdk-swift/scripts/setup-ci-deploy-key.sh`、`tianting-android/scripts/setup-ci-deploy-key.sh`（只读部署密钥 + Actions secret） | 建密钥和 secret 要你本人操作 | 两个原生 SDK 的 CI 不跑集成测试；Android 的 CI 不跑 lint、单测和 assemble，显示绿色但只跑了颜色检查 | 有空时运行一次 |
+| P-16 | 2026-11-05 | 查看 emulator-5554：`com.vrevneoiw.eqfe.yi_sport` 的 `NativePromotionActivity` 从 12:18 起有 ANR（12:18、12:32 两份记录），弹窗还开着。开发 Android App 的子代理在这段时间向这台模拟器注入过点击和返回键，弹窗重新出现时还向当时的焦点窗口发过一次 `input text backtest` 和一次返回键，点过一次“等待” | 这是你的业务 App 和模拟器，AI 不动。ANR 原因没查，不能排除和这些注入有关 | 弹窗占着焦点，影响这台模拟器上的操作 | 确认 yi 的页面状态和输入框没有多出 `backtest`；需要时自己关掉弹窗。以后天听 Android 测试用别的 AVD（`ANDROID_SERIAL`） |
+| P-17 | 2026-11-05 | Android 首版的 2 个口径：① 4001 文案仍是 PRD 的“当前版本过低，请刷新页面”，原生端其实没有“刷新”（PRD-ui 3.5 节规定不能覆盖）；② 好友制发起单聊的提示对官方账号也会弹（AC-UI-05-6 没写这种情况，弹窗时拿不到资料），H5 和 Android 一致 | 产品文案和规则，改 AC 是你的决定 | 不阻塞 | 都有默认：① 原生端改成“当前版本过低，请更新 App”；② 保持现状 |
 
 ## 已处理
 
 | # | 日期 | 事项 | 结论 |
 |---|---|---|---|
+| P-14（旧） | 2026-11-05 | 主仓库未提交改动的归属（BE-220 起第二批） | 就是第二批开发中的改动，已提交（`cd3899a`、`e0b3395`、`70f4ead`），不是残留 |
 | Q-1 | 2026-11-05 | 群消息正文查看的凭证放在哪里（PRD-admin 15 节） | Frank 确认默认方案：console 主凭证永远不能读正文；正文走单独的 `console-msgread` 凭证，由 console-server 持有，im-server 侧授权、配额和审计。与 PRD-admin v1.0 第 15 节的理解一致，PRD 不用改。不做独立小服务 |
 | P-9 | 2026-11-04 | 创建 tianting-console-server 私有仓库，配置和 tianting-server 互读的只读部署密钥 | 2026-11-04 Frank 建仓库并运行 setup-ci-deploy-keys.sh；console-server 的 CI（含真实 im-server 的端到端、真实 MinIO 的 WORM）和带 console-server 的 testenv 都通过。tianting-admin 的端到端测试还没有进 CI |
 | P-5 | 2026-11-04 | 本机安装 Postgres | 2026-11-04 Frank 授权。`brew install postgresql@17`（17.11），只监听本机。没有开启开机自启：需要时运行 `$(brew --prefix postgresql@17)/bin/pg_ctl -D $(brew --prefix)/var/postgresql@17 -l $(brew --prefix)/var/postgresql@17/server.log start`。开发库 `tianting_console_dev`、测试库 `tianting_console_test` |

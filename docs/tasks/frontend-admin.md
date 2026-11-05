@@ -20,7 +20,8 @@
 | FE-420 ～ FE-423 | ✅ 2026-11-05 | 封禁、正文查看和水印、删除、隔离原文、禁言。`e2e/moderation.spec.ts` 4 个用例对真实后端通过（含两边时钟推进 16 分钟后 4039 再弹框），全量 34 通过、1 跳过。只在 Chromium 上验证；tianting-admin 的端到端测试还没进 CI |
 | FE-424 | ⏸ 等二期 push 协议定稿 | |
 | FE-431 ～ FE-433 | ✅ 2026-11-05 | tianting-sdk-ts `38ed458`、tianting-web `191094f`，CI 通过（含真实服务端的集成和 Playwright）。重连后复查已加载范围，断线期间被删的原文也会清掉。未验证：真机；断线期间被删、时钟偏差只有单元测试；页面走真实后台的全链路（测试直接调签名接口） |
-| FE-434 ～ FE-436 | ⏸ FE-434 等 push 协议；FE-435、436 随原生 SDK 首版（M5、M6） | |
+| FE-434 | ⏸ 等 push 协议 | |
+| FE-435、FE-436 | ✅ 2026-11-05 | tianting-sdk-kotlin `4fe4934`、tianting-sdk-swift `4815019`，各自的集成测试本机通过；CI 里的集成测试等 P-15 |
 | FE-440 | ⬜ 未开始 | P1 / P2 |
 
 **规格冲突的处理**：AC-ADM-05-3 要求客服的菜单里没有"社交配置"、直接访问显示无权限，而 5.2 节矩阵和 AC-ADM-16-4 让客服能读配置。处理：页面按 `social.settings` 守卫，`GET /console/api/settings/social` 仍然对 `social.read` 开放。
