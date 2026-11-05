@@ -530,13 +530,34 @@ func (s *SQLite) UserExists(ctx context.Context, userID string) (bool, error) {
 }
 
 func (s *SQLite) MissingUsers(ctx context.Context, userIDs []string) ([]string, error) {
-	var missing []string
-	for _, uid := range userIDs {
-		ok, err := s.UserExists(ctx, uid)
+	// 分块一次查询：系统推送一次最多 1000 人（PRD-live AC-PUSH-04-4），逐个查询会反复占用唯一的数据库连接。
+	found := make(map[string]bool, len(userIDs))
+	for ids := range slices.Chunk(userIDs, 500) {
+		args := make([]any, len(ids))
+		for i, id := range ids {
+			args[i] = id
+		}
+		rows, err := s.db.QueryContext(ctx, `SELECT user_id FROM users WHERE user_id IN (`+placeholders(len(ids))+`)`, args...)
 		if err != nil {
 			return nil, err
 		}
-		if !ok {
+		for rows.Next() {
+			var id string
+			if err := rows.Scan(&id); err != nil {
+				rows.Close()
+				return nil, err
+			}
+			found[id] = true
+		}
+		err = rows.Err()
+		rows.Close()
+		if err != nil {
+			return nil, err
+		}
+	}
+	var missing []string
+	for _, uid := range userIDs {
+		if !found[uid] {
 			missing = append(missing, uid)
 		}
 	}

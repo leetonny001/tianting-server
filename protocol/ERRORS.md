@@ -97,6 +97,7 @@
 | 4091 | FRIEND_REQUEST_HANDLED | — | ws | 否 | 申请已同意，不能再拒绝 | 已经是好友，改用删除好友 |
 | 4092 | CONSOLE_ACCOUNT_EXISTS | 409 | console | 否 | 同一账号空间内账号名已存在 | 换一个账号名 |
 | 4093 | CONSOLE_ACCOUNT_STATE_CONFLICT | 409 | console | 否 | 操作会让自己失去权限、使空间内没有启用的空间超管，或违反职责分离 | 提示具体原因（按 reason） |
+| 4094 | PUSH_ID_CONFLICT | 409 | admin | 否 | 同一 `pushId` 的调用方或内容不同 | 换一个 `pushId`；内容相同的重试不会得到这个错误 |
 | 4130 | GROUP_MEMBER_LIMIT_EXCEEDED | 400 | ws / admin / console | 否 | 群成员已达上限 | 提示「群成员已达上限」 |
 | 4131 | BATCH_LIMIT_EXCEEDED | 400 | admin / console | 否 | 单次批量操作数量超限 | 分批调用 |
 | 4132 | FRIEND_LIMIT_EXCEEDED | 400 | ws / admin | 否 | 自己的好友数已达上限；管理接口导入时 `msg` 写出 userId | 提示「你的好友数量已达上限」 |

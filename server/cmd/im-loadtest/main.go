@@ -18,6 +18,9 @@
 //	admin-meta    AC-ADM-90-2   消息元数据：单会话 1 万条（SQLite 规模；Postgres 10 万条随 BE-070）
 //	social-full   TC-SOC-06-18  全量同步：5000 好友 + 1000 黑名单 + 200 申请（PRD-social AC-SOC-06-12）
 //	c2c-friends   PRD-social 1.3 节：好友制下私聊发送 P99 比开放模式增加 ≤ 2ms
+//	push-all      AC-PUSH-04-2  1 万连接 + 600 条/秒单聊，全员推送 20 次（开发机结果不是发布结论）
+//	push-user     AC-PUSH-04-4  600 条/秒单聊，按用户推送 1000 人每秒 1 次，与基线交替
+//	push-sync     AC-PUSH-04-5  收件箱 1000 条，pushSync 100 条执行 1000 次
 package main
 
 import (
@@ -48,6 +51,9 @@ func main() {
 	flag.StringVar(&fixedAddrs.metrics, "metrics-addr", "", "固定指标端口（默认随机，Prometheus 按固定地址抓取时用）")
 	flag.StringVar(&fixedAddrs.ops, "ops-addr", "", "固定运维端口（默认随机）")
 	flag.StringVar(&fixedAddrs.pprof, "pprof-addr", "", "固定 pprof 端口（默认随机）")
+	flag.IntVar(&cfg.pushRounds, "push-rounds", 20, "push-all：全员推送次数")
+	flag.DurationVar(&cfg.pushInterval, "push-interval", 30*time.Second, "push-all：两次全员推送的间隔")
+	flag.DurationVar(&cfg.pushSegment, "push-segment", 100*time.Second, "push-user：每段时长（开、关各 3 段）")
 	var extraEnv string
 	flag.StringVar(&extraEnv, "server-env", "", "额外传给服务端的环境变量，逗号分隔，如 GOMEMLIMIT=300MiB")
 	var externalKeyFile string
@@ -104,6 +110,12 @@ func main() {
 			results = append(results, scenarioAdminSearch(cfg))
 		case "admin-meta":
 			results = append(results, scenarioAdminMeta(cfg))
+		case "push-all":
+			results = append(results, scenarioPushAll(cfg))
+		case "push-user":
+			results = append(results, scenarioPushUser(cfg))
+		case "push-sync":
+			results = append(results, scenarioPushSync(cfg))
 		default:
 			fmt.Fprintf(os.Stderr, "unknown scenario %q\n", name)
 			os.Exit(2)

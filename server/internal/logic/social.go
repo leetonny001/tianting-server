@@ -826,6 +826,11 @@ func (s *Service) ResetLimits(uid string) {
 	for _, b := range s.social.buckets() {
 		b.ResetUser(uid)
 	}
+	if p := s.push; p != nil { // 推送限速：target=all、target=user 按调用方，pushSync 按用户
+		p.allLimit.ResetUser(uid)
+		p.userLimit.ResetUser(uid)
+		p.syncLimit.ResetUser(uid)
+	}
 }
 
 // DropEvents 是测试接口 /admin/test/social/drop-events。

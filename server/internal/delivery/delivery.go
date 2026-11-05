@@ -14,16 +14,18 @@ type Session interface {
 
 // Router 把帧投递给用户在所有节点上的连接。两个方法都不能阻塞调用方。
 type Router interface {
-	// DeliverToUser 投递给用户的所有连接，跳过 exceptConn（空字符串表示不跳过）。
-	DeliverToUser(userID string, frame []byte, exceptConn string)
+	// DeliverToUser 投递给用户的所有连接，跳过 exceptConn（空字符串表示不跳过）。返回本节点接受投递的连接数（只用于指标）。
+	DeliverToUser(userID string, frame []byte, exceptConn string) int
 	// KickUser 给用户的所有连接下发 kicked 并关闭。
 	KickUser(userID, reason string)
 	// SuspendUser 给用户的所有连接下发 kicked {reason: suspended, until}（永久为 nil）并关闭（封禁，F-ADM-13 规则 2）。
 	SuspendUser(userID string, until *int64)
 }
 
-// Broadcaster 是可选能力：投递给全部在线连接（socialSettingsChanged，尽力而为）。
-// 单节点由 hub 实现；集群时经消息总线发给每个节点。
+// Broadcaster 是投递给全部在线连接的能力（socialSettingsChanged 和全员推送，尽力而为）。
+// 单节点由 hub 实现；集群时经消息总线发给每个节点。socialSettingsChanged 把它当可选能力；
+// 系统推送开启时缺少它就启动失败（PRD-live F-PUSH-04 规则 2）。
 type Broadcaster interface {
-	DeliverToAll(frame []byte)
+	// DeliverToAll 不阻塞调用方，返回本节点接受投递的连接数（只用于指标）。
+	DeliverToAll(frame []byte) int
 }

@@ -63,6 +63,10 @@ type Metrics struct {
 	OpsInflight       prometheus.Gauge       // 正在处理的运维请求数
 	JobRuns           *prometheus.CounterVec // 定时任务运行次数，按任务和结果（BE-220）
 	JobDuration       *prometheus.HistogramVec
+	// 系统推送（PRD-live F-PUSH-10）。pushSync 的次数和耗时在 Commands、CommandDuration 里（cmd="pushSync"）。type 由调用方任意填写，不作为标签。
+	Pushes         *prometheus.CounterVec // 新受理的推送数（不含幂等命中的重放），按 target
+	PushDeliveries *prometheus.CounterVec // 接受投递的连接数（含重播），按 target
+	PushInboxRows  prometheus.Gauge       // 收件箱行数：启动时从库里读，写入和清理时增减
 }
 
 // New 创建并注册全部指标，另外带上 Go 运行时和进程指标。
@@ -115,6 +119,18 @@ func New() *Metrics {
 			Buckets: []float64{.01, .05, .1, .5, 1, 5, 15, 60, 300},
 		}, []string{"job"}),
 	}
+	m.Pushes = prometheus.NewCounterVec(prometheus.CounterOpts{
+		Name: "im_pushes_total", Help: "Newly accepted system pushes by target (idempotent replays are not counted).",
+	}, []string{"target"})
+	m.PushDeliveries = prometheus.NewCounterVec(prometheus.CounterOpts{
+		Name: "im_push_deliveries_total", Help: "Connections that accepted a realtime push frame, by target.",
+	}, []string{"target"})
+	m.PushInboxRows = prometheus.NewGauge(prometheus.GaugeOpts{
+		Name: "im_push_inbox_rows", Help: "Rows in the per-user push inbox.",
+	})
+	f(m.Pushes)
+	f(m.PushDeliveries)
+	f(m.PushInboxRows)
 	f(m.JobRuns)
 	f(m.JobDuration)
 	f(m.OpsRequests)
@@ -168,6 +184,8 @@ var knownCmds = map[string]bool{
 	// PRD-social M4
 	"groupCreate": true, "groupInvite": true, "groupLeave": true, "groupKick": true, "groupTransfer": true, "groupSetAdmin": true,
 	"groupDissolve": true, "groupUpdate": true, "groupInfo": true, "groupMembers": true,
+	// PRD-live L1
+	"pushSync": true,
 }
 
 // CmdLabel 把客户端传来的命令名规整成有限的标签值。
@@ -196,6 +214,7 @@ var allowedLabelValues = map[string]map[string]bool{
 	"reason": set("tokenInvalid", "tokenExpired", "banned", "suspended", "replaced", "tooManyConnections", "serverShutdown",
 		"missing", "caller", "signature", "window", "nonce", "node", "unknown"),
 	"endpoint": set("node", "connections", "disconnects", "config", "db", "unknown"),
+	"target":   set("user", "all", "room"),
 }
 
 func set(values ...string) map[string]bool {

@@ -18,6 +18,9 @@ func TestLabelsAreBounded(t *testing.T) {
 	m.Messages.WithLabelValues("group").Inc()
 	m.AdminAuthFailures.WithLabelValues("nonce").Inc()
 	m.OpsRequests.WithLabelValues("node", OpsOK).Inc()
+	m.Commands.WithLabelValues(CmdLabel("pushSync"), Code(0)).Inc()
+	m.Pushes.WithLabelValues("all").Inc()
+	m.PushDeliveries.WithLabelValues("user").Inc()
 	if p := m.LabelProblems(); len(p) != 0 {
 		t.Errorf("problems: %v", p)
 	}
@@ -33,6 +36,7 @@ func TestLabelCheckCatchesViolations(t *testing.T) {
 		{"cmd", "evil", "cmd value"},
 		{"phase", "other", "phase value"},
 		{"somenew", "x", "allow list"},
+		{"target", "goal", "target value"},
 	} {
 		if got := labelProblem(tc.name, tc.value); !strings.Contains(got, tc.want) {
 			t.Errorf("labelProblem(%s, %s) = %q, want %q", tc.name, tc.value, got, tc.want)

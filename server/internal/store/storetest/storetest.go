@@ -23,6 +23,12 @@ func Run(t *testing.T, open Opener) {
 		name string
 		fn   func(*testing.T, Opener)
 	}{
+		{"PushSeqAndRead", testPushSeqAndRead},
+		{"PushExpiredGaps", testPushExpiredGaps},
+		{"PushIdempotencyRecord", testPushIdempotencyRecord},
+		{"PushRollback", testPushRollback},
+		{"PushEvict", testPushEvict},
+		{"PushPurge", testPushPurge},
 		{"AdminSearchUsers", testAdminSearchUsers},
 		{"AdminSearchUsersPaging", testAdminSearchUsersPaging},
 		{"AdminSearchGroups", testAdminSearchGroups},

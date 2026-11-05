@@ -34,6 +34,7 @@ type client struct {
 
 	reqN    atomic.Int64
 	onMsg   atomic.Pointer[func(protocol.Message, time.Time)]
+	onPush  atomic.Pointer[func(json.RawMessage, time.Time)]
 	done    chan struct{}
 	closeMu sync.Mutex
 	closeBy string // 连接结束的原因（"client" 表示压测主动关闭）
@@ -101,6 +102,10 @@ func (c *client) readLoop() {
 			c.mu.Unlock()
 			if ch != nil {
 				ch <- f
+			}
+		case protocol.CmdPush:
+			if fn := c.onPush.Load(); fn != nil {
+				(*fn)(f.Data, now)
 			}
 		case protocol.CmdMsg:
 			if fn := c.onMsg.Load(); fn != nil {

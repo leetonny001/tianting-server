@@ -101,8 +101,8 @@ func (h *Hub) PlatformCounts() map[string]int {
 var _ delivery.Router = (*Hub)(nil)
 
 // DeliverToUser 实现 delivery.Router。
-func (h *Hub) DeliverToUser(userID string, frame []byte, exceptConn string) {
-	h.SendToUser(userID, frame, exceptConn)
+func (h *Hub) DeliverToUser(userID string, frame []byte, exceptConn string) int {
+	return h.SendToUser(userID, frame, exceptConn)
 }
 
 // SuspendUser 实现 delivery.Router。
@@ -177,7 +177,7 @@ func (h *Hub) ListUserConns(userID string) []sessions.Conn {
 }
 
 // DeliverToAll 实现 delivery.Broadcaster：发给本节点上的全部连接。
-func (h *Hub) DeliverToAll(frame []byte) {
+func (h *Hub) DeliverToAll(frame []byte) int {
 	h.mu.RLock()
 	var targets []Client
 	for _, conns := range h.users {
@@ -186,9 +186,13 @@ func (h *Hub) DeliverToAll(frame []byte) {
 		}
 	}
 	h.mu.RUnlock()
+	n := 0
 	for _, c := range targets {
-		c.Send(frame)
+		if c.Send(frame) {
+			n++
+		}
 	}
+	return n
 }
 
 // KickAll 踢掉本节点上的全部连接（优雅下线），返回连接数。

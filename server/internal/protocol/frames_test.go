@@ -70,6 +70,13 @@ func TestOutFramesMatchSchema(t *testing.T) {
 		"error with user":  AckErr("g6", &Error{Code: CodeNotFriend, Msg: "x", UserID: "dave"}),
 		"social changed":   Event(SocialChangedEvent{Type: EventSocialChanged, Ver: 3}),
 		"settings changed": Event(SocialSettingsChangedEvent{Type: EventSocialSettingsChanged, Mode: "open", StrangerMsgLimit: 3}),
+		// PRD-live v1.0 4.2 节
+		"push user":          {Cmd: CmdPush, Data: PushData{PushID: "p1", Type: "notice", Data: json.RawMessage(`{"n":9007199254740993}`), TS: 1, Target: PushTargetUser, PushSeq: 42}},
+		"push online only":   {Cmd: CmdPush, Data: PushData{PushID: "p2", Type: "notice", Data: json.RawMessage(`{}`), TS: 1, Target: PushTargetUser}},
+		"push all":           {Cmd: CmdPush, Data: PushData{PushID: "p3", Type: "goal", Data: json.RawMessage(`"x"`), TS: 1, Target: PushTargetAll}},
+		"push room":          {Cmd: CmdPush, Data: PushData{PushID: "p4", Type: "goal", Data: json.RawMessage(`{}`), TS: 1, Target: PushTargetRoom, RoomID: "r1"}},
+		"pushSync ack":       AckOK("p5", PushSyncAck{Pushes: []PushData{{PushID: "p1", Type: "notice", Data: json.RawMessage(`{}`), TS: 1, Target: PushTargetUser, PushSeq: 1}}, HasMore: true, LatestSeq: 3}),
+		"pushSync ack empty": AckOK("p6", PushSyncAck{Pushes: []PushData{}, LatestSeq: 0}),
 	}
 	for name, f := range frames {
 		t.Run(name, func(t *testing.T) {
@@ -196,6 +203,37 @@ func TestSyncReqValidate(t *testing.T) {
 	}
 	if _, err := (&SyncReq{ConvID: "x", AfterSeq: ptr[int64](0)}).Validate(); err == nil || err.Code != CodeInvalidConvID {
 		t.Errorf("bad convId: %v", err)
+	}
+}
+
+// AC-PUSH-03-6、AC-PUSH-03-23：limit 1～100；afterSeq 和 fromLatest 二选一。
+func TestPushSyncReqValidate(t *testing.T) {
+	for name, tc := range map[string]struct {
+		req  PushSyncReq
+		want int
+	}{
+		"default limit": {PushSyncReq{AfterSeq: ptr[int64](0)}, defaultPushSyncLim},
+		"limit 1":       {PushSyncReq{AfterSeq: ptr[int64](0), Limit: ptr(1)}, 1},
+		"limit 100":     {PushSyncReq{AfterSeq: ptr[int64](0), Limit: ptr(100)}, 100},
+		"fromLatest":    {PushSyncReq{FromLatest: ptr(true)}, 0},
+	} {
+		if limit, err := tc.req.Validate(); err != nil || limit != tc.want {
+			t.Errorf("%s: %d %v, want %d", name, limit, err, tc.want)
+		}
+	}
+	for name, r := range map[string]PushSyncReq{
+		"neither":          {},
+		"limit only":       {Limit: ptr(10)},
+		"both":             {AfterSeq: ptr[int64](1), FromLatest: ptr(true)},
+		"fromLatest false": {FromLatest: ptr(false)},
+		"latest and limit": {FromLatest: ptr(true), Limit: ptr(1)},
+		"limit 0":          {AfterSeq: ptr[int64](0), Limit: ptr(0)},
+		"limit 101":        {AfterSeq: ptr[int64](0), Limit: ptr(101)},
+		"negative after":   {AfterSeq: ptr[int64](-1)},
+	} {
+		if _, err := r.Validate(); err == nil || err.Code != CodeBadRequest {
+			t.Errorf("%s: got %v, want 4000", name, err)
+		}
 	}
 }
 

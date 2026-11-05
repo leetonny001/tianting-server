@@ -11,6 +11,7 @@ import (
 	"os"
 	"regexp"
 	"strings"
+	"unicode/utf8"
 )
 
 // 签名算法。
@@ -22,7 +23,10 @@ const (
 // LegacyCallerID 是旧密钥 IM_ADMIN_KEY 对应的调用方（PRD-admin F-KEY-05），配置文件里不能用这个 id。
 const LegacyCallerID = "legacy"
 
-const minHMACSecretLen = 32
+const (
+	minHMACSecretLen = 32
+	maxPushTypeLen   = 64 // PRD-live F-PUSH-02 规则 2
+)
 
 var callerIDRe = regexp.MustCompile(`^[a-z0-9-]{3,32}$`)
 
@@ -36,6 +40,8 @@ type Caller struct {
 	AllowedCIDRs []netip.Prefix // 为空表示不额外限制来源
 	Disabled     bool
 	BodyAccess   bool
+	// PushTypes 非空时，这个调用方只能推送这些 type（PRD-live F-PUSH-09 规则 3）。
+	PushTypes []string
 }
 
 // Has 报告调用方是否有该 scope。
@@ -51,6 +57,7 @@ type callerJSON struct {
 	AllowedCIDRs []string `json:"allowedCIDRs"`
 	Disabled     bool     `json:"disabled"`
 	BodyAccess   bool     `json:"bodyAccess"`
+	PushTypes    []string `json:"pushTypes"`
 }
 
 // LoadCallersFile 读取并校验调用方配置文件（IM_ADMIN_CALLERS）。otherSecrets 是 JWT 密钥和旧管理密钥：
@@ -93,7 +100,12 @@ func parseCallers(items []callerJSON, otherSecrets [][]byte) ([]Caller, error) {
 			bad("caller %s: duplicate id", it.ID)
 		}
 		seen[it.ID] = true
-		c := Caller{ID: it.ID, Alg: it.Alg, Scopes: map[Scope]bool{}, Disabled: it.Disabled, BodyAccess: it.BodyAccess}
+		c := Caller{ID: it.ID, Alg: it.Alg, Scopes: map[Scope]bool{}, Disabled: it.Disabled, BodyAccess: it.BodyAccess, PushTypes: it.PushTypes}
+		for _, typ := range it.PushTypes {
+			if n := utf8.RuneCountInString(typ); n < 1 || n > maxPushTypeLen {
+				bad("caller %s: pushTypes entries must be 1..%d characters", name, maxPushTypeLen)
+			}
+		}
 		switch it.Alg {
 		case AlgHMAC:
 			key, err := decodeB64(it.Secret)
@@ -174,6 +186,17 @@ func parseCallers(items []callerJSON, otherSecrets [][]byte) ([]Caller, error) {
 		return nil, errors.New(strings.Join(problems, "; "))
 	}
 	return callers, nil
+}
+
+// MissingPushTypes 返回持有 push.all、却没有配非空 pushTypes 的调用方 ID（F-PUSH-09 规则 3）。
+func MissingPushTypes(callers []Caller) []string {
+	var out []string
+	for i := range callers {
+		if callers[i].Has(ScopePushAll) && len(callers[i].PushTypes) == 0 {
+			out = append(out, callers[i].ID)
+		}
+	}
+	return out
 }
 
 func decodeB64(s string) ([]byte, error) {

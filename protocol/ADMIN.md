@@ -107,6 +107,33 @@ scope：`POST /admin/users/token` → `token.issue`；`POST /admin/users/import`
 - 配置：`IM_QUARANTINE_KEY`（≥ 32 字节，不能与其他密钥相同，生产必填）、`IM_QUARANTINE_DAYS`（默认 30，1～365）、`IM_C2C_BODY_ACCESS`（默认 `off`，没有管理接口能改）。
 - 已知限制：删除后 WAL 里的旧帧要等检查点才被覆盖；备份里的原文按备份保留期留存（F-ADM-31 规则 9）。
 
+## 系统推送（PRD-live v1.0 L1，PRD-admin F-ADM-50）
+
+`IM_PUSH_ENABLED` 关闭（默认）时路由不存在（404），`pushSync` 返回 4001，SDK 静默忽略；这个开关和 `IM_V13_ADMIN_FEATURES` 互相独立。旧密钥不能调用（403 / 4030）。语义见 [PRD-live v1.0](../docs/prd/PRD-live-v1.0.md) 第 4 节。
+
+| 接口 | 请求 | 响应 | scope 与说明 |
+|---|---|---|---|
+| `POST /admin/push` | `{target, userIds?, roomId?, type, data, pushId, ttlSeconds?}` | `{pushId, created, accepted?}` | `target=user` 要 `push.user`，`all` 要 `push.all`，`room` 要 `push.room`（接口 L2 开放，L1 返回 400 / 4000）。写审计 |
+
+字段规则：
+
+- `pushId`：1～64 位 `[A-Za-z0-9_-]`，调用方生成，**全局唯一**（建议 UUID）。过期后也不应复用。
+- `type`：1～64 字符，服务端不解释。`data`：必填，序列化后 ≤ 4096 字节，im-server 不校验模板。
+- `target=user`：`userIds` 不能为空，去重后 ≤ 1000（400 / 4131），`accepted` 是去重后的人数；有不存在的用户 404 / 4042，`details.userIds` 列出，整批不发。`target=all` 不能带 `userIds`、`roomId`，响应没有 `accepted`。
+- `ttlSeconds`：0～604800。`target=user` 不传是 604800（进收件箱，离线可补收），传 0 只投在线（没有 `pushSeq`）；其他 `target` 不传是 0，传非 0 400 / 4000。
+
+幂等：同一调用方、同样内容（`target`、去重排序后的 `userIds`、`type`、`data` 按键排序、生效的 `ttlSeconds`）重试返回 200、`created=false`，不再次投递，不计入限速；调用方或内容不同 409 / 4094。4000、4131、4042、4030、4290 都不占 `pushId`。`target=all` 和 `ttlSeconds=0` 是先写 `pending` 记录再广播，崩溃后同号重试会重新广播，帧的 `ts` 沿用首次受理时间，靠 SDK 按 `pushId` 去重。幂等记录保留 8 天，还有对应收件箱行时不删。
+
+错误优先级：签名和 scope → `type` 白名单 403 / 4030 → 参数 400 / 4000 → 4094 / 幂等命中 → 4131 → 4042 → 限速 429 / 4290。
+
+调用方配置增加可选的 `pushTypes: string[]`：配了就只允许名单内的 `type`，所有 `target` 都适用。**`IM_PUSH_ENABLED` 开启时，持有 `push.all` 的调用方必须配非空的 `pushTypes`，否则启动失败**（错误信息只有调用方 ID），不提供通配符。
+
+审计：`summary` 记 `target`、`type`、`pushId`（intent 和 result 都有），result 另外记 `targetCount`（只有 `target=user`）、`dataLength`、`dataSha256`。不记 `userIds` 和 `data` 明文。
+
+配置（都未校准）：`IM_PUSH_ALL_RATE`（`target=all`，每调用方每分钟，默认 20）、`IM_PUSH_USER_RATE`（`target=user`，每调用方每分钟，默认 600）、`IM_PUSH_SYNC_RATE`（`pushSync`，每用户每分钟，默认 120）、`IM_PUSH_INBOX_MAX`（单用户收件箱上限，默认 1000，超出淘汰最旧的，序号不变）、`IM_PUSH_PURGE_BATCH`（`push_purge` 每批行数，默认 1000；定时任务每小时跑到清完，每批之间释放数据库连接）。
+
+指标：`im_pushes_total{target}`（新受理，不含重放）、`im_push_deliveries_total{target}`（接受投递的连接数，含重播）、`im_push_inbox_rows`；`pushSync` 的次数和耗时在 `im_commands_total`、`im_command_duration_seconds`（`cmd="pushSync"`）。
+
 ## 社交（PRD-social 9.3 节，M3）
 
 只在管理端口注册，按 scope 判定（旧密钥不能调用：403 / 4030）；写接口按下一节审计（摘要只有字段名，备注原文不会进审计）。
@@ -164,5 +191,7 @@ pprof 只在 `IM_PPROF_ADDR` 上提供（开发默认 `127.0.0.1:6060`，生产�
 ## 仅测试 / 演示环境
 
 `POST /admin/test/jobs/{name}/run`：立即运行一个定时任务。
+
+系统推送（PRD-live 8.2 节，`IM_PUSH_ENABLED=1` 且 `IM_TEST_MODE=1` 才注册）：`GET /admin/test/push-inbox/{userId}`（`{rows}`，包括已到期还没清理的行）、`POST /admin/test/faults/push-skip-delivery {pushId}`（提交后跳过实时下发）、`POST /admin/test/faults/push-exit-before-broadcast {pushId}`（`all`、`ttlSeconds=0` 写完幂等记录后退出进程）、`POST /admin/test/faults/push-fail-at {index}`（下一次收件箱写入在第 `index` 个用户失败，按 userId 字节序从 0 起，整批回滚），都命中一次后清除。`IM_TEST_DISABLE_JOBS=push_purge`（逗号分隔，只在测试模式生效）让任务不再被定时触发，手动触发不受影响；手动触发 `push_purge` 只跑一批。`/admin/test/limits/reset {userId}` 同时清推送限速，`target=all`、`target=user` 按调用方，`userId` 传调用方 ID。
 
 `POST /admin/test/drop-ack`、`/admin/test/skip-delivery`、`/admin/test/clock`、`/admin/test/faults`（`{adminAuditWrite: "fail" | "", opsDelayMs?, storePing: "fail" | ""}`：模拟审计写失败、运维接口延迟、就绪检查失败）、社交测试设施（PRD-social 5.6 节）`/admin/test/social/drop-events {userId, type, count}`、`/admin/test/social/purge`、`/admin/test/social/seed {friends?, blocks?, requests?, groupMembers?, updatedAt?}`、`/admin/test/limits/reset {userId}`、`/admin/test/invalidate {topic, key}`（双节点测试环境：其他进程转发来的缓存失效，`IM_TEST_PEERS` 配置转发目标，`IM_TEST_INVALIDATION=off` 时不发也不收）（`IM_TEST_MODE=1`），`POST /demo/login {username, nickname?}`（`IM_DEMO_LOGIN=1`，不需要管理密钥；`nickname` 去首尾空白后 1～32 个码点，登录时覆盖该用户的昵称，超长 400 / 4000，不传或为空不改）。生产环境（`IM_ENV=production`）开启这两个开关会拒绝启动。

@@ -378,3 +378,32 @@ func TestMigrationGroupRolesPrecheck(t *testing.T) {
 		t.Fatal(err)
 	}
 }
+
+// AC-PUSH-11-5（F-PUSH-11 规则 2）：SQLite 单连接下顺序写错不会死锁，靠断言发现：交叠、顺序相反的两批都按 userId 字节序加锁。
+func TestPushLockOrder(t *testing.T) {
+	ctx := context.Background()
+	var violations []string
+	onLockOrderViolation = func(seq string) { violations = append(violations, seq) }
+	t.Cleanup(func() { onLockOrderViolation = nil })
+
+	s := openTestSQLite(t)
+	write := func(id string, users ...string) {
+		t.Helper()
+		if _, err := s.WritePushInbox(ctx, PushInboxWrite{
+			Record: PushRecord{PushID: id, Caller: "c", ContentHash: "h", Target: "user", FirstTS: 1, CreatedAt: 1},
+			UserIDs: users, Type: "notice", Data: []byte(`{}`), ExpiresAt: 2,
+		}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	write("p1", "zed", "amy", "kim", "amy", "Bob") // 字节序里大写在前
+	write("p2", "kim", "zed", "amy")
+	if len(violations) > 0 {
+		t.Fatalf("lock order violations: %v", violations)
+	}
+	for _, u := range []string{"amy", "kim", "zed"} {
+		if n, _ := s.LatestPushSeq(ctx, u); n != 2 {
+			t.Errorf("%s latest = %d", u, n)
+		}
+	}
+}

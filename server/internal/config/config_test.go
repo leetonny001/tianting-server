@@ -11,6 +11,8 @@ import (
 	"slices"
 	"strings"
 	"testing"
+
+	"tianting/server/internal/app"
 )
 
 // callersFile 写一个调用方配置文件（权限 0600）并返回路径。
@@ -472,5 +474,39 @@ func TestProductionQuarantineKey(t *testing.T) {
 		if _, _, err := Load(envOf(m)); err == nil {
 			t.Errorf("IM_QUARANTINE_DAYS=%s accepted", v)
 		}
+	}
+}
+
+// PRD-live 第 10 节：IM_PUSH_ENABLED 默认关闭；参数都要正整数；IM_TEST_DISABLE_JOBS 原样带给 app（是否生效看测试模式）。
+func TestPushConfig(t *testing.T) {
+	cfg, _, err := Load(envOf(map[string]string{}))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.App.Push != (app.PushConfig{}) || len(cfg.App.TestDisableJobs) != 0 {
+		t.Errorf("defaults: %+v %v", cfg.App.Push, cfg.App.TestDisableJobs)
+	}
+	cfg, _, err = Load(envOf(map[string]string{
+		"IM_PUSH_ENABLED": "1", "IM_PUSH_ALL_RATE": "1", "IM_PUSH_USER_RATE": "2", "IM_PUSH_SYNC_RATE": "3",
+		"IM_PUSH_INBOX_MAX": "4", "IM_PUSH_PURGE_BATCH": "5", "IM_TEST_DISABLE_JOBS": "push_purge, social_purge",
+	}))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.App.Push != (app.PushConfig{Enabled: true, AllRate: 1, UserRate: 2, SyncRate: 3, InboxMax: 4, PurgeBatch: 5}) {
+		t.Errorf("push = %+v", cfg.App.Push)
+	}
+	if strings.Join(cfg.App.TestDisableJobs, "|") != "push_purge|social_purge" {
+		t.Errorf("jobs = %v", cfg.App.TestDisableJobs)
+	}
+	for _, key := range []string{"IM_PUSH_ALL_RATE", "IM_PUSH_USER_RATE", "IM_PUSH_SYNC_RATE", "IM_PUSH_INBOX_MAX", "IM_PUSH_PURGE_BATCH"} {
+		for _, v := range []string{"0", "-1", "x"} {
+			if _, _, err := Load(envOf(map[string]string{key: v})); err == nil || !strings.Contains(err.Error(), key) {
+				t.Errorf("%s=%s: %v", key, v, err)
+			}
+		}
+	}
+	if _, _, err := Load(envOf(map[string]string{"IM_PUSH_ENABLED": "yes"})); err == nil {
+		t.Error("IM_PUSH_ENABLED=yes accepted")
 	}
 }

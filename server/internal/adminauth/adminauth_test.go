@@ -33,6 +33,9 @@ func TestParseCallers(t *testing.T) {
 		other [][]byte
 		want  string
 	}{
+		// PRD-live F-PUSH-02 规则 2：pushTypes 的每一项都是合法的 type。
+		"empty push type":    {[]callerJSON{{ID: "biz1", Alg: AlgHMAC, Secret: secretA, Scopes: []Scope{ScopePushAll}, PushTypes: []string{""}}}, nil, "pushTypes"},
+		"too long push type": {[]callerJSON{{ID: "biz1", Alg: AlgHMAC, Secret: secretA, Scopes: []Scope{ScopePushAll}, PushTypes: []string{strings.Repeat("t", 65)}}}, nil, "pushTypes"},
 		// AC-KEY-02-4：正文类 scope 和其他 scope 在同一个调用方上。
 		"body scope mixed":              {[]callerJSON{{ID: "console", Alg: AlgEd25519, PublicKey: pubKey, BodyAccess: true, Scopes: []Scope{ScopeMsgMeta, ScopeMsgBodyGroup}}}, nil, "no other scopes"},
 		"body scope without bodyAccess": {[]callerJSON{{ID: "console", Alg: AlgEd25519, PublicKey: pubKey, Scopes: []Scope{ScopeMsgBodyGroup}}}, nil, "bodyAccess: true"},
@@ -77,6 +80,27 @@ func TestLoadCallersFilePermissions(t *testing.T) {
 	os.WriteFile(p, []byte(`[{"id":"biz1","alg":"hmac-sha256","secret":"`+secretA+`","scope":["token.issue"]}]`), 0o600)
 	if _, err := LoadCallersFile(p); err == nil {
 		t.Error("unknown field accepted (typo would silently drop scopes)")
+	}
+}
+
+// PRD-live F-PUSH-09 规则 3：配置文件带 pushTypes；push.room 在 scope 目录里；MissingPushTypes 只报持有 push.all 又没配的。
+func TestCallerPushTypes(t *testing.T) {
+	p := filepath.Join(t.TempDir(), "callers.json")
+	content := `[{"id":"biz1","alg":"hmac-sha256","secret":"` + secretA + `","scopes":["push.all","push.room"],"pushTypes":["goal"]},
+		{"id":"biz2","alg":"hmac-sha256","secret":"` + secretB + `","scopes":["push.all"]},
+		{"id":"biz3","alg":"hmac-sha256","secret":"` + secret("caller-c-secret-0123456789abcdef!!") + `","scopes":["push.user"]}]`
+	if err := os.WriteFile(p, []byte(content), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	callers, err := LoadCallersFile(p)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !callers[0].Has(ScopePushRoom) || len(callers[0].PushTypes) != 1 || callers[0].PushTypes[0] != "goal" {
+		t.Errorf("biz1 = %+v", callers[0])
+	}
+	if got := MissingPushTypes(callers); len(got) != 1 || got[0] != "biz2" {
+		t.Errorf("MissingPushTypes = %v", got)
 	}
 }
 

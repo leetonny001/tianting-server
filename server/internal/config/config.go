@@ -169,6 +169,22 @@ func Load(getenv func(string) string) (cfg Server, warnings []string, err error)
 		a.SocialDefaults = raw
 	}
 	a.V13AdminFeatures = boolEnv(getenv, "IM_V13_ADMIN_FEATURES", false, bad)
+	a.Push.Enabled = boolEnv(getenv, "IM_PUSH_ENABLED", false, bad)
+	// 系统推送的参数（PRD-live 第 10 节）：不设置时用默认值，都未校准。
+	for key, dst := range map[string]*int{
+		"IM_PUSH_ALL_RATE": &a.Push.AllRate, "IM_PUSH_USER_RATE": &a.Push.UserRate, "IM_PUSH_SYNC_RATE": &a.Push.SyncRate,
+		"IM_PUSH_INBOX_MAX": &a.Push.InboxMax, "IM_PUSH_PURGE_BATCH": &a.Push.PurgeBatch,
+	} {
+		if v := getenv(key); v != "" {
+			n, perr := strconv.Atoi(v)
+			if perr != nil || n < 1 {
+				bad("%s: must be a positive integer, got %q", key, v)
+				continue
+			}
+			*dst = n
+		}
+	}
+	a.TestDisableJobs = splitList(getenv("IM_TEST_DISABLE_JOBS")) // 只在测试模式生效（PRD-live 8.2 节）
 	a.QuarantineKey = getenv("IM_QUARANTINE_KEY")
 	a.QuarantineDays = 30
 	if v := getenv("IM_QUARANTINE_DAYS"); v != "" {

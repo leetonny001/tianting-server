@@ -27,6 +27,9 @@ type config struct {
 	opsPhaseFile       string
 	opsPubkey          string
 	opsIdle            int
+	pushRounds         int
+	pushInterval       time.Duration
+	pushSegment        time.Duration
 }
 
 func ids(prefix string, n, width int) []string {

@@ -124,3 +124,65 @@ func TestRunUnknownAndReturnsError(t *testing.T) {
 		t.Fatalf("err = %v", err)
 	}
 }
+
+// PRD-live F-PUSH-09 规则 4、AC-PUSH-06-14：分批任务定时触发时跑到清完，手动触发只跑一批。
+func TestDrainJob(t *testing.T) {
+	s, clk, runs := newTest(t, nil)
+	left := 5
+	calls := 0
+	s.RegisterDrain("purge", time.Hour, func(context.Context) (int, error) {
+		calls++
+		n := min(left, 2)
+		left -= n
+		return n, nil
+	})
+	if err := s.Run(context.Background(), "purge"); err != nil || calls != 1 || left != 3 {
+		t.Fatalf("manual run: calls=%d left=%d err=%v", calls, left, err)
+	}
+	clk.Freeze(clk.Now().Add(time.Hour))
+	s.Tick(context.Background())
+	if left != 0 || calls != 4 { // 2、1、0 三批，最后一批返回 0 才停
+		t.Fatalf("tick: calls=%d left=%d", calls, left)
+	}
+	if got := counter(t, runs, "purge", ResultOK); got != 4 {
+		t.Fatalf("ok runs = %v", got)
+	}
+}
+
+// 分批任务出错就停，不原地重试；上限挡住一直有数据的情况。
+func TestDrainJobStops(t *testing.T) {
+	s, clk, _ := newTest(t, nil)
+	calls := 0
+	s.RegisterDrain("bad", time.Hour, func(context.Context) (int, error) { calls++; return 1, errors.New("boom") })
+	busy := 0
+	s.RegisterDrain("busy", time.Hour, func(context.Context) (int, error) { busy++; return 1, nil })
+	clk.Freeze(clk.Now().Add(time.Hour))
+	s.Tick(context.Background())
+	if calls != 1 {
+		t.Fatalf("calls after an error = %d", calls)
+	}
+	if busy != maxDrainRuns {
+		t.Fatalf("busy runs = %d, want %d", busy, maxDrainRuns)
+	}
+}
+
+// PRD-live 8.2 节：Disable 只挡定时触发，手动触发照常；未注册的名字报错。
+func TestDisableJob(t *testing.T) {
+	s, clk, _ := newTest(t, nil)
+	n := 0
+	s.Register("a", time.Hour, func(context.Context) (int, error) { n++; return 0, nil })
+	if err := s.Disable("a"); err != nil {
+		t.Fatal(err)
+	}
+	clk.Freeze(clk.Now().Add(2 * time.Hour))
+	s.Tick(context.Background())
+	if n != 0 {
+		t.Fatal("disabled job ran on a tick")
+	}
+	if err := s.Run(context.Background(), "a"); err != nil || n != 1 {
+		t.Fatalf("manual run: n=%d err=%v", n, err)
+	}
+	if err := s.Disable("ghost"); !errors.Is(err, ErrUnknownJob) {
+		t.Fatalf("ghost: %v", err)
+	}
+}

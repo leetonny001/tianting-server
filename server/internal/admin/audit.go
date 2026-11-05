@@ -164,6 +164,7 @@ var auditValueFields = map[string][]string{
 	"POST /admin/messages/delete":      {"reason", "msgIds"},
 	"POST /admin/msg-grants":           {"reason", "ticket", "quarantine"},
 	"POST /admin/convs/messages/body":  {"grantId", "beforeSeq", "limit"},
+	"POST /admin/push":                 {"target", "type", "pushId"}, // 不记 userIds、data；result 另外带目标数量、data 长度和 SHA-256（PRD-live F-PUSH-09 规则 1）
 }
 
 // auditValue 取字段值并限制大小：intent 在校验之前写，值可能不合法或很长。

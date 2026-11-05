@@ -37,6 +37,7 @@ const (
 	CodeTargetNotGroupMember     = 4046
 	CodeGroupExists              = 4090
 	CodeFriendRequestHandled     = 4091
+	CodePushIDConflict           = 4094
 	CodeGroupMemberLimitExceeded = 4130
 	CodeBatchLimitExceeded       = 4131
 	CodeFriendLimitExceeded      = 4132
@@ -89,6 +90,7 @@ var codes = map[int]codeInfo{
 	CodeTargetNotGroupMember:     {"TARGET_NOT_GROUP_MEMBER", 404},
 	CodeGroupExists:              {"GROUP_EXISTS", 409},
 	CodeFriendRequestHandled:     {"FRIEND_REQUEST_HANDLED", 0},
+	CodePushIDConflict:           {"PUSH_ID_CONFLICT", 409},
 	CodeGroupMemberLimitExceeded: {"GROUP_MEMBER_LIMIT_EXCEEDED", 400},
 	CodeBatchLimitExceeded:       {"BATCH_LIMIT_EXCEEDED", 400},
 	CodeFriendLimitExceeded:      {"FRIEND_LIMIT_EXCEEDED", 400},

@@ -16,6 +16,9 @@ import (
 	"tianting/server/internal/clock"
 )
 
+// maxDrainRuns 是分批任务一次定时触发最多跑多少批，避免一直占着检查循环、挡住其他到期的任务。
+const maxDrainRuns = 1000
+
 // CheckInterval 是检查任务是否到期的间隔（真实时间）。任务周期都是小时级，这个粒度足够。
 const CheckInterval = time.Minute
 
@@ -48,6 +51,8 @@ type job struct {
 	period time.Duration
 	fn     Func
 	next   time.Time
+	drain  bool       // 定时触发时跑到没有可处理的行；手动触发只跑一批
+	off    bool       // 定时触发时跳过；手动触发照常（测试配置 IM_TEST_DISABLE_JOBS）
 	mu     sync.Mutex // 同一个任务不并发运行（定时和手动触发可能撞上）
 }
 
@@ -81,6 +86,27 @@ func (s *Scheduler) Register(name string, period time.Duration, fn Func) {
 	s.jobs[name] = &job{name: name, period: period, fn: fn, next: s.clock.Now().Add(period)}
 }
 
+// RegisterDrain 注册分批任务：fn 每次处理一批并返回行数。定时触发时重复调用直到返回 0（每批之间释放数据库连接），
+// 手动触发（Run）只跑一批。
+func (s *Scheduler) RegisterDrain(name string, period time.Duration, fn Func) {
+	s.Register(name, period, fn)
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.jobs[name].drain = true
+}
+
+// Disable 让任务不再被定时触发，手动触发不受影响。任务名没有注册时返回 ErrUnknownJob。
+func (s *Scheduler) Disable(name string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	j := s.jobs[name]
+	if j == nil {
+		return ErrUnknownJob
+	}
+	j.off = true
+	return nil
+}
+
 // Names 返回全部任务名（测试用）。
 func (s *Scheduler) Names() []string {
 	s.mu.Lock()
@@ -112,14 +138,19 @@ func (s *Scheduler) Tick(ctx context.Context) {
 	s.mu.Lock()
 	var due []*job
 	for _, j := range s.jobs {
-		if !now.Before(j.next) {
+		if !j.off && !now.Before(j.next) {
 			j.next = now.Add(j.period)
 			due = append(due, j)
 		}
 	}
 	s.mu.Unlock()
 	for _, j := range due {
-		_ = s.run(ctx, j)
+		for i := 0; ; i++ {
+			n, err := s.run(ctx, j)
+			if !j.drain || err != nil || n == 0 || i+1 >= maxDrainRuns {
+				break
+			}
+		}
 	}
 }
 
@@ -131,21 +162,22 @@ func (s *Scheduler) Run(ctx context.Context, name string) error {
 	if j == nil {
 		return ErrUnknownJob
 	}
-	return s.run(ctx, j)
+	_, err := s.run(ctx, j)
+	return err
 }
 
-func (s *Scheduler) run(ctx context.Context, j *job) (err error) {
+func (s *Scheduler) run(ctx context.Context, j *job) (n int, err error) {
 	j.mu.Lock()
 	defer j.mu.Unlock()
 	go1, release, err := s.locker.TryRun(ctx, j.name)
 	if err != nil {
 		s.count(j.name, ResultError)
 		s.log.Error("job lock", "job", j.name, "err", err)
-		return err
+		return 0, err
 	}
 	if !go1 {
 		s.count(j.name, ResultSkipped)
-		return nil
+		return 0, nil
 	}
 	defer release()
 	started := time.Now()
@@ -156,7 +188,7 @@ func (s *Scheduler) run(ctx context.Context, j *job) (err error) {
 			s.count(j.name, ResultError)
 		}
 	}()
-	n, err := j.fn(ctx)
+	n, err = j.fn(ctx)
 	elapsed := time.Since(started)
 	if s.duration != nil {
 		s.duration.WithLabelValues(j.name).Observe(elapsed.Seconds())
@@ -164,11 +196,11 @@ func (s *Scheduler) run(ctx context.Context, j *job) (err error) {
 	if err != nil {
 		s.count(j.name, ResultError)
 		s.log.Error("job failed", "job", j.name, "err", err, "duration", elapsed.Round(time.Millisecond))
-		return err
+		return 0, err
 	}
 	s.count(j.name, ResultOK)
 	s.log.Info("job done", "job", j.name, "rows", n, "duration", elapsed.Round(time.Millisecond))
-	return nil
+	return n, nil
 }
 
 func (s *Scheduler) count(name, result string) {

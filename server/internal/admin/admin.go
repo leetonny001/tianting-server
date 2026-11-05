@@ -51,6 +51,7 @@ type Admin struct {
 	faults   TestFaults
 	jobs     JobRunner
 	mod      *ModerationConfig // 第二批开启时非 nil（IM_V13_ADMIN_FEATURES）
+	pusher   PushService       // 系统推送开启时非 nil（IM_PUSH_ENABLED）
 	clock    clock.Clock
 	log      *slog.Logger
 	testMode bool
@@ -115,6 +116,7 @@ func (a *Admin) Register(mux *http.ServeMux) {
 	a.registerSocial(mux)
 	a.registerQueries(mux)
 	a.registerModeration(mux)
+	a.registerPush(mux)
 }
 
 // RegisterTestRoutes 注册故障注入和时钟接口，只能在测试模式下调用（PRD 6.1 节）。
@@ -195,6 +197,7 @@ func (a *Admin) RegisterTestRoutes(mux *http.ServeMux, faults *logic.Faults, clk
 		writeJSON(w, http.StatusOK, struct{}{})
 	})
 	a.registerSocialTestRoutes(mux)
+	a.registerPushTestRoutes(mux, faults)
 }
 
 type tokenReq struct {

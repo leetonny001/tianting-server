@@ -51,7 +51,8 @@ ws(s)://{host}/ws?platform={android|ios|web|pc}
 | `groupInfo` | 上行 | 群资料 | `{groupId, name, notice, noticeBy, noticeAt, owner, managed, myRole, memberCount, maxMembers, historyVisible, createdAt}` |
 | `groupMembers` | 上行 | 成员分页：群主 → 管理员 → 成员，`limit` 1～100 | `{members, nextCursor}` |
 | `joinRoom` / `leaveRoom` | — | 二期（聊天室） | — |
-| `push` / `pushSync` | 下行帧；`pushSync` 上行，有应答 | 系统推送，定义见 [PRD-live v1.0](../docs/prd/PRD-live-v1.0.md) 第 4 节，Schema 和向量随 BE-228、BE-229 落地；SDK 行为用例 `vectors/push-sync.json` | — |
+| `push` | 下行 | 系统推送：`{pushId, type, data, ts, target, pushSeq?, roomId?}`。`pushSeq` 只在进收件箱的推送上出现（`target=user` 且 `ttlSeconds` ≠ 0）；`target=all` 和 `ttlSeconds=0` 只投当前在线连接，不补收（[PRD-live v1.0](../docs/prd/PRD-live-v1.0.md) 第 4 节）。SDK 行为用例 `vectors/push-sync.json` | — |
+| `pushSync` | 上行 | 按用户推送的离线补收：`{afterSeq, limit?}`（`limit` 1～100，默认 50，SDK 固定用 100）或 `{fromLatest: true}`（只取最新序号建立游标，不回放），二选一。只能拉自己的收件箱，只返回未过期的。`IM_PUSH_ENABLED` 关闭时 4001，SDK 静默忽略；每用户默认 120 次/分钟，超出 4290 | `{pushes, hasMore, latestSeq}`，三者在同一读事务内取得；`hasMore=true` 时 `pushes` 非空 |
 
 ## 3. 交互规则
 

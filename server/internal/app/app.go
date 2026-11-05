@@ -23,6 +23,7 @@ import (
 	"tianting/server/internal/auth"
 	"tianting/server/internal/cache"
 	"tianting/server/internal/clock"
+	"tianting/server/internal/delivery"
 	"tianting/server/internal/gateway"
 	"tianting/server/internal/hub"
 	"tianting/server/internal/logic"
@@ -63,6 +64,12 @@ type Config struct {
 	// V13AdminFeatures 对应 IM_V13_ADMIN_FEATURES（默认关闭，PRD-admin 11.1 节）：开启后才注册第二批管理接口、下发第二批事件。
 	// sdk-ts 对应版本发布之后再打开；关闭时禁言不生效，但已有的封禁仍然生效（封禁是安全措施，不跟开关走）。
 	V13AdminFeatures bool
+	// Push 是系统推送（PRD-live v1.0 L1）：默认关闭；和 V13AdminFeatures 互相独立。
+	Push PushConfig
+	// TestDisableJobs（IM_TEST_DISABLE_JOBS，只在测试模式生效）：这些任务不再被定时触发，手动触发不受影响（PRD-live 8.2 节）。
+	TestDisableJobs []string
+	// TestRouterWrap 只给测试替身用（AC-PUSH-04-6：配置移除广播能力的构建）；只在测试模式生效。
+	TestRouterWrap func(delivery.Router) delivery.Router
 	// QuarantineKey / QuarantineDays：被删原文的加密隔离（IM_QUARANTINE_KEY、IM_QUARANTINE_DAYS，BE-224）。
 	QuarantineKey  string
 	QuarantineDays int
@@ -78,6 +85,24 @@ type Config struct {
 }
 
 const defaultSendRate = 20
+
+// PushConfig 是系统推送的开关和参数（都未校准，PRD-live F-PUSH-09）。0 表示默认值。
+type PushConfig struct {
+	Enabled    bool // IM_PUSH_ENABLED
+	AllRate    int  // IM_PUSH_ALL_RATE：target=all，每调用方每分钟，默认 20
+	UserRate   int  // IM_PUSH_USER_RATE：target=user，每调用方每分钟，默认 600
+	SyncRate   int  // IM_PUSH_SYNC_RATE：pushSync，每用户每分钟，默认 120
+	InboxMax   int  // IM_PUSH_INBOX_MAX：单用户收件箱上限，默认 1000
+	PurgeBatch int  // IM_PUSH_PURGE_BATCH：push_purge 每批行数，默认 1000
+}
+
+const (
+	defaultPushAllRate    = 20
+	defaultPushUserRate   = 600
+	defaultPushSyncRate   = 120
+	defaultPushInboxMax   = 1000
+	defaultPushPurgeBatch = 1000
+)
 
 // App 是组装好的服务。
 type App struct {
@@ -120,6 +145,12 @@ func New(cfg Config) (*App, error) {
 	if cfg.AdminKey == "" && len(cfg.AdminCallers) == 0 {
 		return nil, fmt.Errorf("admin credentials are required (IM_ADMIN_CALLERS or IM_ADMIN_KEY)")
 	}
+	// 开关关闭时不校验，升级不会因此启动失败（PRD-live F-PUSH-09 规则 3）。错误信息只有调用方 ID。
+	if cfg.Push.Enabled {
+		if ids := adminauth.MissingPushTypes(cfg.AdminCallers); len(ids) > 0 {
+			return nil, fmt.Errorf("IM_PUSH_ENABLED: callers with push.all must have a non-empty pushTypes: %v", ids)
+		}
+	}
 	st, err := store.OpenSQLite(cfg.DBPath, store.SQLiteOptions{AutoMigrate: cfg.AutoMigrate})
 	if err != nil {
 		return nil, err
@@ -141,7 +172,22 @@ func New(cfg Config) (*App, error) {
 		loopback = cache.NewHTTPLoopback(cfg.TestPeers, cfg.AdminKey, cfg.TestInvalidationOff)
 		inv = loopback
 	}
-	svc := logic.New(st, h, clk, faults, ratelimit.New(sendRate, sendRate, clk), inv, m, cfg.Logger)
+	var router delivery.Router = h
+	if cfg.TestMode && cfg.TestRouterWrap != nil {
+		router = cfg.TestRouterWrap(h)
+	}
+	svc := logic.New(st, router, clk, faults, ratelimit.New(sendRate, sendRate, clk), inv, m, cfg.Logger)
+	if cfg.Push.Enabled {
+		if err := svc.EnablePush(context.Background(), logic.PushConfig{
+			AllRate:  cmp.Or(cfg.Push.AllRate, defaultPushAllRate),
+			UserRate: cmp.Or(cfg.Push.UserRate, defaultPushUserRate),
+			SyncRate: cmp.Or(cfg.Push.SyncRate, defaultPushSyncRate),
+			InboxMax: cmp.Or(cfg.Push.InboxMax, defaultPushInboxMax),
+		}); err != nil {
+			st.Close()
+			return nil, err
+		}
+	}
 	if cfg.SocialDefaults != "" {
 		if err := initSocialDefaults(st, cfg.SocialDefaults, clk.Now().UnixMilli()); err != nil {
 			st.Close()
@@ -165,7 +211,15 @@ func New(cfg Config) (*App, error) {
 	}
 	a := &App{store: st, hub: h, metrics: m, stop: make(chan struct{}), loopback: loopback}
 	jobs := scheduler.New(clk, nil, m.JobRuns, m.JobDuration, cfg.Logger)
-	registerJobs(jobs, st, svc, clk)
+	registerJobs(jobs, st, svc, clk, cmp.Or(cfg.Push.PurgeBatch, defaultPushPurgeBatch))
+	if cfg.TestMode {
+		for _, name := range cfg.TestDisableJobs {
+			if err := jobs.Disable(name); err != nil {
+				st.Close()
+				return nil, fmt.Errorf("IM_TEST_DISABLE_JOBS %s: %w", name, err)
+			}
+		}
+	}
 	go jobs.Start(a.stop)
 	info := api.Info{Version: cfg.Version, StartedAt: time.Now(), Ready: a.ready}
 	if cfg.ReportLegacyAdmin {
@@ -213,6 +267,9 @@ func New(cfg Config) (*App, error) {
 	if cfg.V13AdminFeatures {
 		adm.WithModeration(admin.ModerationConfig{Service: svc, Cipher: cipher, QuarantineDays: cmp.Or(cfg.QuarantineDays, defaultQuarantineDays), C2CBodyAccess: cfg.C2CBodyAccess})
 	}
+	if cfg.Push.Enabled {
+		adm.WithPush(svc)
+	}
 	adminMux := http.NewServeMux()
 	adm.Register(adminMux)
 	if cfg.TestMode {
@@ -237,7 +294,9 @@ const (
 )
 
 // registerJobs 注册全部定时任务（BE-220）。任务名是测试接口和指标标签里的稳定名字。
-func registerJobs(s *scheduler.Scheduler, st *store.SQLite, svc *logic.Service, clk clock.Clock) {
+func registerJobs(s *scheduler.Scheduler, st *store.SQLite, svc *logic.Service, clk clock.Clock, pushPurgeBatch int) {
+	// 不跟 IM_PUSH_ENABLED：开关关掉之后，已有的推送也要回收。定时触发时跑到清完，每批之间释放数据库连接（F-PUSH-09 规则 4）。
+	s.RegisterDrain("push_purge", jobPeriod, func(ctx context.Context) (int, error) { return svc.PurgePushBatch(ctx, pushPurgeBatch) })
 	s.Register("social_purge", jobPeriod, svc.PurgeSocialNow)
 	s.Register("group_req_purge", jobPeriod, svc.PurgeGroupReqs)
 	s.Register("admin_audit_purge", jobPeriod, func(ctx context.Context) (int, error) {

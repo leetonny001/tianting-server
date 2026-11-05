@@ -35,6 +35,7 @@ type Service struct {
 	newID   func() string
 	changed *groupChangedMerger
 	mutes   *muteCache // 第二批开启时非 nil（IM_V13_ADMIN_FEATURES）
+	push    *pushState // 系统推送开启时非 nil（IM_PUSH_ENABLED）
 }
 
 // New 创建 Service。limiter 按用户限制发送速率（所有连接合计，PRD F-MSG-07）。
@@ -80,6 +81,8 @@ func (s *Service) Handle(ctx context.Context, c delivery.Session, in protocol.In
 		data, err = s.read(ctx, c, in.Data)
 	case protocol.CmdConvs:
 		data, err = s.convs(ctx, c)
+	case protocol.CmdPushSync:
+		data, err = s.pushSync(ctx, c, in.Data)
 	case protocol.CmdJoinRoom, protocol.CmdLeaveRoom:
 		err = protocol.Errorf(protocol.CodeBadRequest, "%s is not available yet", in.Cmd)
 	default:
