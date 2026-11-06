@@ -1,0 +1,1002 @@
+{
+  "description": "账号会话共享行为用例（PRD-chat F-ACC-03 规则 5、6、6a、7）。按顺序执行 steps，每步之后断言 expect、localGen、inflight。期望结果由服务端的 Go 参考客户端（server/e2e/accountmodel）生成。",
+  "scope": "本批只有客户端判断：刷新单飞、迟到响应丢弃、失败分类、4011 比较代号。规则 4 的判定表和转正随 BE-415 追加，附件状态机随 BE-403。",
+  "cases": [
+    {
+      "name": "剩余不足 6 小时才刷新",
+      "rule": "规则 5",
+      "start": {
+        "mode": "account",
+        "accessGen": 1,
+        "accessExpiresAt": 1800018000000,
+        "absoluteExpiresAt": 1825920000000
+      },
+      "steps": [
+        {
+          "op": "trigger",
+          "source": "timer",
+          "nowMs": 1800000000000,
+          "expect": {
+            "action": "refresh",
+            "attempt": 1
+          },
+          "localGen": 1,
+          "inflight": true
+        },
+        {
+          "op": "refreshOk",
+          "attempt": 1,
+          "tokens": {
+            "accessGen": 2,
+            "accessExpiresAt": 1800086400000,
+            "absoluteExpiresAt": 1825920000000
+          },
+          "expect": {
+            "action": "keepToken"
+          },
+          "localGen": 2,
+          "inflight": false
+        }
+      ]
+    },
+    {
+      "name": "剩余超过 6 小时不刷新",
+      "rule": "规则 5",
+      "start": {
+        "mode": "account",
+        "accessGen": 1,
+        "accessExpiresAt": 1800025200000,
+        "absoluteExpiresAt": 1825920000000
+      },
+      "steps": [
+        {
+          "op": "trigger",
+          "source": "start",
+          "nowMs": 1800000000000,
+          "expect": {
+            "action": "none"
+          },
+          "localGen": 1,
+          "inflight": false
+        },
+        {
+          "op": "trigger",
+          "source": "foreground",
+          "nowMs": 1800000000000,
+          "expect": {
+            "action": "none"
+          },
+          "localGen": 1,
+          "inflight": false
+        },
+        {
+          "op": "trigger",
+          "source": "timer",
+          "nowMs": 1800000000000,
+          "expect": {
+            "action": "none"
+          },
+          "localGen": 1,
+          "inflight": false
+        }
+      ]
+    },
+    {
+      "name": "四个入口合并成一次",
+      "rule": "规则 5 单飞",
+      "start": {
+        "mode": "account",
+        "accessGen": 1,
+        "accessExpiresAt": 1800003600000,
+        "absoluteExpiresAt": 1825920000000
+      },
+      "steps": [
+        {
+          "op": "trigger",
+          "source": "start",
+          "nowMs": 1800000000000,
+          "expect": {
+            "action": "refresh",
+            "attempt": 1
+          },
+          "localGen": 1,
+          "inflight": true
+        },
+        {
+          "op": "trigger",
+          "source": "foreground",
+          "nowMs": 1800000000000,
+          "expect": {
+            "action": "none"
+          },
+          "localGen": 1,
+          "inflight": true
+        },
+        {
+          "op": "trigger",
+          "source": "timer",
+          "nowMs": 1800000000000,
+          "expect": {
+            "action": "none"
+          },
+          "localGen": 1,
+          "inflight": true
+        },
+        {
+          "op": "trigger",
+          "source": "kicked",
+          "nowMs": 1800000000000,
+          "rejectedGen": 1,
+          "expect": {
+            "action": "none"
+          },
+          "localGen": 1,
+          "inflight": true
+        },
+        {
+          "op": "refreshOk",
+          "attempt": 1,
+          "tokens": {
+            "accessGen": 2,
+            "accessExpiresAt": 1800086400000,
+            "absoluteExpiresAt": 1825920000000
+          },
+          "expect": {
+            "action": "keepToken"
+          },
+          "localGen": 2,
+          "inflight": false
+        }
+      ]
+    },
+    {
+      "name": "超时放弃后重试，迟到响应丢弃",
+      "rule": "规则 5",
+      "start": {
+        "mode": "account",
+        "accessGen": 1,
+        "accessExpiresAt": 1800003600000,
+        "absoluteExpiresAt": 1825920000000
+      },
+      "steps": [
+        {
+          "op": "trigger",
+          "source": "timer",
+          "nowMs": 1800000000000,
+          "expect": {
+            "action": "refresh",
+            "attempt": 1
+          },
+          "localGen": 1,
+          "inflight": true
+        },
+        {
+          "op": "requestTimeout",
+          "expect": {
+            "action": "backoff"
+          },
+          "localGen": 1,
+          "inflight": false
+        },
+        {
+          "op": "trigger",
+          "source": "timer",
+          "nowMs": 1800000000000,
+          "expect": {
+            "action": "refresh",
+            "attempt": 2
+          },
+          "localGen": 1,
+          "inflight": true
+        },
+        {
+          "op": "refreshOk",
+          "attempt": 1,
+          "tokens": {
+            "accessGen": 2,
+            "accessExpiresAt": 1800086400000,
+            "absoluteExpiresAt": 1825920000000
+          },
+          "expect": {
+            "action": "none"
+          },
+          "localGen": 1,
+          "inflight": true
+        },
+        {
+          "op": "refreshOk",
+          "attempt": 2,
+          "tokens": {
+            "accessGen": 3,
+            "accessExpiresAt": 1800086400000,
+            "absoluteExpiresAt": 1825920000000
+          },
+          "expect": {
+            "action": "keepToken"
+          },
+          "localGen": 3,
+          "inflight": false
+        }
+      ]
+    },
+    {
+      "name": "迟到的失败响应也丢弃",
+      "rule": "规则 5",
+      "start": {
+        "mode": "account",
+        "accessGen": 1,
+        "accessExpiresAt": 1800003600000,
+        "absoluteExpiresAt": 1825920000000
+      },
+      "steps": [
+        {
+          "op": "trigger",
+          "source": "timer",
+          "nowMs": 1800000000000,
+          "expect": {
+            "action": "refresh",
+            "attempt": 1
+          },
+          "localGen": 1,
+          "inflight": true
+        },
+        {
+          "op": "requestTimeout",
+          "expect": {
+            "action": "backoff"
+          },
+          "localGen": 1,
+          "inflight": false
+        },
+        {
+          "op": "trigger",
+          "source": "timer",
+          "nowMs": 1800000000000,
+          "expect": {
+            "action": "refresh",
+            "attempt": 2
+          },
+          "localGen": 1,
+          "inflight": true
+        },
+        {
+          "op": "refreshFailed",
+          "attempt": 1,
+          "failure": {
+            "code": 4019,
+            "reason": "revoked"
+          },
+          "expect": {
+            "action": "none"
+          },
+          "localGen": 1,
+          "inflight": true
+        },
+        {
+          "op": "refreshOk",
+          "attempt": 2,
+          "tokens": {
+            "accessGen": 2,
+            "accessExpiresAt": 1800086400000,
+            "absoluteExpiresAt": 1825920000000
+          },
+          "expect": {
+            "action": "keepToken"
+          },
+          "localGen": 2,
+          "inflight": false
+        }
+      ]
+    },
+    {
+      "name": "access 到期等于绝对上限时不再主动刷新",
+      "rule": "规则 5、RS5-11",
+      "start": {
+        "mode": "account",
+        "accessGen": 1,
+        "accessExpiresAt": 1800003600000,
+        "absoluteExpiresAt": 1800003600000
+      },
+      "steps": [
+        {
+          "op": "trigger",
+          "source": "timer",
+          "nowMs": 1800000000000,
+          "expect": {
+            "action": "none"
+          },
+          "localGen": 1,
+          "inflight": false
+        },
+        {
+          "op": "trigger",
+          "source": "foreground",
+          "nowMs": 1800000000000,
+          "expect": {
+            "action": "none"
+          },
+          "localGen": 1,
+          "inflight": false
+        }
+      ]
+    },
+    {
+      "name": "superseded 留在当前页，3 次后回登录页",
+      "rule": "规则 6",
+      "start": {
+        "mode": "account",
+        "accessGen": 1,
+        "accessExpiresAt": 1800003600000,
+        "absoluteExpiresAt": 1825920000000
+      },
+      "steps": [
+        {
+          "op": "trigger",
+          "source": "timer",
+          "nowMs": 1800000000000,
+          "expect": {
+            "action": "refresh",
+            "attempt": 1
+          },
+          "localGen": 1,
+          "inflight": true
+        },
+        {
+          "op": "refreshFailed",
+          "attempt": 1,
+          "failure": {
+            "code": 4019,
+            "reason": "superseded",
+            "retryAfterSeconds": 120
+          },
+          "expect": {
+            "action": "retryAfter",
+            "retryAfterSeconds": 120
+          },
+          "localGen": 1,
+          "inflight": false
+        },
+        {
+          "op": "trigger",
+          "source": "timer",
+          "nowMs": 1800000000000,
+          "expect": {
+            "action": "refresh",
+            "attempt": 2
+          },
+          "localGen": 1,
+          "inflight": true
+        },
+        {
+          "op": "refreshFailed",
+          "attempt": 2,
+          "failure": {
+            "code": 4019,
+            "reason": "superseded",
+            "retryAfterSeconds": 120
+          },
+          "expect": {
+            "action": "retryAfter",
+            "retryAfterSeconds": 120
+          },
+          "localGen": 1,
+          "inflight": false
+        },
+        {
+          "op": "trigger",
+          "source": "timer",
+          "nowMs": 1800000000000,
+          "expect": {
+            "action": "refresh",
+            "attempt": 3
+          },
+          "localGen": 1,
+          "inflight": true
+        },
+        {
+          "op": "refreshFailed",
+          "attempt": 3,
+          "failure": {
+            "code": 4019,
+            "reason": "superseded",
+            "retryAfterSeconds": 120
+          },
+          "expect": {
+            "action": "login",
+            "dialog": "supersededExceeded"
+          },
+          "localGen": 1,
+          "inflight": false
+        }
+      ]
+    },
+    {
+      "name": "superseded 之后刷新成功清零",
+      "rule": "规则 6",
+      "start": {
+        "mode": "account",
+        "accessGen": 1,
+        "accessExpiresAt": 1800003600000,
+        "absoluteExpiresAt": 1825920000000
+      },
+      "steps": [
+        {
+          "op": "trigger",
+          "source": "timer",
+          "nowMs": 1800000000000,
+          "expect": {
+            "action": "refresh",
+            "attempt": 1
+          },
+          "localGen": 1,
+          "inflight": true
+        },
+        {
+          "op": "refreshFailed",
+          "attempt": 1,
+          "failure": {
+            "code": 4019,
+            "reason": "superseded",
+            "retryAfterSeconds": 120
+          },
+          "expect": {
+            "action": "retryAfter",
+            "retryAfterSeconds": 120
+          },
+          "localGen": 1,
+          "inflight": false
+        },
+        {
+          "op": "trigger",
+          "source": "timer",
+          "nowMs": 1800000000000,
+          "expect": {
+            "action": "refresh",
+            "attempt": 2
+          },
+          "localGen": 1,
+          "inflight": true
+        },
+        {
+          "op": "refreshOk",
+          "attempt": 2,
+          "tokens": {
+            "accessGen": 2,
+            "accessExpiresAt": 1800086400000,
+            "absoluteExpiresAt": 1825920000000
+          },
+          "expect": {
+            "action": "keepToken"
+          },
+          "localGen": 2,
+          "inflight": false
+        },
+        {
+          "op": "trigger",
+          "source": "timer",
+          "nowMs": 1800000000000,
+          "expect": {
+            "action": "none"
+          },
+          "localGen": 2,
+          "inflight": false
+        }
+      ]
+    },
+    {
+      "name": "replayDetected 回登录页前弹窗",
+      "rule": "规则 6",
+      "start": {
+        "mode": "account",
+        "accessGen": 1,
+        "accessExpiresAt": 1800003600000,
+        "absoluteExpiresAt": 1825920000000
+      },
+      "steps": [
+        {
+          "op": "trigger",
+          "source": "timer",
+          "nowMs": 1800000000000,
+          "expect": {
+            "action": "refresh",
+            "attempt": 1
+          },
+          "localGen": 1,
+          "inflight": true
+        },
+        {
+          "op": "refreshFailed",
+          "attempt": 1,
+          "failure": {
+            "code": 4019,
+            "reason": "replayDetected"
+          },
+          "expect": {
+            "action": "login",
+            "dialog": "credentialAnomaly"
+          },
+          "localGen": 1,
+          "inflight": false
+        }
+      ]
+    },
+    {
+      "name": "credentialsChanged 带截止日期",
+      "rule": "规则 6a",
+      "start": {
+        "mode": "account",
+        "accessGen": 1,
+        "accessExpiresAt": 1800003600000,
+        "absoluteExpiresAt": 1825920000000
+      },
+      "steps": [
+        {
+          "op": "trigger",
+          "source": "timer",
+          "nowMs": 1800000000000,
+          "expect": {
+            "action": "refresh",
+            "attempt": 1
+          },
+          "localGen": 1,
+          "inflight": true
+        },
+        {
+          "op": "refreshFailed",
+          "attempt": 1,
+          "failure": {
+            "code": 4019,
+            "reason": "credentialsChanged",
+            "recoverBefore": 1800518400000
+          },
+          "expect": {
+            "action": "login",
+            "dialog": "recoverBefore",
+            "recoverBefore": 1800518400000
+          },
+          "localGen": 1,
+          "inflight": false
+        }
+      ]
+    },
+    {
+      "name": "credentialsChanged 没有截止日期按原因提示",
+      "rule": "规则 6a",
+      "start": {
+        "mode": "account",
+        "accessGen": 1,
+        "accessExpiresAt": 1800003600000,
+        "absoluteExpiresAt": 1825920000000
+      },
+      "steps": [
+        {
+          "op": "trigger",
+          "source": "timer",
+          "nowMs": 1800000000000,
+          "expect": {
+            "action": "refresh",
+            "attempt": 1
+          },
+          "localGen": 1,
+          "inflight": true
+        },
+        {
+          "op": "refreshFailed",
+          "attempt": 1,
+          "failure": {
+            "code": 4019,
+            "reason": "credentialsChanged"
+          },
+          "expect": {
+            "action": "login",
+            "dialog": "sessionExpired"
+          },
+          "localGen": 1,
+          "inflight": false
+        }
+      ]
+    },
+    {
+      "name": "revoked、expired、invalid 回登录页",
+      "rule": "规则 6",
+      "start": {
+        "mode": "account",
+        "accessGen": 1,
+        "accessExpiresAt": 1800003600000,
+        "absoluteExpiresAt": 1825920000000
+      },
+      "steps": [
+        {
+          "op": "trigger",
+          "source": "timer",
+          "nowMs": 1800000000000,
+          "expect": {
+            "action": "refresh",
+            "attempt": 1
+          },
+          "localGen": 1,
+          "inflight": true
+        },
+        {
+          "op": "refreshFailed",
+          "attempt": 1,
+          "failure": {
+            "code": 4019,
+            "reason": "expired"
+          },
+          "expect": {
+            "action": "login",
+            "dialog": "sessionExpired"
+          },
+          "localGen": 1,
+          "inflight": false
+        }
+      ]
+    },
+    {
+      "name": "不认识的 reason 按回登录页处理",
+      "rule": "规则 6",
+      "start": {
+        "mode": "account",
+        "accessGen": 1,
+        "accessExpiresAt": 1800003600000,
+        "absoluteExpiresAt": 1825920000000
+      },
+      "steps": [
+        {
+          "op": "trigger",
+          "source": "timer",
+          "nowMs": 1800000000000,
+          "expect": {
+            "action": "refresh",
+            "attempt": 1
+          },
+          "localGen": 1,
+          "inflight": true
+        },
+        {
+          "op": "refreshFailed",
+          "attempt": 1,
+          "failure": {
+            "code": 4019,
+            "reason": "somethingNew"
+          },
+          "expect": {
+            "action": "login",
+            "dialog": "sessionExpired"
+          },
+          "localGen": 1,
+          "inflight": false
+        }
+      ]
+    },
+    {
+      "name": "429、5xx、网络错误留在当前页面",
+      "rule": "规则 6",
+      "start": {
+        "mode": "account",
+        "accessGen": 1,
+        "accessExpiresAt": 1800003600000,
+        "absoluteExpiresAt": 1825920000000
+      },
+      "steps": [
+        {
+          "op": "trigger",
+          "source": "timer",
+          "nowMs": 1800000000000,
+          "expect": {
+            "action": "refresh",
+            "attempt": 1
+          },
+          "localGen": 1,
+          "inflight": true
+        },
+        {
+          "op": "refreshFailed",
+          "attempt": 1,
+          "failure": {
+            "code": 4290
+          },
+          "expect": {
+            "action": "backoff"
+          },
+          "localGen": 1,
+          "inflight": false
+        },
+        {
+          "op": "trigger",
+          "source": "timer",
+          "nowMs": 1800000000000,
+          "expect": {
+            "action": "refresh",
+            "attempt": 2
+          },
+          "localGen": 1,
+          "inflight": true
+        },
+        {
+          "op": "refreshFailed",
+          "attempt": 2,
+          "failure": {
+            "code": 5030
+          },
+          "expect": {
+            "action": "backoff"
+          },
+          "localGen": 1,
+          "inflight": false
+        },
+        {
+          "op": "trigger",
+          "source": "timer",
+          "nowMs": 1800000000000,
+          "expect": {
+            "action": "refresh",
+            "attempt": 3
+          },
+          "localGen": 1,
+          "inflight": true
+        },
+        {
+          "op": "refreshFailed",
+          "attempt": 3,
+          "failure": {
+            "code": 0
+          },
+          "expect": {
+            "action": "backoff"
+          },
+          "localGen": 1,
+          "inflight": false
+        },
+        {
+          "op": "trigger",
+          "source": "timer",
+          "nowMs": 1800000000000,
+          "expect": {
+            "action": "refresh",
+            "attempt": 4
+          },
+          "localGen": 1,
+          "inflight": true
+        },
+        {
+          "op": "refreshOk",
+          "attempt": 4,
+          "tokens": {
+            "accessGen": 2,
+            "accessExpiresAt": 1800086400000,
+            "absoluteExpiresAt": 1825920000000
+          },
+          "expect": {
+            "action": "keepToken"
+          },
+          "localGen": 2,
+          "inflight": false
+        }
+      ]
+    },
+    {
+      "name": "4034 是兜底，显示封禁文案",
+      "rule": "规则 6、10",
+      "start": {
+        "mode": "account",
+        "accessGen": 1,
+        "accessExpiresAt": 1800003600000,
+        "absoluteExpiresAt": 1825920000000
+      },
+      "steps": [
+        {
+          "op": "trigger",
+          "source": "timer",
+          "nowMs": 1800000000000,
+          "expect": {
+            "action": "refresh",
+            "attempt": 1
+          },
+          "localGen": 1,
+          "inflight": true
+        },
+        {
+          "op": "refreshFailed",
+          "attempt": 1,
+          "failure": {
+            "code": 4034
+          },
+          "expect": {
+            "action": "banNotice"
+          },
+          "localGen": 1,
+          "inflight": false
+        }
+      ]
+    },
+    {
+      "name": "kicked/tokenExpired：本地代号更新就不刷新",
+      "rule": "规则 7",
+      "start": {
+        "mode": "account",
+        "accessGen": 5,
+        "accessExpiresAt": 1800086400000,
+        "absoluteExpiresAt": 1825920000000
+      },
+      "steps": [
+        {
+          "op": "trigger",
+          "source": "kicked",
+          "nowMs": 1800000000000,
+          "rejectedGen": 4,
+          "expect": {
+            "action": "useLocal"
+          },
+          "localGen": 5,
+          "inflight": false
+        }
+      ]
+    },
+    {
+      "name": "kicked/tokenExpired：本地不比它新就刷新一次，不看剩余时间",
+      "rule": "规则 7",
+      "start": {
+        "mode": "account",
+        "accessGen": 1,
+        "accessExpiresAt": 1800086400000,
+        "absoluteExpiresAt": 1825920000000
+      },
+      "steps": [
+        {
+          "op": "trigger",
+          "source": "kicked",
+          "nowMs": 1800000000000,
+          "rejectedGen": 1,
+          "expect": {
+            "action": "refresh",
+            "attempt": 1
+          },
+          "localGen": 1,
+          "inflight": true
+        },
+        {
+          "op": "refreshOk",
+          "attempt": 1,
+          "tokens": {
+            "accessGen": 2,
+            "accessExpiresAt": 1800086400000,
+            "absoluteExpiresAt": 1825920000000
+          },
+          "expect": {
+            "action": "keepToken"
+          },
+          "localGen": 2,
+          "inflight": false
+        }
+      ]
+    },
+    {
+      "name": "HTTP 4011：本地代号更新就直接重试",
+      "rule": "规则 7、RS5-10",
+      "start": {
+        "mode": "account",
+        "accessGen": 5,
+        "accessExpiresAt": 1800086400000,
+        "absoluteExpiresAt": 1825920000000
+      },
+      "steps": [
+        {
+          "op": "http4011",
+          "rejectedGen": 4,
+          "expect": {
+            "action": "useLocal"
+          },
+          "localGen": 5,
+          "inflight": false
+        },
+        {
+          "op": "http4011",
+          "rejectedGen": 4,
+          "expect": {
+            "action": "useLocal"
+          },
+          "localGen": 5,
+          "inflight": false
+        },
+        {
+          "op": "http4011",
+          "rejectedGen": 3,
+          "expect": {
+            "action": "useLocal"
+          },
+          "localGen": 5,
+          "inflight": false
+        }
+      ]
+    },
+    {
+      "name": "HTTP 4011：本地不比它新就刷新，并发合并",
+      "rule": "规则 7",
+      "start": {
+        "mode": "account",
+        "accessGen": 1,
+        "accessExpiresAt": 1800086400000,
+        "absoluteExpiresAt": 1825920000000
+      },
+      "steps": [
+        {
+          "op": "http4011",
+          "rejectedGen": 1,
+          "expect": {
+            "action": "refresh",
+            "attempt": 1
+          },
+          "localGen": 1,
+          "inflight": true
+        },
+        {
+          "op": "http4011",
+          "rejectedGen": 1,
+          "expect": {
+            "action": "none"
+          },
+          "localGen": 1,
+          "inflight": true
+        },
+        {
+          "op": "refreshOk",
+          "attempt": 1,
+          "tokens": {
+            "accessGen": 2,
+            "accessExpiresAt": 1800086400000,
+            "absoluteExpiresAt": 1825920000000
+          },
+          "expect": {
+            "action": "keepToken"
+          },
+          "localGen": 2,
+          "inflight": false
+        },
+        {
+          "op": "http4011",
+          "rejectedGen": 1,
+          "expect": {
+            "action": "useLocal"
+          },
+          "localGen": 2,
+          "inflight": false
+        }
+      ]
+    },
+    {
+      "name": "演示模式收到 4011 回登录页",
+      "rule": "规则 7",
+      "start": {
+        "mode": "demo",
+        "accessGen": 0,
+        "accessExpiresAt": 1800003600000,
+        "absoluteExpiresAt": 0
+      },
+      "steps": [
+        {
+          "op": "trigger",
+          "source": "timer",
+          "nowMs": 1800000000000,
+          "expect": {
+            "action": "none"
+          },
+          "localGen": 0,
+          "inflight": false
+        },
+        {
+          "op": "trigger",
+          "source": "kicked",
+          "nowMs": 1800000000000,
+          "expect": {
+            "action": "login",
+            "dialog": "sessionExpired"
+          },
+          "localGen": 0,
+          "inflight": false
+        }
+      ]
+    }
+  ]
+}
