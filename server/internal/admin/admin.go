@@ -381,7 +381,7 @@ func (a *Admin) forceLogout(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, protocol.Errorf(protocol.CodeInvalidID, "invalid userId"))
 		return
 	}
-	err := a.store.RevokeTokens(r.Context(), uid)
+	err := a.store.RevokeTokens(r.Context(), uid, a.clock.Now().UnixMilli())
 	switch {
 	case errors.Is(err, store.ErrNotFound):
 		writeErr(w, protocol.Errorf(protocol.CodeUserNotFound, "user %s not found", uid))

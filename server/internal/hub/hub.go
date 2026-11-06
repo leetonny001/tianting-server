@@ -4,8 +4,10 @@ package hub
 
 import (
 	"sync"
+	"sync/atomic"
 
 	"tianting/server/internal/delivery"
+	"tianting/server/internal/protocol"
 	"tianting/server/internal/sessions"
 )
 
@@ -14,7 +16,9 @@ type Client interface {
 	delivery.Session
 	Send(frame []byte) bool // 发不出去时返回 false
 	Kick(reason string)     // 下发 kicked 并关闭连接
-	Suspend(until *int64)   // 下发 kicked {reason: suspended, until} 并关闭连接
+	// KickWith 下发带 recoverBefore 的 kicked 并关闭连接（PRD-chat F-ACC-03 规则 6a）。
+	KickWith(reason string, recoverBefore *int64)
+	Suspend(until *int64) // 下发 kicked {reason: suspended, until} 并关闭连接
 	Platform() string
 	// SessionInfo 返回连接元数据（IP 已脱敏，PRD-admin F-ADM-14 规则 2）。
 	SessionInfo() sessions.Conn
@@ -27,6 +31,8 @@ type Hub struct {
 	// platforms 是按平台的连接数（运维接口读取，不遍历 users，PRD-ops S-OPS-13）。
 	platforms map[string]int
 	seq       uint64 // 登记顺序，用于找出最早的连接
+	// dropKicks 是测试模式的故障注入（PRD-chat 第 4.5 节"丢弃吊销事件"）：吊销事件丢了，靠周期复查补上（RS4-09）。
+	dropKicks atomic.Bool
 }
 
 type entry struct {
@@ -105,8 +111,69 @@ func (h *Hub) DeliverToUser(userID string, frame []byte, exceptConn string) int 
 	return h.SendToUser(userID, frame, exceptConn)
 }
 
+// SetDropKicks 打开或关闭"丢弃吊销事件"，只有测试模式的路由会调用。
+func (h *Hub) SetDropKicks(on bool) { h.dropKicks.Store(on) }
+
+func (h *Hub) userClients(userID string, keep func(Client) bool) []Client {
+	h.mu.RLock()
+	defer h.mu.RUnlock()
+	targets := make([]Client, 0, len(h.users[userID]))
+	for _, e := range h.users[userID] {
+		if keep(e.c) {
+			targets = append(targets, e.c)
+		}
+	}
+	return targets
+}
+
+// KickSession 实现 delivery.Router。
+func (h *Hub) KickSession(userID, sid, reason string, recoverBefore *int64) {
+	if h.dropKicks.Load() {
+		return
+	}
+	for _, c := range h.userClients(userID, func(c Client) bool { return c.SID() == sid }) {
+		c.KickWith(reason, recoverBefore)
+	}
+}
+
+// KickStaleGen 实现 delivery.Router。
+func (h *Hub) KickStaleGen(userID, sid string, currentGen int64) {
+	if h.dropKicks.Load() {
+		return
+	}
+	for _, c := range h.userClients(userID, func(c Client) bool { return c.SID() == sid && c.Gen() != currentGen }) {
+		c.Kick(protocol.KickTokenExpired)
+	}
+}
+
+// KickUserExcept 实现 delivery.Router。
+func (h *Hub) KickUserExcept(userID, exceptSID, reason string, recoverBefore *int64) {
+	if h.dropKicks.Load() {
+		return
+	}
+	for _, c := range h.userClients(userID, func(c Client) bool { return exceptSID == "" || c.SID() != exceptSID }) {
+		c.KickWith(reason, recoverBefore)
+	}
+}
+
+// Clients 返回本节点全部连接的快照（周期复查用）。
+func (h *Hub) Clients() []Client {
+	h.mu.RLock()
+	defer h.mu.RUnlock()
+	var out []Client
+	for _, conns := range h.users {
+		for _, e := range conns {
+			out = append(out, e.c)
+		}
+	}
+	return out
+}
+
 // SuspendUser 实现 delivery.Router。
 func (h *Hub) SuspendUser(userID string, until *int64) {
+	if h.dropKicks.Load() {
+		return
+	}
 	h.mu.RLock()
 	targets := make([]Client, 0, len(h.users[userID]))
 	for _, e := range h.users[userID] {
@@ -119,7 +186,12 @@ func (h *Hub) SuspendUser(userID string, until *int64) {
 }
 
 // KickUser 实现 delivery.Router。
-func (h *Hub) KickUser(userID, reason string) { h.KickLocal(userID, reason) }
+func (h *Hub) KickUser(userID, reason string) {
+	if h.dropKicks.Load() {
+		return
+	}
+	h.KickLocal(userID, reason)
+}
 
 // SendToUser 把帧发给本节点上用户的所有连接，跳过 exceptConn（空字符串表示不跳过）。
 // 返回成功投递的连接数。

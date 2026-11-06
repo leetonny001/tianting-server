@@ -299,6 +299,12 @@ type SwitchSummary struct {
 }
 
 // Summary 生成脱敏的配置摘要。
+// WithDynamicCheck 增加一项要查库的检查（app.DynamicChecks）。生产环境才算适用，和其他检查项一样。
+func (s ConfigSummary) WithDynamicCheck(id, detail string, passed bool) any {
+	s.Checks = append(slices.Clone(s.Checks), Check{ID: id, Passed: passed, Applicable: s.Env.Env == EnvProduction, Detail: detail})
+	return s
+}
+
 func Summary(cfg Server, version, nodeID string) ConfigSummary {
 	a := cfg.App
 	limit := debug.SetMemoryLimit(-1)

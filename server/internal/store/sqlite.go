@@ -564,15 +564,24 @@ func (s *SQLite) MissingUsers(ctx context.Context, userIDs []string) ([]string, 
 	return missing, nil
 }
 
-func (s *SQLite) RevokeTokens(ctx context.Context, userID string) error {
-	res, err := s.db.ExecContext(ctx, `UPDATE users SET token_version = token_version + 1 WHERE user_id = ?`, userID)
+func (s *SQLite) RevokeTokens(ctx context.Context, userID string, now int64) error {
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+	res, err := tx.ExecContext(ctx, `UPDATE users SET token_version = token_version + 1 WHERE user_id = ?`, userID)
 	if err != nil {
 		return err
 	}
 	if n, _ := res.RowsAffected(); n == 0 {
 		return ErrNotFound
 	}
-	return nil
+	// 同时吊销全部设备会话（PRD-chat F-ACC-04 规则 4），refresh 一律 4019（F-ACC-03 规则 10）。
+	if err := revokeUserSessions(ctx, tx, userID, RevokeReasonRevoked, now); err != nil {
+		return err
+	}
+	return tx.Commit()
 }
 
 func (s *SQLite) TokenVersion(ctx context.Context, userID string) (int64, error) {

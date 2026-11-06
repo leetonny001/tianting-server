@@ -1,6 +1,6 @@
 {
-  "description": "账号会话共享行为用例（PRD-chat F-ACC-03 规则 5、6、6a、7）。按顺序执行 steps，每步之后断言 expect、localGen、inflight。期望结果由服务端的 Go 参考客户端（server/e2e/accountmodel）生成。",
-  "scope": "本批只有客户端判断：刷新单飞、迟到响应丢弃、失败分类、4011 比较代号。规则 4 的判定表和转正随 BE-415 追加，附件状态机随 BE-403。",
+  "description": "账号会话共享行为用例（PRD-chat F-ACC-03 规则 4、5、6、6a、7）。cases：按顺序执行 steps，每步之后断言 expect、localGen、inflight。serverCases：规则 4 的判定表，从登录后的状态开始，每步之后断言 result、current、pendings。期望结果由服务端的 Go 参考客户端（server/e2e/accountmodel）生成。",
+  "scope": "cases 是客户端判断：刷新单飞、迟到响应丢弃、失败分类、4011 比较代号，三套 SDK 跑。serverCases 由真实服务端跑（server/e2e/account_vectors_test.go），三套 SDK 用它搭假服务端。附件状态机随 BE-403。",
   "cases": [
     {
       "name": "剩余不足 6 小时才刷新",
@@ -995,6 +995,758 @@
           },
           "localGen": 0,
           "inflight": false
+        }
+      ]
+    }
+  ],
+  "serverCases": [
+    {
+      "name": "access 等于 current 放行",
+      "rule": "规则 4 判定表",
+      "steps": [
+        {
+          "op": "access",
+          "gen": 1,
+          "result": "ok",
+          "current": 1,
+          "revoked": false,
+          "overlapMinGen": 0,
+          "inWindow": false,
+          "pendings": []
+        }
+      ]
+    },
+    {
+      "name": "access 属于 pending 转正放行，旧 current 随即被拒绝",
+      "rule": "规则 4 判定表",
+      "steps": [
+        {
+          "op": "refresh",
+          "gen": 1,
+          "result": "issued",
+          "newGen": 2,
+          "current": 1,
+          "revoked": false,
+          "overlapMinGen": 0,
+          "inWindow": false,
+          "pendings": [
+            2
+          ]
+        },
+        {
+          "op": "access",
+          "gen": 2,
+          "result": "promoted",
+          "current": 2,
+          "revoked": false,
+          "overlapMinGen": 1,
+          "inWindow": true,
+          "pendings": []
+        },
+        {
+          "op": "access",
+          "gen": 1,
+          "result": "tokenExpired",
+          "current": 2,
+          "revoked": false,
+          "overlapMinGen": 1,
+          "inWindow": true,
+          "pendings": []
+        }
+      ]
+    },
+    {
+      "name": "被替换的 pending：不转正，不吊销",
+      "rule": "规则 4 判定表，AC-ACC-03-21",
+      "steps": [
+        {
+          "op": "refresh",
+          "gen": 1,
+          "result": "issued",
+          "newGen": 2,
+          "current": 1,
+          "revoked": false,
+          "overlapMinGen": 0,
+          "inWindow": false,
+          "pendings": [
+            2
+          ]
+        },
+        {
+          "op": "refresh",
+          "gen": 1,
+          "result": "issued",
+          "newGen": 3,
+          "current": 1,
+          "revoked": false,
+          "overlapMinGen": 0,
+          "inWindow": false,
+          "pendings": [
+            2,
+            3
+          ]
+        },
+        {
+          "op": "access",
+          "gen": 3,
+          "result": "promoted",
+          "current": 3,
+          "revoked": false,
+          "overlapMinGen": 1,
+          "inWindow": true,
+          "pendings": []
+        },
+        {
+          "op": "access",
+          "gen": 2,
+          "result": "tokenExpired",
+          "current": 3,
+          "revoked": false,
+          "overlapMinGen": 1,
+          "inWindow": true,
+          "pendings": []
+        }
+      ]
+    },
+    {
+      "name": "被淘汰的 pending 的 access：不转正，R1 仍可用",
+      "rule": "规则 4 判定表，AC-ACC-03-28",
+      "steps": [
+        {
+          "op": "refresh",
+          "gen": 1,
+          "result": "issued",
+          "newGen": 2,
+          "current": 1,
+          "revoked": false,
+          "overlapMinGen": 0,
+          "inWindow": false,
+          "pendings": [
+            2
+          ]
+        },
+        {
+          "op": "refresh",
+          "gen": 1,
+          "repeat": 4,
+          "current": 1,
+          "revoked": false,
+          "overlapMinGen": 0,
+          "inWindow": false,
+          "pendings": [
+            3,
+            4,
+            5,
+            6
+          ]
+        },
+        {
+          "op": "access",
+          "gen": 2,
+          "result": "tokenExpired",
+          "current": 1,
+          "revoked": false,
+          "overlapMinGen": 0,
+          "inWindow": false,
+          "pendings": [
+            3,
+            4,
+            5,
+            6
+          ]
+        },
+        {
+          "op": "refresh",
+          "gen": 1,
+          "result": "issued",
+          "newGen": 7,
+          "current": 1,
+          "revoked": false,
+          "overlapMinGen": 0,
+          "inWindow": false,
+          "pendings": [
+            4,
+            5,
+            6,
+            7
+          ]
+        }
+      ]
+    },
+    {
+      "name": "用 current 刷新：current 不变，加入 pending",
+      "rule": "规则 4",
+      "steps": [
+        {
+          "op": "refresh",
+          "gen": 1,
+          "result": "issued",
+          "newGen": 2,
+          "current": 1,
+          "revoked": false,
+          "overlapMinGen": 0,
+          "inWindow": false,
+          "pendings": [
+            2
+          ]
+        },
+        {
+          "op": "refresh",
+          "gen": 1,
+          "result": "issued",
+          "newGen": 3,
+          "current": 1,
+          "revoked": false,
+          "overlapMinGen": 0,
+          "inWindow": false,
+          "pendings": [
+            2,
+            3
+          ]
+        },
+        {
+          "op": "refresh",
+          "gen": 1,
+          "result": "issued",
+          "newGen": 4,
+          "current": 1,
+          "revoked": false,
+          "overlapMinGen": 0,
+          "inWindow": false,
+          "pendings": [
+            2,
+            3,
+            4
+          ]
+        }
+      ]
+    },
+    {
+      "name": "用 pending 刷新：转正并签发新的 pending",
+      "rule": "规则 4",
+      "steps": [
+        {
+          "op": "refresh",
+          "gen": 1,
+          "result": "issued",
+          "newGen": 2,
+          "current": 1,
+          "revoked": false,
+          "overlapMinGen": 0,
+          "inWindow": false,
+          "pendings": [
+            2
+          ]
+        },
+        {
+          "op": "refresh",
+          "gen": 2,
+          "result": "issuedPromoted",
+          "newGen": 3,
+          "current": 2,
+          "revoked": false,
+          "overlapMinGen": 1,
+          "inWindow": true,
+          "pendings": [
+            3
+          ]
+        }
+      ]
+    },
+    {
+      "name": "转正后窗口内旧值 superseded，窗口后重放",
+      "rule": "规则 4，AC-ACC-03-30",
+      "steps": [
+        {
+          "op": "refresh",
+          "gen": 1,
+          "result": "issued",
+          "newGen": 2,
+          "current": 1,
+          "revoked": false,
+          "overlapMinGen": 0,
+          "inWindow": false,
+          "pendings": [
+            2
+          ]
+        },
+        {
+          "op": "access",
+          "gen": 2,
+          "result": "promoted",
+          "current": 2,
+          "revoked": false,
+          "overlapMinGen": 1,
+          "inWindow": true,
+          "pendings": []
+        },
+        {
+          "op": "advance",
+          "ms": 60000,
+          "current": 2,
+          "revoked": false,
+          "overlapMinGen": 1,
+          "inWindow": true,
+          "pendings": []
+        },
+        {
+          "op": "refresh",
+          "gen": 1,
+          "result": "superseded",
+          "current": 2,
+          "revoked": false,
+          "overlapMinGen": 1,
+          "inWindow": true,
+          "pendings": []
+        },
+        {
+          "op": "advance",
+          "ms": 120000,
+          "current": 2,
+          "revoked": false,
+          "overlapMinGen": 1,
+          "inWindow": false,
+          "pendings": []
+        },
+        {
+          "op": "refresh",
+          "gen": 1,
+          "result": "replayDetected",
+          "current": 2,
+          "revoked": true,
+          "overlapMinGen": 1,
+          "inWindow": false,
+          "pendings": []
+        },
+        {
+          "op": "refresh",
+          "gen": 2,
+          "result": "alreadyRevoked",
+          "current": 2,
+          "revoked": true,
+          "overlapMinGen": 1,
+          "inWindow": false,
+          "pendings": []
+        }
+      ]
+    },
+    {
+      "name": "窗口内被替换的 pending 也 superseded",
+      "rule": "规则 4，AC-ACC-03-31",
+      "steps": [
+        {
+          "op": "refresh",
+          "gen": 1,
+          "result": "issued",
+          "newGen": 2,
+          "current": 1,
+          "revoked": false,
+          "overlapMinGen": 0,
+          "inWindow": false,
+          "pendings": [
+            2
+          ]
+        },
+        {
+          "op": "refresh",
+          "gen": 1,
+          "result": "issued",
+          "newGen": 3,
+          "current": 1,
+          "revoked": false,
+          "overlapMinGen": 0,
+          "inWindow": false,
+          "pendings": [
+            2,
+            3
+          ]
+        },
+        {
+          "op": "access",
+          "gen": 2,
+          "result": "promoted",
+          "current": 2,
+          "revoked": false,
+          "overlapMinGen": 1,
+          "inWindow": true,
+          "pendings": []
+        },
+        {
+          "op": "refresh",
+          "gen": 3,
+          "result": "superseded",
+          "current": 2,
+          "revoked": false,
+          "overlapMinGen": 1,
+          "inWindow": true,
+          "pendings": []
+        },
+        {
+          "op": "advance",
+          "ms": 180000,
+          "current": 2,
+          "revoked": false,
+          "overlapMinGen": 1,
+          "inWindow": false,
+          "pendings": []
+        },
+        {
+          "op": "refresh",
+          "gen": 3,
+          "result": "replayDetected",
+          "current": 2,
+          "revoked": true,
+          "overlapMinGen": 1,
+          "inWindow": false,
+          "pendings": []
+        }
+      ]
+    },
+    {
+      "name": "连续转正：更早的值立即重放",
+      "rule": "规则 4，RS5-01，AC-ACC-03-38",
+      "steps": [
+        {
+          "op": "refresh",
+          "gen": 1,
+          "result": "issued",
+          "newGen": 2,
+          "current": 1,
+          "revoked": false,
+          "overlapMinGen": 0,
+          "inWindow": false,
+          "pendings": [
+            2
+          ]
+        },
+        {
+          "op": "access",
+          "gen": 2,
+          "result": "promoted",
+          "current": 2,
+          "revoked": false,
+          "overlapMinGen": 1,
+          "inWindow": true,
+          "pendings": []
+        },
+        {
+          "op": "advance",
+          "ms": 110000,
+          "current": 2,
+          "revoked": false,
+          "overlapMinGen": 1,
+          "inWindow": true,
+          "pendings": []
+        },
+        {
+          "op": "refresh",
+          "gen": 2,
+          "result": "issued",
+          "newGen": 3,
+          "current": 2,
+          "revoked": false,
+          "overlapMinGen": 1,
+          "inWindow": true,
+          "pendings": [
+            3
+          ]
+        },
+        {
+          "op": "access",
+          "gen": 3,
+          "result": "promoted",
+          "current": 3,
+          "revoked": false,
+          "overlapMinGen": 2,
+          "inWindow": true,
+          "pendings": []
+        },
+        {
+          "op": "advance",
+          "ms": 5000,
+          "current": 3,
+          "revoked": false,
+          "overlapMinGen": 2,
+          "inWindow": true,
+          "pendings": []
+        },
+        {
+          "op": "refresh",
+          "gen": 1,
+          "result": "replayDetected",
+          "current": 3,
+          "revoked": true,
+          "overlapMinGen": 2,
+          "inWindow": true,
+          "pendings": []
+        },
+        {
+          "op": "refresh",
+          "gen": 3,
+          "result": "alreadyRevoked",
+          "current": 3,
+          "revoked": true,
+          "overlapMinGen": 2,
+          "inWindow": true,
+          "pendings": []
+        }
+      ]
+    },
+    {
+      "name": "代号不复用：作废的代一直被拒绝",
+      "rule": "规则 1，RS5-05，AC-ACC-03-40",
+      "steps": [
+        {
+          "op": "refresh",
+          "gen": 1,
+          "result": "issued",
+          "newGen": 2,
+          "current": 1,
+          "revoked": false,
+          "overlapMinGen": 0,
+          "inWindow": false,
+          "pendings": [
+            2
+          ]
+        },
+        {
+          "op": "refresh",
+          "gen": 1,
+          "result": "issued",
+          "newGen": 3,
+          "current": 1,
+          "revoked": false,
+          "overlapMinGen": 0,
+          "inWindow": false,
+          "pendings": [
+            2,
+            3
+          ]
+        },
+        {
+          "op": "refresh",
+          "gen": 1,
+          "result": "issued",
+          "newGen": 4,
+          "current": 1,
+          "revoked": false,
+          "overlapMinGen": 0,
+          "inWindow": false,
+          "pendings": [
+            2,
+            3,
+            4
+          ]
+        },
+        {
+          "op": "access",
+          "gen": 4,
+          "result": "promoted",
+          "current": 4,
+          "revoked": false,
+          "overlapMinGen": 1,
+          "inWindow": true,
+          "pendings": []
+        },
+        {
+          "op": "refresh",
+          "gen": 4,
+          "result": "issued",
+          "newGen": 5,
+          "current": 4,
+          "revoked": false,
+          "overlapMinGen": 1,
+          "inWindow": true,
+          "pendings": [
+            5
+          ]
+        },
+        {
+          "op": "access",
+          "gen": 5,
+          "result": "promoted",
+          "current": 5,
+          "revoked": false,
+          "overlapMinGen": 4,
+          "inWindow": true,
+          "pendings": []
+        },
+        {
+          "op": "access",
+          "gen": 3,
+          "result": "tokenExpired",
+          "current": 5,
+          "revoked": false,
+          "overlapMinGen": 4,
+          "inWindow": true,
+          "pendings": []
+        }
+      ]
+    },
+    {
+      "name": "没有转正过时，被淘汰的值按重放",
+      "rule": "规则 4",
+      "steps": [
+        {
+          "op": "refresh",
+          "gen": 1,
+          "result": "issued",
+          "newGen": 2,
+          "current": 1,
+          "revoked": false,
+          "overlapMinGen": 0,
+          "inWindow": false,
+          "pendings": [
+            2
+          ]
+        },
+        {
+          "op": "refresh",
+          "gen": 1,
+          "repeat": 4,
+          "current": 1,
+          "revoked": false,
+          "overlapMinGen": 0,
+          "inWindow": false,
+          "pendings": [
+            3,
+            4,
+            5,
+            6
+          ]
+        },
+        {
+          "op": "refresh",
+          "gen": 2,
+          "result": "replayDetected",
+          "current": 1,
+          "revoked": true,
+          "overlapMinGen": 0,
+          "inWindow": false,
+          "pendings": [
+            3,
+            4,
+            5,
+            6
+          ]
+        },
+        {
+          "op": "access",
+          "gen": 1,
+          "result": "sessionRevoked",
+          "current": 1,
+          "revoked": true,
+          "overlapMinGen": 0,
+          "inWindow": false,
+          "pendings": [
+            3,
+            4,
+            5,
+            6
+          ]
+        }
+      ]
+    },
+    {
+      "name": "用满签发次数：current 4290；旧值仍直接重放",
+      "rule": "规则 4 第 ⑥ 步，RS6-05，AC-ACC-03-48",
+      "steps": [
+        {
+          "op": "refresh",
+          "gen": 1,
+          "result": "issued",
+          "newGen": 2,
+          "current": 1,
+          "revoked": false,
+          "overlapMinGen": 0,
+          "inWindow": false,
+          "pendings": [
+            2
+          ]
+        },
+        {
+          "op": "access",
+          "gen": 2,
+          "result": "promoted",
+          "current": 2,
+          "revoked": false,
+          "overlapMinGen": 1,
+          "inWindow": true,
+          "pendings": []
+        },
+        {
+          "op": "refresh",
+          "gen": 2,
+          "repeat": 19,
+          "current": 2,
+          "revoked": false,
+          "overlapMinGen": 1,
+          "inWindow": true,
+          "pendings": [
+            18,
+            19,
+            20,
+            21
+          ]
+        },
+        {
+          "op": "refresh",
+          "gen": 2,
+          "result": "rateLimited",
+          "current": 2,
+          "revoked": false,
+          "overlapMinGen": 1,
+          "inWindow": true,
+          "pendings": [
+            18,
+            19,
+            20,
+            21
+          ]
+        },
+        {
+          "op": "advance",
+          "ms": 180000,
+          "current": 2,
+          "revoked": false,
+          "overlapMinGen": 1,
+          "inWindow": false,
+          "pendings": [
+            18,
+            19,
+            20,
+            21
+          ]
+        },
+        {
+          "op": "refresh",
+          "gen": 1,
+          "result": "replayDetected",
+          "current": 2,
+          "revoked": true,
+          "overlapMinGen": 1,
+          "inWindow": false,
+          "pendings": [
+            18,
+            19,
+            20,
+            21
+          ]
+        },
+        {
+          "op": "refresh",
+          "gen": 2,
+          "result": "alreadyRevoked",
+          "current": 2,
+          "revoked": true,
+          "overlapMinGen": 1,
+          "inWindow": false,
+          "pendings": [
+            18,
+            19,
+            20,
+            21
+          ]
         }
       ]
     }

@@ -98,17 +98,24 @@ func (v *V1) Bearer(w http.ResponseWriter, r *http.Request) (auth.Claims, bool) 
 		WriteError(w, protocol.Errorf(protocol.CodeTokenInvalid, "missing bearer token"))
 		return auth.Claims{}, false
 	}
-	res := auth.Check(r.Context(), v.Verifier, v.Checker, token)
-	switch res.Verdict {
-	case auth.VerdictOK:
+	res := auth.Check(r.Context(), v.Verifier, v.Checker, token, v.Proxies.IP(r))
+	if res.Verdict == auth.VerdictOK {
 		return res.Claims, true
+	}
+	v.writeVerdict(w, res)
+	return auth.Claims{}, false
+}
+
+// writeVerdict 把不通过的判定写成响应。
+func (v *V1) writeVerdict(w http.ResponseWriter, res auth.Result) {
+	switch res.Verdict {
 	case auth.VerdictInvalid:
 		WriteError(w, protocol.Errorf(protocol.CodeTokenInvalid, "invalid token"))
 	case auth.VerdictExpired:
 		WriteError(w, protocol.Errorf(protocol.CodeTokenExpired, "token expired"))
 	case auth.VerdictSuperseded:
 		WriteError(w, protocol.WithReason(protocol.CodeTokenExpired, protocol.ReasonTokenSuperseded, "token superseded"))
-	case auth.VerdictRevoked, auth.VerdictSessionRevoked:
+	case auth.VerdictRevoked, auth.VerdictSessionRevoked, auth.VerdictAccountDeleted, auth.VerdictCredentialsOld:
 		WriteError(w, protocol.Errorf(protocol.CodeTokenRevoked, "token revoked"))
 	default:
 		if v.Log != nil {
@@ -116,7 +123,15 @@ func (v *V1) Bearer(w http.ResponseWriter, r *http.Request) (auth.Claims, bool) 
 		}
 		WriteError(w, protocol.Errorf(protocol.CodeServiceUnavailable, "service unavailable"))
 	}
-	return auth.Claims{}, false
+}
+
+// PeekBearer 判定 Authorization: Bearer，不写响应（logout：Bearer 和 refresh token 有一个有效就执行，F-ACC-04 规则 1）。
+func (v *V1) PeekBearer(r *http.Request) (auth.Result, bool) {
+	token, ok := strings.CutPrefix(r.Header.Get("Authorization"), "Bearer ")
+	if !ok || token == "" {
+		return auth.Result{}, false
+	}
+	return auth.Check(r.Context(), v.Verifier, v.Checker, token, v.Proxies.IP(r)), true
 }
 
 // WriteError 写 {code, msg, reason?, details?}，HTTP 状态取 errors.json。

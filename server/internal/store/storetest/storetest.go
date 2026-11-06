@@ -406,12 +406,12 @@ func testUsers(t *testing.T, open Opener) {
 	if v, _ := s.TokenVersion(ctx, "a"); v != 0 {
 		t.Errorf("initial token version = %d", v)
 	}
-	s.RevokeTokens(ctx, "a")
-	s.RevokeTokens(ctx, "a")
+	s.RevokeTokens(ctx, "a", 1)
+	s.RevokeTokens(ctx, "a", 1)
 	if v, _ := s.TokenVersion(ctx, "a"); v != 2 {
 		t.Errorf("token version = %d, want 2", v)
 	}
-	if err := s.RevokeTokens(ctx, "nope"); !errors.Is(err, store.ErrNotFound) {
+	if err := s.RevokeTokens(ctx, "nope", 1); !errors.Is(err, store.ErrNotFound) {
 		t.Errorf("revoke missing user: %v", err)
 	}
 }

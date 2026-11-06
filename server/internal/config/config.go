@@ -230,6 +230,8 @@ func Load(getenv func(string) string) (cfg Server, warnings []string, err error)
 
 	loadAccount(getenv, a, bad)
 
+	a.Account.EnforceKeyLedger = prod
+
 	if !prod {
 		if a.JWTSecret == "" && len(a.JWTKeys) == 0 {
 			a.JWTSecret = DevJWTSecret
@@ -354,6 +356,8 @@ func Load(getenv func(string) string) (cfg Server, warnings []string, err error)
 // refreshKidRE：kid 是 refresh token 的第一段（kid.sid.gen.nonce.mac），不能含分隔符。
 var refreshKidRE = regexp.MustCompile(`^[A-Za-z0-9_-]{1,32}$`)
 
+const minRefreshOverlap = 60 * time.Second
+
 // loadAccount 读取账号功能的配置（PRD-chat 第 4.1 节）。
 func loadAccount(getenv func(string) string, a *app.Config, bad func(string, ...any)) {
 	c := &a.Account
@@ -384,7 +388,7 @@ func loadAccount(getenv func(string) string, a *app.Config, bad func(string, ...
 	}
 	for key, dst := range map[string]*time.Duration{
 		"IM_ACCESS_TTL": &c.AccessTTL, "IM_REFRESH_TTL": &c.RefreshTTL, "IM_REFRESH_TTL_WEB": &c.RefreshTTLWeb,
-		"IM_REFRESH_ABSOLUTE": &c.RefreshAbsolute, "IM_RECOVER_QUEUE": &c.RecoverQueue,
+		"IM_REFRESH_ABSOLUTE": &c.RefreshAbsolute, "IM_RECOVER_QUEUE": &c.RecoverQueue, "IM_REFRESH_OVERLAP": &c.RefreshOverlap,
 	} {
 		if v := getenv(key); v != "" {
 			d, err := time.ParseDuration(v)
@@ -395,7 +399,14 @@ func loadAccount(getenv func(string) string, a *app.Config, bad func(string, ...
 			*dst = d
 		}
 	}
-	for key, dst := range map[string]*int{"IM_ARGON_SLOTS": &c.ArgonSlots, "IM_ARGON_RECOVER_SLOTS": &c.RecoverSlots} {
+	// 重叠窗口必须大于 SDK 请求超时 30 秒 + 网关超时（第 4.1 节）：否则超时重试的旧值落在窗口外，被当成重放。
+	if c.RefreshOverlap != 0 && c.RefreshOverlap <= minRefreshOverlap {
+		bad("IM_REFRESH_OVERLAP must be greater than %s (SDK request timeout 30s + gateway timeout 30s), got %s", minRefreshOverlap, c.RefreshOverlap)
+	}
+	for key, dst := range map[string]*int{
+		"IM_ARGON_SLOTS": &c.ArgonSlots, "IM_ARGON_RECOVER_SLOTS": &c.RecoverSlots, "IM_REFRESH_MAX_PENDING": &c.RefreshMaxPending,
+		"IM_REFRESH_ISSUE_RATE": &c.RefreshIssueRate, "IM_REFRESH_IP_RATE": &c.RefreshIPRate, "IM_RECOVERY_OLD_DAYS": &c.RecoveryOldDays,
+	} {
 		if v := getenv(key); v != "" {
 			n, err := strconv.Atoi(v)
 			if err != nil || n < 1 {

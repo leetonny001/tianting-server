@@ -17,10 +17,13 @@ type fakeClient struct {
 	kicked string
 }
 
-func (f *fakeClient) SessionInfo() sessions.Conn { return sessions.Conn{ConnID: f.id} }
-func (f *fakeClient) Platform() string           { return "web" }
-func (f *fakeClient) ConnID() string             { return f.id }
-func (f *fakeClient) UserID() string             { return f.uid }
+func (f *fakeClient) SessionInfo() sessions.Conn  { return sessions.Conn{ConnID: f.id} }
+func (f *fakeClient) Platform() string            { return "web" }
+func (f *fakeClient) ConnID() string              { return f.id }
+func (f *fakeClient) SID() string                 { return "" }
+func (f *fakeClient) Gen() int64                  { return 0 }
+func (f *fakeClient) KickWith(r string, _ *int64) { f.Kick(r) }
+func (f *fakeClient) UserID() string              { return f.uid }
 func (f *fakeClient) Send(b []byte) bool {
 	f.mu.Lock()
 	defer f.mu.Unlock()

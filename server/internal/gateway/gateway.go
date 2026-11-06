@@ -144,6 +144,7 @@ func (g *Gateway) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	c := &conn{
 		id:          g.cfg.NodeID + "-" + strconv.FormatUint(g.nextID.Add(1), 10),
 		uid:         uid,
+		claims:      claims,
 		platform:    platform,
 		connectedAt: g.clock.Now().UnixMilli(),
 		maskedIP:    maskedIP,
@@ -261,7 +262,7 @@ func (g *Gateway) authenticate(ctx context.Context, ws *websocket.Conn, ip, mask
 	_ = json.Unmarshal(in.Data, &req) // 解析失败时 token 为空，按无效凭证处理
 
 	// 判定顺序和 /v1/* 的 Bearer 共用一个函数（PRD-chat 第 4.2 节第 3 条）。
-	res := auth.Check(ctx, g.verifier, g.revocation, req.Token)
+	res := auth.Check(ctx, g.verifier, g.revocation, req.Token, ip)
 	claims = res.Claims
 	switch res.Verdict {
 	case auth.VerdictOK:
@@ -290,6 +291,14 @@ func (g *Gateway) authenticate(ctx context.Context, ws *websocket.Conn, ip, mask
 		g.handshake(metrics.HandshakeTokenRevoked)
 		g.kick(ws, kick)
 		reject(protocol.CloseTokenRevoked, kick, claims.UserID)
+	case auth.VerdictAccountDeleted, auth.VerdictCredentialsOld:
+		reason := protocol.KickAccountDeleted
+		if res.Verdict == auth.VerdictCredentialsOld {
+			reason = protocol.KickPasswordChanged
+		}
+		g.handshake(metrics.HandshakeTokenRevoked)
+		g.kick(ws, reason)
+		reject(protocol.CloseTokenRevoked, reason, claims.UserID)
 	default: // 过期、被替换的代：都是 kicked/tokenExpired（F-ACC-03 规则 4）
 		g.handshake(metrics.HandshakeTokenExpired)
 		g.kick(ws, protocol.KickTokenExpired)
@@ -342,6 +351,7 @@ type conn struct {
 	id       string
 	uid      string
 	platform string
+	claims   auth.Claims // 这条连接用的 token：复查和按 sid、代号踢线都用它
 	// 连接元数据（PRD-admin F-ADM-14）。maskedIP 是脱敏后的值：结构体里不保存完整 IP。
 	connectedAt int64
 	maskedIP    string
@@ -385,12 +395,22 @@ func (c *conn) closeWith(code int, reason string) {
 func (c *conn) ConnID() string   { return c.id }
 func (c *conn) Platform() string { return c.platform }
 func (c *conn) UserID() string   { return c.uid }
+func (c *conn) SID() string      { return c.claims.SID }
+func (c *conn) Gen() int64       { return c.claims.Gen }
 
 // Kick 踢下线（异步，不阻塞调用方），只生效一次。
 func (c *conn) Kick(reason string) {
 	c.kickOnce.Do(func() {
 		c.closed.CompareAndSwap(nil, &closeReason{code: protocol.KickCloseCode[reason], reason: kickedPrefix + reason, by: "server"})
 		go c.gw.kick(c.ws, reason)
+	})
+}
+
+// KickWith 带 recoverBefore 踢下线（PRD-chat F-ACC-03 规则 6a，异步，只生效一次）。
+func (c *conn) KickWith(reason string, recoverBefore *int64) {
+	c.kickOnce.Do(func() {
+		c.closed.CompareAndSwap(nil, &closeReason{code: protocol.KickCloseCode[reason], reason: kickedPrefix + reason, by: "server"})
+		go c.gw.kickEvent(c.ws, protocol.KickedEvent{Type: protocol.EventKicked, Reason: reason, RecoverBefore: recoverBefore})
 	})
 }
 

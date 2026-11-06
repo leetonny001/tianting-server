@@ -46,9 +46,60 @@ type vcase struct {
 }
 
 type file struct {
-	Description string  `json:"description"`
-	Scope       string  `json:"scope"`
-	Cases       []vcase `json:"cases"`
+	Description string       `json:"description"`
+	Scope       string       `json:"scope"`
+	Cases       []vcase      `json:"cases"`
+	ServerCases []ServerCase `json:"serverCases"`
+}
+
+func rf(gen int64) ServerStep         { return ServerStep{Op: "refresh", Gen: gen} }
+func ac(gen int64) ServerStep         { return ServerStep{Op: "access", Gen: gen} }
+func adv(ms int64) ServerStep         { return ServerStep{Op: "advance", Ms: ms} }
+func rfN(gen int64, n int) ServerStep { return ServerStep{Op: "refresh", Gen: gen, Repeat: n} }
+
+const minute = int64(60 * 1000)
+
+var serverCases = []ServerCase{
+	{Name: "access 等于 current 放行", Rule: "规则 4 判定表", Steps: []ServerStep{ac(1)}},
+	{Name: "access 属于 pending 转正放行，旧 current 随即被拒绝", Rule: "规则 4 判定表", Steps: []ServerStep{rf(1), ac(2), ac(1)}},
+	{Name: "被替换的 pending：不转正，不吊销", Rule: "规则 4 判定表，AC-ACC-03-21", Steps: []ServerStep{rf(1), rf(1), ac(3), ac(2)}},
+	{Name: "被淘汰的 pending 的 access：不转正，R1 仍可用", Rule: "规则 4 判定表，AC-ACC-03-28", Steps: []ServerStep{rf(1), rfN(1, 4), ac(2), rf(1)}},
+	{Name: "用 current 刷新：current 不变，加入 pending", Rule: "规则 4", Steps: []ServerStep{rf(1), rf(1), rf(1)}},
+	{Name: "用 pending 刷新：转正并签发新的 pending", Rule: "规则 4", Steps: []ServerStep{rf(1), rf(2)}},
+	{Name: "转正后窗口内旧值 superseded，窗口后重放", Rule: "规则 4，AC-ACC-03-30", Steps: []ServerStep{rf(1), ac(2), adv(minute), rf(1), adv(2 * minute), rf(1), rf(2)}},
+	{Name: "窗口内被替换的 pending 也 superseded", Rule: "规则 4，AC-ACC-03-31", Steps: []ServerStep{rf(1), rf(1), ac(2), rf(3), adv(3 * minute), rf(3)}},
+	{Name: "连续转正：更早的值立即重放", Rule: "规则 4，RS5-01，AC-ACC-03-38", Steps: []ServerStep{rf(1), ac(2), adv(110 * 1000), rf(2), ac(3), adv(5 * 1000), rf(1), rf(3)}},
+	{Name: "代号不复用：作废的代一直被拒绝", Rule: "规则 1，RS5-05，AC-ACC-03-40", Steps: []ServerStep{rf(1), rf(1), rf(1), ac(4), rf(4), ac(5), ac(3)}},
+	{Name: "没有转正过时，被淘汰的值按重放", Rule: "规则 4", Steps: []ServerStep{rf(1), rfN(1, 4), rf(2), ac(1)}},
+	{Name: "用满签发次数：current 4290；旧值仍直接重放", Rule: "规则 4 第 ⑥ 步，RS6-05，AC-ACC-03-48", Steps: []ServerStep{rf(1), ac(2), rfN(2, 19), rf(2), adv(3 * minute), rf(1), rf(2)}},
+}
+
+func runServer(c ServerCase) ServerCase {
+	m := NewServerSession()
+	m.Now = now
+	out := c
+	out.Steps = make([]ServerStep, len(c.Steps))
+	for i, st := range c.Steps {
+		switch st.Op {
+		case "advance":
+			m.Now += st.Ms
+		case "refresh":
+			for range st.Repeat {
+				m.Refresh(st.Gen)
+			}
+			if st.Repeat == 0 {
+				st.Result, st.NewGen = m.Refresh(st.Gen)
+			}
+		case "access":
+			st.Result = m.Access(st.Gen)
+		default:
+			panic("unknown op " + st.Op)
+		}
+		st.Current, st.Revoked, st.MinGen, st.InWindow = m.Current, m.Revoked, m.OverlapMinGen, m.Now < m.OverlapUntil
+		st.Pendings = append([]int64{}, m.Pendings...)
+		out.Steps[i] = st
+	}
+	return out
 }
 
 const (
@@ -120,11 +171,14 @@ func run(c vcase) vcase {
 // TC-CHAT-90-13（AC-CHAT-90-15，服务端产出期望值的部分）；TC-CHAT-90-09（AC-CHAT-90-10）。
 func TestAccountSessionVectors(t *testing.T) {
 	f := file{
-		Description: "账号会话共享行为用例（PRD-chat F-ACC-03 规则 5、6、6a、7）。按顺序执行 steps，每步之后断言 expect、localGen、inflight。期望结果由服务端的 Go 参考客户端（server/e2e/accountmodel）生成。",
-		Scope:       "本批只有客户端判断：刷新单飞、迟到响应丢弃、失败分类、4011 比较代号。规则 4 的判定表和转正随 BE-415 追加，附件状态机随 BE-403。",
+		Description: "账号会话共享行为用例（PRD-chat F-ACC-03 规则 4、5、6、6a、7）。cases：按顺序执行 steps，每步之后断言 expect、localGen、inflight。serverCases：规则 4 的判定表，从登录后的状态开始，每步之后断言 result、current、pendings。期望结果由服务端的 Go 参考客户端（server/e2e/accountmodel）生成。",
+		Scope:       "cases 是客户端判断：刷新单飞、迟到响应丢弃、失败分类、4011 比较代号，三套 SDK 跑。serverCases 由真实服务端跑（server/e2e/account_vectors_test.go），三套 SDK 用它搭假服务端。附件状态机随 BE-403。",
 	}
 	for _, c := range cases {
 		f.Cases = append(f.Cases, run(c))
+	}
+	for _, c := range serverCases {
+		f.ServerCases = append(f.ServerCases, runServer(c))
 	}
 	var buf bytes.Buffer
 	enc := json.NewEncoder(&buf)
@@ -168,5 +222,25 @@ func TestAccountModelRules(t *testing.T) {
 	}
 	if s := last(cases[15]); s.Expect.Action != ActionUseLocal {
 		t.Errorf("newer local token must not refresh: %+v", s)
+	}
+	// 规则 4 的关键结论。
+	find := func(name string) ServerCase {
+		for _, c := range serverCases {
+			if c.Name == name {
+				return runServer(c)
+			}
+		}
+		t.Fatalf("no case %q", name)
+		return ServerCase{}
+	}
+	if s := find("连续转正：更早的值立即重放").Steps[6]; s.Result != ResultReplay || !s.Revoked {
+		t.Errorf("consecutive promotion: %+v", s)
+	}
+	limited := find("用满签发次数：current 4290；旧值仍直接重放")
+	if limited.Steps[3].Result != ResultLimited || limited.Steps[5].Result != ResultReplay {
+		t.Errorf("rate limit: %+v", limited.Steps)
+	}
+	if s := find("被淘汰的 pending 的 access：不转正，R1 仍可用").Steps[2]; s.Result != AccessRejected || s.Current != 1 {
+		t.Errorf("evicted access: %+v", s)
 	}
 }

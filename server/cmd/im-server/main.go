@@ -82,10 +82,14 @@ func main() {
 		err = restore(args)
 	case "repair":
 		err = repair(args)
+	case "sessions":
+		err = sessions(args)
+	case "refresh-keys":
+		err = refreshKeys(args)
 	case "version":
 		fmt.Println(version)
 	default:
-		err = fmt.Errorf("unknown command %q (serve | migrate | backup | restore | repair | version)", cmd)
+		err = fmt.Errorf("unknown command %q (serve | migrate | backup | restore | repair | sessions | refresh-keys | version)", cmd)
 	}
 	if err != nil {
 		logger.Error("command failed", "cmd", cmd, "err", err)
@@ -275,6 +279,49 @@ func migrate(args []string) error {
 	default:
 		return errors.New("usage: im-server migrate [-db FILE] up|status")
 	}
+	return nil
+}
+
+// sessions revoke-all 吊销全部设备会话（PRD-chat 第 12.2 节，RS4-14）：恢复数据库后运行，用户重新登录。
+// reason=revoked，不计重放（AC-ACC-03-50）。在线的连接由周期复查踢掉。
+func sessions(args []string) error {
+	fs := flag.NewFlagSet("sessions", flag.ExitOnError)
+	db := fs.String("db", dbPath(), "database file")
+	fs.Parse(args)
+	if fs.Arg(0) != "revoke-all" {
+		return errors.New("usage: im-server sessions [-db FILE] revoke-all")
+	}
+	st, err := store.OpenSQLite(*db, store.SQLiteOptions{})
+	if err != nil {
+		return err
+	}
+	defer st.Close()
+	n, err := st.RevokeAllDeviceSessions(context.Background(), store.RevokeReasonRevoked, time.Now().UnixMilli())
+	if err != nil {
+		return err
+	}
+	fmt.Printf("revoked %d device session(s) in %s\n", n, *db)
+	return nil
+}
+
+// refresh-keys forget 在台账里明确放弃一把 refresh 密钥（F-ACC-03 规则 3 的泄露应急）：之后配置检查不再要求保留它，
+// 持这把密钥的 refresh token 全部失效，用户要重新登录。
+func refreshKeys(args []string) error {
+	fs := flag.NewFlagSet("refresh-keys", flag.ExitOnError)
+	db := fs.String("db", dbPath(), "database file")
+	fs.Parse(args)
+	if fs.Arg(0) != "forget" || fs.Arg(1) == "" {
+		return errors.New("usage: im-server refresh-keys [-db FILE] forget KID")
+	}
+	st, err := store.OpenSQLite(*db, store.SQLiteOptions{})
+	if err != nil {
+		return err
+	}
+	defer st.Close()
+	if err := st.ForgetRefreshKey(context.Background(), fs.Arg(1), time.Now().UnixMilli()); err != nil {
+		return err
+	}
+	fmt.Printf("refresh key %s is forgotten; tokens signed with it no longer work\n", fs.Arg(1))
 	return nil
 }
 

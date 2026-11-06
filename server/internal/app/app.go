@@ -115,15 +115,16 @@ type App struct {
 	handler http.Handler
 	admin   http.Handler
 	// adminRoutes 是已注册的管理路由（测试遍历全部路由检查 scope）。
-	adminRoutes []admin.RouteInfo
-	store       *store.SQLite
-	hub         *hub.Hub
-	metrics     *metrics.Metrics
-	draining    atomic.Bool
-	stop        chan struct{} // 关闭后台任务（定时任务）
-	loopback    *cache.HTTPLoopback
-	ops         *opsapi.Server
-	opsDB       *sql.DB // 运维接口的只读连接，不和消息写入共用
+	adminRoutes   []admin.RouteInfo
+	store         *store.SQLite
+	hub           *hub.Hub
+	metrics       *metrics.Metrics
+	draining      atomic.Bool
+	stop          chan struct{} // 关闭后台任务（定时任务）
+	loopback      *cache.HTTPLoopback
+	ops           *opsapi.Server
+	opsDB         *sql.DB // 运维接口的只读连接，不和消息写入共用
+	dynamicChecks func(context.Context) []DynamicCheck
 	// 测试模式的故障注入（PRD-ops S-OPS-24）：生产环境没有设置它们的路由。
 	opsDelay atomic.Int64
 	pingFail atomic.Bool
@@ -224,16 +225,46 @@ func New(cfg Config) (*App, error) {
 	accounts, err := account.New(account.Deps{
 		Config: cfg.Account, Store: st, Signer: signer, Router: router, Clock: clk, Faults: accountFaults, Log: cfg.Logger,
 		Logins: m.AccountLogins, Registers: m.Registers, InviteAutoDisabled: m.InviteAutoDisabled,
+		RefreshReissue: m.RefreshReissue, RefreshReplay: m.RefreshReplay,
 	})
 	if err != nil {
 		st.Close()
 		return nil, err
 	}
+	// refresh 密钥台账（RS5-04）：先查后写，配置里删掉的行写入时不会被改动。
+	ledger, err := accounts.LedgerProblems(context.Background())
+	if err != nil {
+		st.Close()
+		return nil, err
+	}
+	for _, p := range ledger {
+		cfg.Logger.Warn("refresh key ledger", "problem", p)
+	}
+	if len(ledger) > 0 && cfg.Account.EnforceKeyLedger {
+		st.Close()
+		return nil, fmt.Errorf("refresh key ledger: %v (key compromised? see the runbook: im-server refresh-keys forget)", ledger)
+	}
+	if err := accounts.SyncLedger(context.Background()); err != nil {
+		st.Close()
+		return nil, err
+	}
 	a := &App{store: st, hub: h, metrics: m, stop: make(chan struct{}), loopback: loopback}
+	a.dynamicChecks = func(ctx context.Context) []DynamicCheck {
+		problems, err := accounts.LedgerProblems(ctx)
+		if err != nil {
+			problems = append(problems, "cannot read the refresh key ledger")
+		}
+		detail := "refresh 密钥台账：配置里没有的密钥都已退役满 IM_REFRESH_ABSOLUTE"
+		if len(problems) > 0 {
+			detail = fmt.Sprintf("refresh 密钥台账：%v", problems)
+		}
+		return []DynamicCheck{{ID: "refresh_key_ledger", Passed: len(problems) == 0, Detail: detail}}
+	}
 	jobs := scheduler.New(clk, nil, m.JobRuns, m.JobDuration, cfg.Logger)
 	registerJobs(jobs, st, svc, clk, cmp.Or(cfg.Push.PurgeBatch, defaultPushPurgeBatch))
 	jobs.Register("account_events_purge", jobPeriod, accounts.PurgeEvents)
 	jobs.Register("auth_throttle_purge", jobPeriod, accounts.PurgeThrottle)
+	jobs.Register("session_purge", 24*time.Hour, accounts.PurgeSessions)
 	if cfg.TestMode {
 		for _, name := range cfg.TestDisableJobs {
 			if err := jobs.Disable(name); err != nil {
@@ -252,10 +283,11 @@ func New(cfg Config) (*App, error) {
 	if gw.NodeID == "" {
 		gw.NodeID = randomNodeID()
 	}
-	gws := gateway.New(gw, signer, st, clk, h, svc, m, cfg.Logger)
+	access := accounts.Access()
+	gws := gateway.New(gw, signer, access, clk, h, svc, m, cfg.Logger)
 	mux.Handle("GET /ws", gws)
 	// /v1/*（PRD-chat 第 4.2 节）：只在对外端口。按 IP 的限制和 /ws 共用可信代理配置（R-CS-35）。
-	v1 := &api.V1{RequireHTTPS: cfg.RequireHTTPS, Proxies: clientip.Resolver{TrustedProxies: gw.Guard.TrustedProxies}, Verifier: signer, Checker: st, Log: cfg.Logger}
+	v1 := &api.V1{RequireHTTPS: cfg.RequireHTTPS, Proxies: clientip.Resolver{TrustedProxies: gw.Guard.TrustedProxies}, Verifier: signer, Checker: access, Log: cfg.Logger}
 	publicConfig := cfg.Account.PublicConfig(cfg.DemoLogin)
 	v1.Handle(mux, "GET /v1/config", func(w http.ResponseWriter, r *http.Request) { api.WriteJSON(w, publicConfig) })
 	v1.RegisterAccount(mux, accounts)
@@ -277,7 +309,19 @@ func New(cfg Config) (*App, error) {
 				if cfg.ConfigSummary == nil {
 					return struct{}{}
 				}
-				return cfg.ConfigSummary(cfg.Version, gw.NodeID)
+				out := cfg.ConfigSummary(cfg.Version, gw.NodeID)
+				// 配置摘要由 config 包生成（config 依赖 app，反过来不行）：查库的检查项经这个接口并进去。
+				if w, ok := out.(interface {
+					WithDynamicCheck(id, detail string, passed bool) any
+				}); ok {
+					for _, c := range a.DynamicChecks(context.Background()) {
+						out = w.WithDynamicCheck(c.ID, c.Detail, c.Passed)
+						w, _ = out.(interface {
+							WithDynamicCheck(id, detail string, passed bool) any
+						})
+					}
+				}
+				return out
 			},
 			DB: func(ctx context.Context) (opsapi.DB, error) { return a.dbStatus(ctx, cfg.DBPath) },
 		})
@@ -339,6 +383,22 @@ func registerJobs(s *scheduler.Scheduler, st *store.SQLite, svc *logic.Service, 
 	s.Register("msg_grants_purge", jobPeriod, func(ctx context.Context) (int, error) {
 		return st.PurgeMsgGrants(ctx, clk.Now().Add(-grantRetention).UnixMilli())
 	})
+}
+
+// DynamicCheck 是要查库的配置检查项（F-ACC-03 规则 3 的密钥台账、F-ACC-09 规则 1 的邀请码总量）。
+// 启动保护里的检查项都是静态的（config.productionChecks），这些在启动后还会变，每次查询现算。
+type DynamicCheck struct {
+	ID     string
+	Passed bool
+	Detail string
+}
+
+// DynamicChecks 算一遍。查询失败算没通过，不当成通过。
+func (a *App) DynamicChecks(ctx context.Context) []DynamicCheck {
+	if a.dynamicChecks == nil {
+		return nil
+	}
+	return a.dynamicChecks(ctx)
 }
 
 // Handler 是对外端口：/ws、/healthz、/readyz，以及演示环境的 /demo/login。

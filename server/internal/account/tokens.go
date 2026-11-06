@@ -38,7 +38,7 @@ func SIDHash(sid string) string {
 
 // refreshCodec 生成和校验 refresh token：kid.sid.gen.nonce.mac（F-ACC-03 规则 3）。
 // mac 用独立的 refresh 密钥对 kid、sid、gen、nonce 计算，不和 JWT 共用密钥（RS5-04）。
-// nonce 每次随机，不用确定性派生（RS4-04）。判定和轮换随 BE-415，这里只有格式。
+// nonce 每次随机，不用确定性派生（RS4-04）。判定和轮换在 refresh.go。
 type refreshCodec struct {
 	keys   map[string][]byte
 	active string

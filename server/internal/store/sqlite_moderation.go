@@ -52,6 +52,10 @@ func (s *SQLite) BanUser(ctx context.Context, b Ban) error {
 	if _, err := tx.ExecContext(ctx, `UPDATE users SET token_version = token_version + 1 WHERE user_id = ?`, b.UserID); err != nil {
 		return err
 	}
+	// 封禁同时吊销全部设备会话（PRD-chat F-ACC-04 规则 4）。
+	if err := revokeUserSessions(ctx, tx, b.UserID, RevokeReasonRevoked, b.At); err != nil {
+		return err
+	}
 	return tx.Commit()
 }
 

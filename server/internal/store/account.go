@@ -15,6 +15,9 @@ var (
 	ErrRecoveryCodeStale = errors.New("recovery code is not the latest")
 )
 
+// RevokeReasonRevoked 是自己退出、强制下线、封禁、sessions revoke-all 的吊销原因（F-ACC-03 规则 3 的 reason=revoked）。
+const RevokeReasonRevoked = "revoked"
+
 // Account 是一行账号。
 type Account struct {
 	UserID               string
@@ -55,6 +58,17 @@ type DeviceSession struct {
 	AbsoluteExpiresAt int64
 	RevokedAt         int64
 	RevokeReason      string
+	// 签发频率（规则 4）：当前窗口的开始时间和次数；最近一个触发限流的窗口和连续触发的小时数。
+	IssueWindowStart int64
+	IssueCount       int
+	LimitedWindow    int64
+	LimitedStreak    int
+}
+
+// RefreshKeyEntry 是 refresh 密钥台账的一行（F-ACC-03 规则 3，RS5-04）。
+type RefreshKeyEntry struct {
+	KID                           string
+	AddedAt, RetiredAt, Forgotten int64
 }
 
 // AccountEvent 是一条账号事件（F-ACC-02 规则 3b）。SIDHash 是 sid 的哈希（F-ACC-03 规则 1）。
@@ -134,6 +148,22 @@ type AccountStore interface {
 
 	// GetDeviceSession 读会话；没有返回 ErrNotFound。
 	GetDeviceSession(ctx context.Context, sid string) (DeviceSession, error)
+	// UpdateDeviceSession 是条件更新（RC2-04）：WHERE sid=? AND row_version=? AND revoked_at=0，版本取 d.RowVersion。
+	// 影响 0 行返回 false，调用方重新读一次再判断，不会出现两条链。events 同一事务写入。
+	UpdateDeviceSession(ctx context.Context, d DeviceSession, events ...AccountEvent) (bool, error)
+	// RevokeDeviceSession 吊销一条会话。expectVersion > 0 时带版本条件（重放判定用）；已吊销返回 false。
+	RevokeDeviceSession(ctx context.Context, sid, reason string, now, expectVersion int64, events ...AccountEvent) (bool, error)
+	// RevokeAllDeviceSessions 吊销全部会话（im-server sessions revoke-all），不计重放。
+	RevokeAllDeviceSessions(ctx context.Context, reason string, now int64) (int, error)
+	// PurgeDeviceSessions 删除过期时间早于 before 的会话（session_purge）。
+	PurgeDeviceSessions(ctx context.Context, before int64) (int, error)
+	// RecoverBefore 按账号状态算找回截止日期（F-ACC-03 规则 6a）：未过期、没用过、没作废的已确认旧码里最早的 retire_until；没有返回 0。
+	RecoverBefore(ctx context.Context, userID string, now int64) (int64, error)
+	// SyncRefreshKeyLedger 把配置写进台账：新 kid 增加，不再是当前密钥的写 retired_at（只写一次）。配置里没有的行不动。
+	SyncRefreshKeyLedger(ctx context.Context, configured []string, active string, now int64) error
+	RefreshKeyLedger(ctx context.Context) ([]RefreshKeyEntry, error)
+	// ForgetRefreshKey 记下运维明确放弃一把密钥（泄露应急，接受持这把密钥的 token 全部失效）。kid 不存在返回 ErrNotFound。
+	ForgetRefreshKey(ctx context.Context, kid string, now int64) error
 	// OtherDeviceSessions 统计 exceptSID 之外没有吊销、没有过期的会话。
 	OtherDeviceSessions(ctx context.Context, userID, exceptSID string, now int64) (OtherSessions, error)
 

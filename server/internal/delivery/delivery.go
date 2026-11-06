@@ -10,6 +10,9 @@ package delivery
 type Session interface {
 	ConnID() string
 	UserID() string
+	// SID、Gen 是这条连接用的 token 的设备会话和代号（PRD-chat 第 11.4 节，RS5-08）。没有 sid 的 token 是空串和 0。
+	SID() string
+	Gen() int64
 }
 
 // Router 把帧投递给用户在所有节点上的连接。两个方法都不能阻塞调用方。
@@ -20,6 +23,12 @@ type Router interface {
 	KickUser(userID, reason string)
 	// SuspendUser 给用户的所有连接下发 kicked {reason: suspended, until}（永久为 nil）并关闭（封禁，F-ADM-13 规则 2）。
 	SuspendUser(userID string, until *int64)
+	// KickSession 踢这条设备会话的全部连接（PRD-chat 第 11.4 节）。集群时走总线；userID 只用来找连接。
+	KickSession(userID, sid, reason string, recoverBefore *int64)
+	// KickStaleGen 踢这条 sid 上代号不是 currentGen 的连接（转正，F-ACC-03 规则 4）：kicked/tokenExpired。
+	KickStaleGen(userID, sid string, currentGen int64)
+	// KickUserExcept 踢用户除 exceptSID 之外的全部连接（改密、找回、退出其他设备、注销：吊销之后新 sid 可能已经连上）。
+	KickUserExcept(userID, exceptSID, reason string, recoverBefore *int64)
 }
 
 // Broadcaster 是投递给全部在线连接的能力（socialSettingsChanged 和全员推送，尽力而为）。

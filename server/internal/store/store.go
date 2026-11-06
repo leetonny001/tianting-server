@@ -163,7 +163,7 @@ type Store interface {
 	MissingUsers(ctx context.Context, userIDs []string) ([]string, error)
 	// RevokeTokens 把用户的令牌版本号加 1，此前签发的 token 全部失效（强制下线）。
 	// 用版本号而不是签发时间：同一毫秒内的"签发"和"强制下线"无法靠时间区分。
-	RevokeTokens(ctx context.Context, userID string) error
+	RevokeTokens(ctx context.Context, userID string, now int64) error
 	// TokenVersion 返回用户当前的令牌版本号；用户不存在时为 0。
 	TokenVersion(ctx context.Context, userID string) (int64, error)
 

@@ -86,6 +86,8 @@ type Metrics struct {
 	// 账号（PRD-chat 第 14.2 节）。result 取值见 account 包，都是枚举。
 	AccountLogins      *prometheus.CounterVec
 	Registers          *prometheus.CounterVec
+	RefreshReissue     prometheus.Counter
+	RefreshReplay      prometheus.Counter
 	InviteAutoDisabled prometheus.Counter // 邀请码因为探测用户名被自动停用（F-ACC-01 规则 7 的告警）
 }
 
@@ -151,6 +153,8 @@ func New() *Metrics {
 	m.AccountLogins = prometheus.NewCounterVec(prometheus.CounterOpts{
 		Name: "im_account_logins_total", Help: "Account logins by result.",
 	}, []string{"result"})
+	m.RefreshReissue = prometheus.NewCounter(prometheus.CounterOpts{Name: "im_refresh_reissue_total", Help: "Refresh tokens reissued from the current generation while a pending one exists."})
+	m.RefreshReplay = prometheus.NewCounter(prometheus.CounterOpts{Name: "im_refresh_replay_total", Help: "Device sessions revoked by refresh token replay."})
 	m.Registers = prometheus.NewCounterVec(prometheus.CounterOpts{
 		Name: "im_registers_total", Help: "Account registrations by result.",
 	}, []string{"result"})
@@ -159,6 +163,8 @@ func New() *Metrics {
 	})
 	f(m.AccountLogins)
 	f(m.Registers)
+	f(m.RefreshReissue)
+	f(m.RefreshReplay)
 	f(m.InviteAutoDisabled)
 	f(m.Pushes)
 	f(m.PushDeliveries)

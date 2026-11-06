@@ -183,6 +183,12 @@ type fakeChecker struct {
 }
 
 func (f fakeChecker) TokenVersion(context.Context, string) (int64, error) { return f.version, f.err }
+func (f fakeChecker) AccountAccessState(context.Context, string) (auth.AccountState, error) {
+	return auth.AccountState{}, f.err
+}
+func (f fakeChecker) Promote(_ context.Context, c auth.Claims, _ string) auth.Result {
+	return auth.Result{Claims: c, Verdict: auth.VerdictOK}
+}
 func (f fakeChecker) AccessSessionState(context.Context, string) (auth.SessionState, error) {
 	return f.session, nil
 }

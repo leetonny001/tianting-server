@@ -221,7 +221,8 @@ func TestTC_ACC_02_06_Banned(t *testing.T) {
 	if v, _ := er.Details["bannedUntil"].(float64); int64(v) != until || strings.Contains(string(b), "accessToken") {
 		t.Errorf("%s", b)
 	}
-	if n := e.count(`SELECT COUNT(*) FROM device_sessions WHERE revoked_at = 0`); n != 1 {
+	// 封禁同时吊销注册时的那条会话（F-ACC-04 规则 4，BE-417 起），所以这里只数行。
+	if n := e.count(`SELECT COUNT(*) FROM device_sessions`); n != 1 {
 		t.Errorf("banned login must not create a session: %d", n)
 	}
 }

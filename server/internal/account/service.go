@@ -22,6 +22,9 @@ type Store interface {
 	store.AccountStore
 	TokenVersion(ctx context.Context, userID string) (int64, error)
 	UserBan(ctx context.Context, userID string) (*store.Ban, error)
+	ActiveBan(ctx context.Context, userID string, now int64) (banned bool, until *int64, err error)
+	AccessSessionState(ctx context.Context, sid string) (auth.SessionState, error)
+	AccountAccessState(ctx context.Context, userID string) (auth.AccountState, error)
 }
 
 // Deps 是 Service 的依赖。
@@ -36,6 +39,8 @@ type Deps struct {
 	// Logins、Registers 是 im_account_logins_total{result}、im_registers_total{result}（第 14.2 节）；InviteAutoDisabled 是自动停用的告警。
 	Logins, Registers  *prometheus.CounterVec
 	InviteAutoDisabled prometheus.Counter
+	// RefreshReissue、RefreshReplay 是 im_refresh_reissue_total、im_refresh_replay_total（F-ACC-03 规则 4）。
+	RefreshReissue, RefreshReplay prometheus.Counter
 }
 
 // Service 实现注册和登录。
@@ -88,6 +93,42 @@ func (s *Service) PurgeThrottle(ctx context.Context) (int, error) {
 
 const eventRetention = 180 * 24 * time.Hour
 
+// sessionPurgeAfter 是 session_purge 的保留期（F-ACC-03 规则 13）：过期 30 天以上的设备会话才清除。
+const sessionPurgeAfter = 30 * 24 * time.Hour
+
+// PurgeSessions 是 session_purge。绑定令牌的删除随 C3（device_push 还没有）。
+func (s *Service) PurgeSessions(ctx context.Context) (int, error) {
+	return s.Store.PurgeDeviceSessions(ctx, s.Clock.Now().Add(-sessionPurgeAfter).UnixMilli())
+}
+
+func inc(c prometheus.Counter) {
+	if c != nil {
+		c.Inc()
+	}
+}
+
+// recoverBefore 按账号状态算（规则 6a）。查询失败不影响主流程：不带日期只是少一个提示。
+func (s *Service) recoverBefore(ctx context.Context, userID string) *int64 {
+	at, err := s.Store.RecoverBefore(ctx, userID, s.Clock.Now().UnixMilli())
+	if err != nil {
+		s.Log.Error("recover before", "err", err, "uid", userID)
+		return nil
+	}
+	if at == 0 {
+		return nil
+	}
+	return &at
+}
+
+// slidExpiry 是转正后的到期时间（规则 3）：现在 + TTL（H5 用 _WEB），不超过绝对上限。
+func (s *Service) slidExpiry(d store.DeviceSession, now time.Time) int64 {
+	ttl := s.cfg.RefreshTTL
+	if d.Platform == "web" {
+		ttl = s.cfg.RefreshTTLWeb
+	}
+	return min(now.Add(ttl).UnixMilli(), d.AbsoluteExpiresAt)
+}
+
 // AuthResponse 是注册、登录的响应（F-ACC-01 规则 8，F-ACC-02 规则 1）。
 type AuthResponse struct {
 	UserID            string `json:"userId"`
@@ -98,6 +139,8 @@ type AuthResponse struct {
 	AbsoluteExpiresAt int64  `json:"absoluteExpiresAt"`
 	RecoveryCode      string `json:"recoveryCode,omitempty"`
 	RecoveryCodeGen   int64  `json:"recoveryCodeGen,omitempty"`
+	// RecoveryCodeUnacked：已登录但最新一代没有确认，App 强制进保存页（F-ACC-05 规则 1）。
+	RecoveryCodeUnacked bool `json:"recoveryCodeUnacked,omitempty"`
 }
 
 // platforms 和 WS 的平台标识相同（PRD-core F-AUTH-02 规则 1）。

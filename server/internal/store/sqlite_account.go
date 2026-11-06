@@ -221,9 +221,11 @@ func (s *SQLite) GetDeviceSession(ctx context.Context, sid string) (DeviceSessio
 	var d DeviceSession
 	var pendings, seen string
 	err := s.db.QueryRowContext(ctx, `SELECT sid, user_id, platform, device_name, current_hash, current_gen, next_gen, pendings, overlap_until,
-			overlap_min_gen, row_version, seen_ip_prefixes, created_at, last_seen_at, expires_at, absolute_expires_at, revoked_at, revoke_reason
+			overlap_min_gen, row_version, seen_ip_prefixes, created_at, last_seen_at, expires_at, absolute_expires_at, revoked_at, revoke_reason,
+			issue_window_start, issue_count, limited_window, limited_streak
 		FROM device_sessions WHERE sid = ?`, sid).Scan(&d.SID, &d.UserID, &d.Platform, &d.DeviceName, &d.CurrentHash, &d.CurrentGen, &d.NextGen, &pendings,
-		&d.OverlapUntil, &d.OverlapMinGen, &d.RowVersion, &seen, &d.CreatedAt, &d.LastSeenAt, &d.ExpiresAt, &d.AbsoluteExpiresAt, &d.RevokedAt, &d.RevokeReason)
+		&d.OverlapUntil, &d.OverlapMinGen, &d.RowVersion, &seen, &d.CreatedAt, &d.LastSeenAt, &d.ExpiresAt, &d.AbsoluteExpiresAt, &d.RevokedAt, &d.RevokeReason,
+		&d.IssueWindowStart, &d.IssueCount, &d.LimitedWindow, &d.LimitedStreak)
 	if errors.Is(err, sql.ErrNoRows) {
 		return DeviceSession{}, ErrNotFound
 	}
@@ -237,6 +239,141 @@ func (s *SQLite) GetDeviceSession(ctx context.Context, sid string) (DeviceSessio
 		return DeviceSession{}, fmt.Errorf("device session seen prefixes: %w", err)
 	}
 	return d, nil
+}
+
+func (s *SQLite) UpdateDeviceSession(ctx context.Context, d DeviceSession, events ...AccountEvent) (bool, error) {
+	pendings, err := marshalList(d.Pendings)
+	if err != nil {
+		return false, err
+	}
+	seen, err := marshalList(d.SeenIPPrefixes)
+	if err != nil {
+		return false, err
+	}
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return false, err
+	}
+	defer tx.Rollback()
+	res, err := tx.ExecContext(ctx, `UPDATE device_sessions SET current_hash = ?, current_gen = ?, next_gen = ?, pendings = ?, overlap_until = ?, overlap_min_gen = ?,
+			seen_ip_prefixes = ?, last_seen_at = ?, expires_at = ?, issue_window_start = ?, issue_count = ?, limited_window = ?, limited_streak = ?, row_version = row_version + 1
+		WHERE sid = ? AND row_version = ? AND revoked_at = 0`,
+		d.CurrentHash, d.CurrentGen, d.NextGen, pendings, d.OverlapUntil, d.OverlapMinGen, seen, d.LastSeenAt, d.ExpiresAt,
+		d.IssueWindowStart, d.IssueCount, d.LimitedWindow, d.LimitedStreak, d.SID, d.RowVersion)
+	if err != nil {
+		return false, err
+	}
+	if n, _ := res.RowsAffected(); n == 0 {
+		return false, nil
+	}
+	for _, e := range events {
+		if err := insertAccountEvent(ctx, tx, e); err != nil {
+			return false, err
+		}
+	}
+	return true, tx.Commit()
+}
+
+func (s *SQLite) RevokeDeviceSession(ctx context.Context, sid, reason string, now, expectVersion int64, events ...AccountEvent) (bool, error) {
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return false, err
+	}
+	defer tx.Rollback()
+	res, err := tx.ExecContext(ctx, `UPDATE device_sessions SET revoked_at = ?1, revoke_reason = ?2, row_version = row_version + 1
+		WHERE sid = ?3 AND revoked_at = 0 AND (?4 = 0 OR row_version = ?4)`, now, reason, sid, expectVersion)
+	if err != nil {
+		return false, err
+	}
+	if n, _ := res.RowsAffected(); n == 0 {
+		return false, nil
+	}
+	for _, e := range events {
+		if err := insertAccountEvent(ctx, tx, e); err != nil {
+			return false, err
+		}
+	}
+	return true, tx.Commit()
+}
+
+func (s *SQLite) RevokeAllDeviceSessions(ctx context.Context, reason string, now int64) (int, error) {
+	res, err := s.db.ExecContext(ctx, `UPDATE device_sessions SET revoked_at = ?, revoke_reason = ?, row_version = row_version + 1 WHERE revoked_at = 0`, now, reason)
+	if err != nil {
+		return 0, err
+	}
+	n, _ := res.RowsAffected()
+	return int(n), nil
+}
+
+// revokeUserSessions 在事务里吊销一个用户的全部会话。第 4.3 节：调用方已经按顺序拿了 accounts、recovery_codes。
+func revokeUserSessions(ctx context.Context, tx *sql.Tx, userID, reason string, now int64) error {
+	_, err := tx.ExecContext(ctx, `UPDATE device_sessions SET revoked_at = ?, revoke_reason = ?, row_version = row_version + 1 WHERE user_id = ? AND revoked_at = 0`, now, reason, userID)
+	return err
+}
+
+func (s *SQLite) PurgeDeviceSessions(ctx context.Context, before int64) (int, error) {
+	res, err := s.db.ExecContext(ctx, `DELETE FROM device_sessions WHERE expires_at < ?`, before)
+	if err != nil {
+		return 0, err
+	}
+	n, _ := res.RowsAffected()
+	return int(n), nil
+}
+
+func (s *SQLite) RecoverBefore(ctx context.Context, userID string, now int64) (int64, error) {
+	var at int64
+	err := s.db.QueryRowContext(ctx, `SELECT COALESCE(MIN(retire_until), 0) FROM recovery_codes
+		WHERE user_id = ? AND acked_at <> 0 AND used_at = 0 AND revoked_at = 0 AND retire_until > ?`, userID, now).Scan(&at)
+	return at, err
+}
+
+func (s *SQLite) SyncRefreshKeyLedger(ctx context.Context, configured []string, active string, now int64) error {
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+	for _, kid := range configured {
+		// retired_at 只写一次；重新启用的密钥清零。重新出现在配置里的 forgotten 也清零。
+		retired := now
+		if kid == active {
+			retired = 0
+		}
+		if _, err := tx.ExecContext(ctx, `INSERT INTO refresh_key_ledger (kid, added_at, retired_at) VALUES (?1, ?2, ?3)
+			ON CONFLICT (kid) DO UPDATE SET forgotten_at = 0,
+				retired_at = CASE WHEN ?3 = 0 THEN 0 WHEN refresh_key_ledger.retired_at <> 0 THEN refresh_key_ledger.retired_at ELSE ?3 END`, kid, now, retired); err != nil {
+			return err
+		}
+	}
+	return tx.Commit()
+}
+
+func (s *SQLite) RefreshKeyLedger(ctx context.Context) ([]RefreshKeyEntry, error) {
+	rows, err := s.db.QueryContext(ctx, `SELECT kid, added_at, retired_at, forgotten_at FROM refresh_key_ledger ORDER BY kid`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []RefreshKeyEntry
+	for rows.Next() {
+		var e RefreshKeyEntry
+		if err := rows.Scan(&e.KID, &e.AddedAt, &e.RetiredAt, &e.Forgotten); err != nil {
+			return nil, err
+		}
+		out = append(out, e)
+	}
+	return out, rows.Err()
+}
+
+func (s *SQLite) ForgetRefreshKey(ctx context.Context, kid string, now int64) error {
+	res, err := s.db.ExecContext(ctx, `UPDATE refresh_key_ledger SET forgotten_at = ? WHERE kid = ?`, now, kid)
+	if err != nil {
+		return err
+	}
+	if n, _ := res.RowsAffected(); n == 0 {
+		return ErrNotFound
+	}
+	return nil
 }
 
 func (s *SQLite) OtherDeviceSessions(ctx context.Context, userID, exceptSID string, now int64) (OtherSessions, error) {
@@ -408,10 +545,34 @@ func (s *SQLite) MarkUserDeleted(ctx context.Context, userID string, now int64) 
 // AccessSessionState 实现 auth.Checker：只读判定 access token 要用的列。
 func (s *SQLite) AccessSessionState(ctx context.Context, sid string) (auth.SessionState, error) {
 	st := auth.SessionState{Found: true}
-	err := s.db.QueryRowContext(ctx, `SELECT revoked_at, revoke_reason, current_gen FROM device_sessions WHERE sid = ?`, sid).
-		Scan(&st.RevokedAt, &st.RevokeReason, &st.CurrentGen)
+	var pendings string
+	err := s.db.QueryRowContext(ctx, `SELECT revoked_at, revoke_reason, current_gen, pendings FROM device_sessions WHERE sid = ?`, sid).
+		Scan(&st.RevokedAt, &st.RevokeReason, &st.CurrentGen, &pendings)
 	if errors.Is(err, sql.ErrNoRows) {
 		return auth.SessionState{}, nil
 	}
+	if err != nil {
+		return st, err
+	}
+	var list []PendingGen
+	if err := json.Unmarshal([]byte(pendings), &list); err != nil {
+		return st, fmt.Errorf("device session pendings: %w", err)
+	}
+	for _, p := range list {
+		st.PendingGens = append(st.PendingGens, p.Gen)
+	}
+	return st, nil
+}
+
+// AccountAccessState 实现 auth.Checker：账号状态决定 token 还能不能用（F-ACC-03 规则 11，F-ACC-08 异常）。演示和导入用户没有账号行，只看 users.deleted_at。
+func (s *SQLite) AccountAccessState(ctx context.Context, userID string) (auth.AccountState, error) {
+	var st auth.AccountState
+	var deletedAt, requestedAt int64
+	err := s.db.QueryRowContext(ctx, `SELECT u.deleted_at, COALESCE(a.delete_requested_at, 0), COALESCE(a.credentials_changed_at, 0)
+		FROM users u LEFT JOIN accounts a ON a.user_id = u.user_id WHERE u.user_id = ?`, userID).Scan(&deletedAt, &requestedAt, &st.CredentialsChangedAt)
+	if errors.Is(err, sql.ErrNoRows) {
+		return auth.AccountState{}, nil
+	}
+	st.Deleting = deletedAt != 0 || requestedAt != 0
 	return st, err
 }

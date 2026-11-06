@@ -1,8 +1,8 @@
-// Package accountmodel 是账号会话的 Go 参考客户端（PRD-chat F-ACC-03 规则 5、6、6a、7，BE-402）：只做状态机，不做网络和存储。
+// Package accountmodel 是账号会话的 Go 参考客户端（PRD-chat F-ACC-03 规则 4～7，BE-402）：只做状态机，不做网络和存储。
 // protocol/vectors/account-session.json 的期望结果由它生成，三套 SDK 以它为基准（FE-600～602）。
 //
-// 本批只覆盖客户端的判断：刷新单飞、迟到响应丢弃、失败分类、4011 比较代号。
-// 规则 4 的服务端判定表（current、pending、被替换、窗口内外）和转正随 BE-415 追加，附件状态机随 BE-403。
+// model.go 是客户端的判断：刷新单飞、迟到响应丢弃、失败分类、4011 比较代号。server.go 是规则 4 的服务端判定表，真实服务端跑同一份用例。
+// 附件状态机随 BE-403。
 package accountmodel
 
 // 客户端的处理结果。

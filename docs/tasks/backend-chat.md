@@ -18,7 +18,7 @@
 | 任务 | 状态 | 说明 |
 |---|---|---|
 | BE-400 | ✅ 完成（服务端部分） | errors.json、ERRORS.md、kickReasons、`kicked.recoverBefore`、`securityNotice`、`recoveryCodeUnacked`、`http-client.schema.json` 账号部分、ADMIN.md、README.md。AC-CHAT-90-14 服务端一致性（TC-CHAT-90-12）通过；**三套 SDK 枚举未做（FE-600～602）**。ADMIN.md 的账号接口随 BE-421 实现 |
-| BE-402 | 🟡 部分完成 | 已做：`frames.json` 的 `kicked.recoverBefore`、`securityNotice` 用例；`account-session.json` 和 Go 参考客户端（`server/e2e/accountmodel`）覆盖规则 5 单飞、规则 6 和 6a 失败分类、规则 7 的 4011。**留到后续**：规则 4 的判定表和转正（随 BE-415，服务端有了判定才能校验）；三套 SDK 跑向量（FE-600～602），所以 AC-CHAT-90-10、90-15 未完成 |
+| BE-402 | 🟡 部分完成 | 已做：`frames.json` 的 `kicked.recoverBefore`、`securityNotice` 用例；`account-session.json` 和 Go 参考客户端（`server/e2e/accountmodel`）覆盖规则 5 单飞、规则 6 和 6a 失败分类、规则 7 的 4011；规则 4 判定表 `serverCases`（参考模型 `server.go` 产出，真实服务端跑 HTTP 和 WS 两遍，`e2e/account_vectors_test.go`）。**未完成**：三套 SDK 跑向量（FE-600～602），所以 AC-CHAT-90-10、90-15 未完成 |
 | BE-405 | 🟡 部分完成 | 已做：`testhook`（`-tags imhooks`，nm 断言生产构建没有符号）、`IM_TEST_DISABLE_AUTH_LOCK`、`limits/reset scope=auth`、Argon2 阻塞、注册事务失败、上海 00:00 时钟助手、生产拒绝启动（四个开关和带钩子的二进制）。AC-CHAT-90-18、AC-ACC-02-3 通过。**AC-ACC-04-18、04-19、05-11 要 recover 和改密接口，随 BE-417、418**，现在只验了登录路径的钩子序列。**留到后续**：吊销写失败、入表前吊销、入表后和周期复查失败、丢弃吊销事件、入表前暂停（随 BE-416、417 和用到它们的代码一起加，不留没接上的开关）；`IM_TEST_DISABLE_IDLE` 等三个开关现在只拦生产，功能随 BE-406 |
 | BE-408 | ✅ 完成 | PRD-core v1.5、PRD-social v1.1、PRD-ui v1.3、PRD-admin v1.3、PRD-ops v1.4、ARCH 更新；作废 AC-UI-03-9，改写 AC-AUTH-02-4、AC-UI-15-3、AC-UI-16-6、AC-ADM-30-7；同步 TC 和 `trace.py`（PRDS；PRD-live 没有升版，它的 name 判断不变）。AC 总数 1463 → 1462。`docs/sdk/README.md` 按任务单由 FE-620 更新；前端代码（`nginx.conf`、`vite.config.ts`）随 FE-613 |
 | BE-410 | ✅ 完成 | `0015_accounts.sql`、`store.AccountStore`、`storetest` 11 个契约用例；AC-CHAT-90-6（TC-CHAT-90-06，存储层）通过。`users.deleted_at` 的入口都改了，注销流程随 BE-420。Postgres 随 B6 |
@@ -26,6 +26,7 @@
 | BE-412 | 🟡 部分验证 | `x/crypto`（v0.58.0，和 console-server 同版本）、闸门、`Guard`、接口 e2e 通过：AC-ACC-02-4、02-5、02-10、02-11、02-12、02-14。**AC-ACC-01-16、04-22、04-24、05-3、05-18 只验了闸门和计数（`internal/account` 单测、注册路径 e2e），它们要的 refresh、logout、改密、recover 接口在 BE-415、417、418，到时才能标完成** |
 | BE-413 | ✅ 完成（本任务 AC 都有用例） | AC-ACC-01-1～8、10、11、14、15、17、19、21、AC-ACC-10-2 通过（TC-ACC-01-*、TC-ACC-10-02，本地 e2e）。**AC-ACC-01-5 的例子 `bob` 只有 3 位，走不到 4095**，用例改成 `bobby`，PRD 问题待处理。TC-ACC-01-01 第 3 步 `recovery-code/ack` 随 BE-418，用存储层代替。AC-ACC-01-6 的已注销前置用 `MarkUserDeleted`，`account_cleanup` 随 BE-420 |
 | BE-414 | ✅ 完成（本任务 AC 都有用例） | AC-ACC-02-1、2、3、6、7、13（服务端部分）和 02-4、5、10、11、12、14 通过（TC-ACC-02-*，本地 e2e）。AC-ACC-02-3 不带 `-race` 用生产参数，带 `-race` 用 8 MiB。`account_events`、`GET /v1/account/events`、`account_events_purge`、`auth_throttle_purge`、两个指标。AC-CHAT-90-16（TC-CHAT-90-14）通过。提前做了 AC-ACC-07-2（演示登录拒绝有账号的用户）：账号从这段开始存在。AC-ACC-02-13 的界面随 FE-610～612 |
+| BE-415 | ✅ 完成（本任务 AC 都有用例） | AC-ACC-03-1、2、3、4、15、19、21、22、24、25、27、31、32、33、35、37（服务端部分）、38、40、44（logout 部分；credentialsChanged 部分随 BE-417）、45、46、48、49、50 通过（TC-ACC-03-*，本地 e2e）。`0016_account_sessions.sql`：签发频率存在会话行上；`refresh_key_ledger` 台账，`im-server refresh-keys forget` 是泄露应急；配置检查项 `refresh_key_ledger`，生产配置拒绝启动。`im-server sessions revoke-all`。AC-ACC-03-19、03-27 的推送令牌部分 C3 上线时验。AC-ACC-03-33 的后台响应部分随 BE-421 |
 | 全部 | ⬜ 未开始 | C1 结束后按实际用时校准工作量（CH-27），再由 Frank 决定 C3 起的部分 |
 
 ## 总览

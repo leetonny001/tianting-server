@@ -24,7 +24,7 @@ const (
 	DeviceNameMaxLen = 64
 )
 
-// RefreshKey 是一把 refresh 密钥（F-ACC-03 规则 3）：独立于 JWT 密钥。退役台账随 BE-415。
+// RefreshKey 是一把 refresh 密钥（F-ACC-03 规则 3）：独立于 JWT 密钥。退役台账见 ledger.go。
 type RefreshKey struct {
 	ID     string
 	Secret []byte
@@ -40,6 +40,15 @@ type Config struct {
 	RefreshTTL      time.Duration
 	RefreshTTLWeb   time.Duration
 	RefreshAbsolute time.Duration
+	// EnforceKeyLedger：生产环境台账有问题时拒绝启动（F-ACC-03 规则 3，TC-ACC-03-48）。
+	EnforceKeyLedger bool
+
+	// RefreshOverlap 是转正后的软拒绝窗口，默认 2 分钟（必须大于 SDK 超时 + 网关超时，配置校验）。
+	RefreshOverlap    time.Duration
+	RefreshMaxPending int // 待确认代上限，默认 4
+	RefreshIssueRate  int // 每条会话每小时签发次数，默认 20
+	RefreshIPRate     int // token/refresh 每 IP 每分钟，默认 60
+	RecoveryOldDays   int // 旧恢复码保留天数，默认 7
 
 	ArgonSlots   int           // 普通闸门，默认 4
 	RecoverSlots int           // recover 专用位，默认 1
@@ -65,6 +74,11 @@ const (
 	defaultRecoverSlots    = 1
 	defaultGateQueue       = time.Second
 	defaultRecoverQueue    = 5 * time.Second
+	defaultRefreshOverlap  = 2 * time.Minute
+	defaultMaxPending      = 4
+	defaultIssueRate       = 20
+	defaultRefreshIPRate   = 60
+	defaultRecoveryOldDays = 7
 )
 
 // WithDefaults 填上默认值。
@@ -74,6 +88,11 @@ func (c Config) WithDefaults() Config {
 	c.RefreshTTL = cmp.Or(c.RefreshTTL, defaultRefreshTTL)
 	c.RefreshTTLWeb = cmp.Or(c.RefreshTTLWeb, defaultRefreshTTLWeb)
 	c.RefreshAbsolute = cmp.Or(c.RefreshAbsolute, defaultRefreshAbsolute)
+	c.RefreshOverlap = cmp.Or(c.RefreshOverlap, defaultRefreshOverlap)
+	c.RefreshMaxPending = cmp.Or(c.RefreshMaxPending, defaultMaxPending)
+	c.RefreshIssueRate = cmp.Or(c.RefreshIssueRate, defaultIssueRate)
+	c.RefreshIPRate = cmp.Or(c.RefreshIPRate, defaultRefreshIPRate)
+	c.RecoveryOldDays = cmp.Or(c.RecoveryOldDays, defaultRecoveryOldDays)
 	c.ArgonSlots = cmp.Or(c.ArgonSlots, defaultArgonSlots)
 	c.RecoverSlots = cmp.Or(c.RecoverSlots, defaultRecoverSlots)
 	c.GateQueue = cmp.Or(c.GateQueue, defaultGateQueue)
