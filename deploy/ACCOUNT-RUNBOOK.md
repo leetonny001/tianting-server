@@ -16,6 +16,17 @@
 
 **`GOMEMLIMIT` 要把 Argon2 算进去**：每次计算 64 MiB。`IM_ARGON_SLOTS` 默认 4 个，加改密、`recover` 各 1 个专用位，同时最多 6 个，约 384 MiB。
 
+**网关不能给 `/v1/` 的响应加 `WWW-Authenticate`。** im-server 不发这个头，要确认的是网关和它前面的代理（比如统一鉴权插件）。原因：
+
+- URLSession 看到带这个头的 401，会把同一个 POST 再发一次（macOS、回环、HTTP/1.1 上核实过，其他组合没有测）。refresh 的 4019、改密的 4018 都是 401，refresh 被重发可能就是重放。
+- 所以 sdk-swift 遇到 HTTP 认证质询直接取消请求，按网络错误处理，保证只发 1 次。代价是读不到响应体：有这个头时，iOS 上会话失效收不到 4019，一直退避，回不到登录页；改密输错旧密码也只显示网络错误。
+
+部署后检查（假的 refresh，不用真实凭证），应该看到 401 和 JSON 响应体，没有这个头：
+
+```sh
+curl -si -X POST https://网关地址/v1/account/token/refresh -H 'Content-Type: application/json' -d '{"refreshToken":"x"}' | grep -i '^www-authenticate' && echo 不合格 || echo 合格
+```
+
 ## 2. 配置检查和指标
 
 `GET /internal/v1/config` 的 `productionChecks`：

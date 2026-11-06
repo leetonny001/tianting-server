@@ -1,6 +1,6 @@
 # 统一 SDK 设计说明
 
-> 适用于 [tianting-sdk-ts](https://github.com/leetonny001/tianting-sdk-ts)（H5、PC）、[tianting-sdk-kotlin](https://github.com/leetonny001/tianting-sdk-kotlin)（Android）和 [tianting-sdk-swift](https://github.com/leetonny001/tianting-sdk-swift)（iOS），各自一个仓库。账号（C1）目前只有 sdk-ts 做完（FE-600、FE-610），Kotlin、Swift 见 FE-601、FE-602、FE-611、FE-612。**三套 SDK 必须遵守同样的行为规则**，这份文档就是对照基准（Q7）。
+> 适用于 [tianting-sdk-ts](https://github.com/leetonny001/tianting-sdk-ts)（H5、PC）、[tianting-sdk-kotlin](https://github.com/leetonny001/tianting-sdk-kotlin)（Android）和 [tianting-sdk-swift](https://github.com/leetonny001/tianting-sdk-swift)（iOS），各自一个仓库。账号（C1）的 SDK 部分三套都做完了（FE-600～602、FE-610～612，第 6 节的语义已经统一，结果都是本地的，CI 不运行）；界面（FE-613～618）还没开工，SDK 部分里没有验收的项见[任务单](../tasks/frontend-chat.md)的进度表。**三套 SDK 必须遵守同样的行为规则**，这份文档就是对照基准（Q7）。
 > 依据：[PRD v1.2](../prd/PRD-core-v1.2.md)、[协议](../../protocol/README.md)、[错误码](../../protocol/ERRORS.md)、[前端任务单](../tasks/frontend.md)。
 
 ## 1. 分层
@@ -106,9 +106,9 @@ im.disconnect();                            // 退出登录
 - 单元测试（`npm test`）：只用 `FakeTransport` + `FakeHttp` + `FakeClock`，毫秒级、结果确定；覆盖 FE-002～008、FE-600、FE-610 的 AC。
 - 集成测试（tianting-sdk-ts 仓库的 `npm run test:integration`）：编译并启动真实的 im-server（测试模式），用标准 WebSocket 验证收发、未读已读、丢 ack 后重发、convAdded、强制下线、被服务端断开后的重连补拉。
 
-## 6. 账号会话语义（FE-610，Kotlin、Swift 照这里做）
+## 6. 账号会话语义（FE-610～612，三套 SDK 一致）
 
-依据 [PRD-chat](../prd/PRD-chat-v1.1.md) F-ACC-03 规则 5～7、F-ACC-04 规则 1、3、6，F-ACC-05 规则 1。代码入口：tianting-sdk-ts 的 `src/account-policy.ts`（纯判断，和 `server/e2e/accountmodel/model.go` 逐条对应）、`src/account.ts`（单飞、队列、定时器）、`src/connection.ts`（`onClosedWithProvider`）。**向量只覆盖 `model.go` 有的判断，下面标了"向量没有"的要靠各 SDK 自己的测试**，测试用例可以照 `test/account-session.test.ts` 翻译，用例名带 TC 编号。
+依据 [PRD-chat](../prd/PRD-chat-v1.1.md) F-ACC-03 规则 5～7、F-ACC-04 规则 1、3、6，F-ACC-05 规则 1。代码入口：tianting-sdk-ts 的 `src/account-policy.ts`（纯判断，和 `server/e2e/accountmodel/model.go` 逐条对应）、`src/account.ts`（单飞、队列、定时器）、`src/connection.ts`（`onClosedWithProvider`）。**向量只覆盖 `model.go` 有的判断，下面标了"向量没有"的要靠各 SDK 自己的测试**，测试用例可以照 `test/account-session.test.ts` 翻译，用例名带 TC 编号。S1、K7、S3、K5（编号见任务单的问题表）在三套 SDK 里是同一组用例：sdk-ts `test/account-unified.test.ts`、sdk-kotlin `AccountUnifiedTest`、sdk-swift `AccountUnifiedTests`。
 
 对外：`AccountClient`（HTTP，独立于 `IMClient`），`im.connect(account.tokenProvider)` 进入账号模式；`im.connect(token)` 是演示模式，行为不变。
 
@@ -119,11 +119,12 @@ im.disconnect();                            // 退出登录
 | 什么时候刷新 | `accessExpiresAt - now < 6 小时`。恰好 6 小时不刷新，所以定时器要定在"到期前 6 小时 + 1 毫秒"（向量没有这个边界） |
 | 四个入口 | `start`、`foreground`、`timer`、`kicked`，合并成一次。只有已连接才有定时器。HTTP 4011 也走同一个单飞 |
 | 单飞 | 同一时间最多一个刷新请求。每个请求有序号，30 秒超时放弃后序号作废，这个序号的成功和失败响应都丢弃 |
-| 落盘 | 响应到达 → 写存储 → 再比一次序号 → 才换 token。写存储失败按退避处理，继续用旧值（旧值还有效） |
+| 落盘 | 响应到达 → 写存储 → 再比一次序号 → 才换 token。写存储失败按退避处理，继续用旧值（旧值还有效）。存储回调可以挂起，所以调用要按顺序执行，结束时的清除不能被更早的保存超过（S3） |
 | 换 token | 已连接：断开前先让旧连接的回调失效，`close(1000)`，立即重连，状态不足 1 秒不提示。已断开在等退避：立即拨号 |
 | 启动已过期 | 先刷新，`auth` 不发。拨号在等 token，状态是连接中 |
 | 绝对上限 | `accessExpiresAt == absoluteExpiresAt`：不主动刷新，定时器定在到期时刻，到期回登录页。`kicked` 和 4011 仍然可以刷新（`model.go` 如此） |
-| 本地时钟 | 过期判断用本地时钟。刷新回来后不再检查一次是否过期，否则时钟偏快时会不停刷新（向量没有） |
+| 本地时钟 | 过期判断用本地时钟。偏慢：服务端回 4011，走规则 7（向量没有） |
+| 刷新回来已不足 6 小时（S1） | 时钟偏快或 TTL 配得短时，**刷新刚返回的** token 按本地时钟已经不足 6 小时：这个 token 不再主动刷新（`start`、`foreground`、`timer` 都不刷新，定时器不定），也不按本地时间当成过期（拨号和 HTTP 直接用它），等服务端的 4011。否则每次拨号和连接后的定时器都再刷新一次，换 token 又重连，一直循环到服务端限流。4011、`refresh()` 还是刷新，每个 4011 最多一次；下一个时间正常的 token 恢复。只看刷新的响应：登录、改密的响应不足 6 小时可以再刷新一次。这个标记不落盘，重启后从头判断，每次启动最多多一次刷新。启动已过期的主路径不变。到绝对上限的 token 不适用（向量没有） |
 
 ### 失败（`classifyRefreshFailure`）
 
@@ -164,18 +165,37 @@ im.disconnect();                            // 退出登录
 | 改密、退出其他设备、找回、注销申请的请求进行中（在队列里排着不算），收到 `passwordChanged`、`sessionRevoked`、`accountDeleted`，或者不认识的原因 + 4012 | 缓存，连接停着不重连，等响应（30 秒） |
 | 成功 | 先换 token（新 `sid`），再忽略这个踢线，立即重连 |
 | 失败、超时 | 踢线生效。超时之后到达的响应丢弃，即使它是成功的（"响应丢失时用新密码重新登录"） |
-| 响应先到踢线后到 | 换 token 时旧连接的回调已失效，踢线到不了 |
+| 响应先到踢线后到 | 换 token 时旧连接的回调已失效，踢线到不了。还不够：连接在通知到达时可能还没开，之后才用旧 token 连上，这条连接的踢线不能结束新会话。见下面的 K5 |
 | `banned`、`suspended` 等其他原因 | 不缓存，立即生效 |
 | 退出登录进行中 | 服务端也会踢这条连接，缓存，退出后忽略 |
 
+**旧 `sid` 的踢线（K5）**：连接用的 token 的 `sid` 和本地 `sid` 不同，这个踢线作废，用新 token 重连。
+
+| SDK | 竞争 | 做法 |
+|---|---|---|
+| sdk-kotlin | 连接和账号在两条线程上，踢线可能比"token 换了"的通知晚一步（第一次跑真实服务端就遇到了） | `KickInfo.sid` |
+| sdk-ts | 只有一条事件循环，但有一个微任务宽的窗口：拨号读到旧 token，`then` 回调运行之前换了 `sid`，这时没有连接可断，随后用旧 token 连上。逐拍错开能复现 | `KickInfo.sid` |
+| sdk-swift | 没有。连接和账号都在主 actor 上，"token 换了"的通知同步断开旧连接；拨号读 token 到开连接之间没有挂起点，所以旧 token 不会比换 `sid` 活得久。`testK5_dialAroundTheSidChangeNeverEndsTheSession` 逐拍验证，在拨号里加一次让出就会失败 | 不需要，`KickInfo` 没有 `sid` |
+
 ### 其他
 
-- **恢复码**：响应带 `recoveryCode` 时清掉存储里的旧值（改密后旧值已被吊销，杀 App 后应该回登录页，而不是拿旧值刷新再弹"凭证有变化"），新 token 只放内存；确认后才写。这段时间的刷新和退出其他设备也不写。收到 `recoveryCodeStale` 结束会话。
+- **恢复码**：响应带 `recoveryCode` 时清掉存储里的旧值（改密后旧值已被吊销，杀 App 后应该回登录页，而不是拿旧值刷新再弹"凭证有变化"），新 token 只放内存；确认后才写。这段时间的刷新和退出其他设备也不写。收到 `recoveryCodeStale` 结束会话。确认时写到"存的就是在用的"才清只放内存的标记：写的时候刷新还是只放内存，写完发现 token 变了就再写一次；写失败抛给调用方，再调一次能重写（S3）。
+- **落盘期间会话结束**：登录、改密等响应写存储之后比一次 `epoch`，会话已经结束就清存储并抛 `SessionEndedError`，不把结束的会话救回来（S3）。退出开始时 `epoch` 就加一，等 logout 响应时回来的响应也不采用。
+- **会话已结束时连接（K7）**：`connect(tokenProvider)` 时会话已经结束（没登录过，或者 `start()` 的刷新收到 4019 之后 App 才连接），发 `fatal`（session 类），状态回到断开，不开连接，不再停在连接中。`SessionEndedError` 多了可选的 `end`，`accessToken()` 抛出时带上最近一次结束的原因，`fatal` 带同样的 `dialog`、`reason`、`code`，但没有 `origin`（这个 `fatal` 不是连接上的踢线发的）；没登录过时只有 `action: login`，退出之后是 `action: logout`。等 token 时会话才结束的，走原来的 `onEnded`，只有一次 `fatal`。App 之后再登录，再调一次 `connect` 就能连上。
 - **退出**：先发 logout（Bearer 和 refresh 都带），再 1000 断开；连不上也本地退出。进行中的刷新作废，等响应的改密回来时不再采用（否则退出后会话又活了）。H5 没有"待退出"，原生要有（FE-611）。
 - **踢线的会话结束**：关闭码 4010、4012 的踢线清掉本地 token；`tooManyConnections` 不清（账号本身没问题）。`serverShutdown` 按退避重连。
 - **不认识的踢线原因**：关闭码说可以重连就忽略；否则按关闭码结束，原因原样告诉界面（`moderation.test.ts` 已有用例）。
 - **securityNotice**：不认识的 `kind` 不发给 App。
 - **日志**：只有方法、路径、状态码、错误码、动作。token、refresh、恢复码、密码不进 URL、日志、事件和错误信息；传输层的原始错误不带进异常（错误信息可能有 URL）。
+
+### HTTP 客户端不能隐式重发（S2、K4，第 21 节 16）
+
+账号的 POST 不能重发：refresh 重发一次可能就是重放。下面都用真实 socket 数到达的请求，只在回环、HTTP/1.1 上测过，HTTP/2、HTTP/3、真实网关没有测。
+
+| 客户端 | 已核实 | 做法 |
+|---|---|---|
+| URLSession（macOS） | 带 `WWW-Authenticate` 的 401 会让它再发一次 POST，默认处理、拒绝保护空间、空凭证都一样。连接断开、超时、取消、`503`/`429` 带 `Retry-After: 0`、`408`、`421` 时 POST 只到达 1 次，同样场景下 GET 会重发 | HTTP 认证质询直接取消请求，按网络错误处理。代价是带这个头时 4019、4018 读不到，只会一直退避，所以**网关不能给 `/v1/` 加这个头**（[部署手册](../../deploy/ACCOUNT-RUNBOOK.md)第 1 节）。`URLSessionRetryTests` |
+| OkHttp | 默认配置下，复用的连接断在半路时 POST 会被重发；只关 `retryOnConnectionFailure` 不够，`503 + Retry-After: 0` 还是会重发 | 关 `retryOnConnectionFailure` 和重定向，请求体标记 one-shot。`OkHttpRetryTest` |
 
 ### 文件位置
 
