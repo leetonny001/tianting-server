@@ -29,7 +29,8 @@
 | CS-020 业务公共层 | ✅ 2026-11-04（只在本地） | 理由、工单号、每日上限、分钟限流、列表参数、敏感查询禁用 GET（启动时检查）。矩阵（AC-ADM-05-1）对真实 im-server 跑 24 个路由 × 5 个角色；新路由没写样本时测试失败 |
 | CS-021 ～ CS-026 业务接口 | ✅ 2026-11-04（只在本地） | 用户、导入、社交、群、元数据。经代理对真实 im-server 测试（代理负责数调用次数、注入失败），含真实 WebSocket 连接。AC-CON-08-1、08-2、08-4、08-9、08-10、08-11 随之通过，CS-012 全部 AC 完成。**未验收**：AC-ADM-14-6（依赖 B6）；im-server 自身行为（改模式后 4035、官方账号发私聊、`historyVisible` 的 sync、解散后 send / sync / read 4043）没有在 console 端到端里重复测，也没有逐条核对 server 用例；前端相关的 AC 等 FE-400 起 |
 | CS-060、CS-061 | ✅ 2026-11-06 | tianting-console-server `56eb2fb`、`fdc59f3`；CI 未执行（P-21） |
-| CS-062 SSO | ⏸ 等身份提供方（P-23） | |
+| CS-062 SSO | ⏸ 暂不做（P-23，没有明确需求） | |
+| CS-063 | ⬜ 未开始 | 全群禁言、所在群、用户会话列表的 console 接口 |
 
 ## 总览
 
@@ -481,6 +482,17 @@
 - 依赖：CS-014
 - AC：（无对应 AC：F-CON-09 规则 7 为 P1）
 - 内容：单次 ≤ 1 万条、step-up、写审计；导出文件不落盘（流式）。
+
+### CS-063 全群禁言、所在群、用户会话列表（1 人日）
+- 优先级：P1
+- 批次：P1
+- 仓库：tianting-console-server
+- 依赖：BE-240、BE-243、BE-244、CS-043
+- AC：AC-ADM-30-9、AC-ADM-42-3
+- 内容：
+  1. 全群禁言开启、关闭：权限 `mute.write`，`reason` 必填，写审计，代理 `POST /admin/mute`、`/admin/unmute`；群详情带 `allMuted`，状态只用 im-server 返回的。
+  2. `POST /console/api/users/convs/query {userId, reason, cursor?}`：权限 `msg.meta`，打开时必填理由、写 `msg.user_convs.query`，同一用户 15 分钟内翻页不再要求理由；理由校验不过不调用 im-server；响应不含正文和摘要。
+  3. 用户所在群：权限 `group.read`，分页，不写审计。
 
 ### CS-062 SSO（OIDC）登录与双人复核（3 人日）
 - 优先级：P1

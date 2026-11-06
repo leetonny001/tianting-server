@@ -5,7 +5,7 @@
       python3 tools/trace.py --check    # 只检查，有缺口时退出码为 1（可用于 CI）
 
 规则：
-- PRD：PRD-core v1.4 和它的组成部分（PRD-social v1.0、PRD-ui v1.1、PRD-admin v1.1、PRD-ops v1.1），以及 PRD-live v1.0 已冻结的部分。
+- PRD：PRD-core v1.4 和它的组成部分（PRD-social v1.0、PRD-ui v1.2、PRD-admin v1.2、PRD-ops v1.2），以及 PRD-live v1.0 已冻结的部分。
 - PRD-live v1.0 只统计 3.3 节冻结、且归属 L1 或“随 CS-044”的 AC-PUSH（FROZEN_PUSH_EXCLUDE 排除 L2、L3）；聊天室和迁移仍是草稿，随里程碑定稿后再纳入。
 - 任务单：docs/tasks/*.md 里的 `### BE-xxx`（im-server）、`### CS-xxx`（console-server）、`### FE-xxx`（SDK、H5、两个后台前端）。
 - 带【后端】的 AC 必须有 BE 或 CS 任务；带【前端】的 AC 必须有 FE 任务；
@@ -19,7 +19,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 PRDS = [ROOT / "docs/prd" / n for n in (
-    "PRD-core-v1.4.md", "PRD-social-v1.0.md", "PRD-ui-v1.1.md", "PRD-admin-v1.1.md", "PRD-ops-v1.1.md",
+    "PRD-core-v1.4.md", "PRD-social-v1.0.md", "PRD-ui-v1.2.md", "PRD-admin-v1.2.md", "PRD-ops-v1.2.md",
     "PRD-live-v1.1.md")]
 # PRD-live v1.0 3.2 节：L2、L3 的 AC 随对应里程碑分发任务和用例
 FROZEN_PUSH_EXCLUDE = {

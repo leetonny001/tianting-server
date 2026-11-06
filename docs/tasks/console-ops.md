@@ -19,6 +19,7 @@
 | CS-110 ～ CS-117 运维业务模块 | ✅ 2026-11-04（只在本地） | 接口清单 YAML 启动时比对；节点真实（两个 im-server，含 kill、SIGSTOP、TLS 身份校验）；Prometheus、Alertmanager、备份桶、Grafana 是假服务（Go 里假桶校验签名和权限）。排查按基座两阶段写审计：一次查询一条 intent + 一条 result，条数、partial、节点在 result 上（`deploy/ops/reconcile` 的导出要取 result）。私钥轮换：节点先配两把公钥，再换 keyFile 重启 console-server，没有做同一节点两把私钥热切换。**未验证**：真实 Grafana / Prometheus / MinIO 策略（BE-310、311、313）、AC-OPS-90-x 性能（CS-120）。备份清单对象键约定 `manifests/{source}/{finishedAt 补零 13 位}.json`，BE-313 要按这个写 |
 | CS-120 性能与对账验收 | 🟡 联调和对账完成；AC-OPS-90-2 只完成开发机部分；AC-OPS-04-2 待决定（P-11） | `tools/ops-accept`，由 tianting-server 的 `deploy/testenv/verify.sh --console` 调用（testenv run 41835233061，全部真实容器）。AC-OPS-90-3：双节点用户 300 次排查 P50 9ms、P99 261ms、最大 374ms；AC-OPS-14-6：审计 321 条、节点请求 321 个、差异 0 条；AC-OPS-08-11（接口）：1.6 秒返回部分结果，不判为不在线。同一轮读真实组件也通过：Prometheus（04-5，消息速率 10.0/秒）、Alertmanager（07-5）、MinIO（12-3）、Grafana（票据、认证代理、14 个面板、数据查询、写接口被拒）、版本不一致超过 30 分钟（04-6）。**未过**：AC-OPS-04-2 的今日累计 1237.2（v1.1 要求 1200 ±3%），`increase()` 的外推造成，见 P-11，testenv 因此仍是失败。AC-OPS-90-2 开发机部分通过（总览 P99 8ms，单节点排查 P99 19ms，见 perf-ops-2026-11-04.md），但总览没有真实 Prometheus 查询，偏乐观；Grafana 24 小时面板首次加载没有实现（P-12）。页面文案只在 tianting-ops 的 Playwright 里验过，后端用假服务。联调查出并修复：`Node.Call` 名额满时立刻返回 ErrBusy，几个工程师同时排查就把正常节点报成未响应，改为最多排队 500ms。 |
 | CS-130 ～ CS-132 第二批 / P1 | 🟡 2026-11-06 | tianting-console-server `fdc59f3`；Alertmanager 用假服务验证，真实 Alertmanager 和 AC-OPS-18-3 的 kill -9 未验证（`tools/ops-accept` 的 silence 步骤只编译过）；CI 未执行（P-21） |
+| CS-133 | ⬜ 未开始 | 双人批准扩大到超管、拒绝、过期、命令行第二超管 |
 | CS-140 ～ CS-142 B6 | ⏸ 随 B6 | |
 
 ## 总览
@@ -246,6 +247,20 @@
   1. 授予 `ops_engineer` 进入"待批准"状态，需另一名 `ops_superadmin` 批准后生效；本人批准 403 / 4030；三步写审计。
   2. 同一账号 1 小时内查询 ≥ 20 个不同 userId 时向全部 `ops_auditor` 发站内通知（含账号名和数量，不含 userId 列表），同一小时窗口只发一次。
 - 估算：1.5 人日
+
+### CS-133 双人批准扩大到超管、拒绝、过期（P-22）
+- 优先级：P1
+- 批次：第二批
+- 仓库：tianting-console-server
+- 依赖：CS-131
+- AC：AC-OPS-01-19、AC-OPS-02-10、AC-OPS-02-11、AC-OPS-02-12
+- 内容：
+  1. 授予 `ops_superadmin` 也进入待批准；新建账号在生效前只有"只需登录"的权限。
+  2. 拒绝：任一启用的 `ops_superadmin`，重新验证，理由必填，写 `ops.role.reject`；发起人拒绝等于撤回。
+  3. 过期：7 天（[C 钟]）后自动失效，写 `ops.role.expire`，之后批准或拒绝 409 / 4093；批准时重新检查互斥角色和账号状态。
+  4. 命令行：`account bootstrap --space ops` 在启用的超管（含待激活）少于 2 个时可执行，写审计并通知全部 `ops_superadmin`、`ops_auditor`；admin 空间不变。
+  5. 同步 `tools/ops-accept` 和测试辅助函数的超管创建方式。
+- 估算：1 人日
 
 ### CS-132 审计导出（运维侧）
 - 优先级：P1
