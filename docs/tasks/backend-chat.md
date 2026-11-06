@@ -109,7 +109,7 @@
 - 批次：C2
 - 仓库：tianting-server（`server/internal/objstore/objstoretest`）
 - 依赖：BE-401
-- AC：AC-FILE-01-8、AC-FILE-01-15、AC-CHAT-90-18
+- AC：AC-FILE-01-8、AC-FILE-01-15
 - 内容：
   1. 第 4.5 节：**独立进程**（console 的是另一模块的 `internal` 包，用不了），只在 `IM_TEST_MODE=1` 的测试编排里启动。校验预签名、大小、过期、`response-*` 头、CORS、Copy、ETag 条件。
   2. 可注入：删除失败、不可用（拒绝连接、黑洞）、Copy 失败、**HEAD 之后替换对象**（RC2-07）。
@@ -122,7 +122,7 @@
 - 批次：C1
 - 仓库：tianting-server（`server/internal/app`、`admin`、`config`）
 - 依赖：BE-400
-- AC：AC-ACC-02-3、AC-ACC-04-18、AC-ACC-04-19、AC-ACC-05-11
+- AC：AC-ACC-02-3、AC-ACC-04-18、AC-ACC-04-19、AC-ACC-05-11、AC-CHAT-90-18
 - 内容：
   1. 账号并发钩子（RS4-06）：请求在 Argon2 之后、提交事务之前暂停。**用构建标签隔离，生产构建不含这个钩子**，`go build` 不带标签时用 `archtest` 或符号检查断言。
   2. `POST /admin/test/faults` 增加：注册事务失败、吊销写失败、入表前吊销、审计写失败、Argon2 阻塞钩子（让闸门占满，不依赖真实耗时）。已有 `drop-ack` 复用。**第 4.5 节没有列、AC 要用的**：入表后复查失败（AC-ACC-03-36）、周期复查失败和丢弃吊销事件（AC-ACC-03-47）、连接校验之后入表之前的暂停（AC-ACC-03-41）。提及表、隔离写、证据写、词库、@ 计数、设置读取这些故障随 C4～C6。

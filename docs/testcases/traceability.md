@@ -1479,6 +1479,6 @@
 | AC-CHAT-90-15 | chat-v1.1 | 前端 | BE-402、BE-403 | FE-600、FE-601、FE-602、FE-610、FE-611、FE-612、FE-620、FE-630、FE-631、FE-632、FE-640 | TC-CHAT-90-13 | ✅ |
 | AC-CHAT-90-16 | chat-v1.1 | 后端 | BE-411 | — | TC-CHAT-90-14 | ✅ |
 | AC-CHAT-90-17 | chat-v1.1 | 后端 | BE-422、BE-423、BE-438、BE-440 | — | TC-CHAT-90-15、TC-CHAT-90-16 | ✅ |
-| AC-CHAT-90-18 | chat-v1.1 | 后端 | BE-404 | — | TC-CHAT-90-17 | ✅ |
+| AC-CHAT-90-18 | chat-v1.1 | 后端 | BE-405 | — | TC-CHAT-90-17 | ✅ |
 | AC-FILE-90-1 | chat-v1.1 | 后端 | BE-439 | — | TC-FILE-90-01 | ✅ |
 | AC-FILE-90-2 | chat-v1.1 | 手工 | BE-439 | FE-640 | TC-FILE-90-02 | ✅ |
