@@ -8,7 +8,8 @@
       "group.read", "group.write", "group.dissolve",
       "social.settings", "social.friends",
       "msg.meta", "msg.delete", "mute.write", "audit.read", "stats.read",
-      "push.user", "push.all"
+      "push.user", "push.all",
+      "account.invite"
     ],
     "pushTypes": ["notice", "activity"],
     "allowedCIDRs": ["10.0.0.0/8"]

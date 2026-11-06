@@ -15,7 +15,8 @@
 
 | 任务 | 状态 | 说明 |
 |---|---|---|
-| 全部 | ⬜ 未开始 | |
+| CS-200 | ✅ 完成（接口部分，页面随 FE-619） | console-server `6820da8`（**本地结果，CI 不运行**：真实 Postgres 17、真实 im-server，`go test -race -count=1 ./...` 全过）。AC-ACC-05-9（console 路由、源码、scope）、09-2、09-5、09-6、09-7、09-8、09-13 通过（`e2e/invites_test.go`、`internal/app/route_test.go`），矩阵（AC-ADM-05-1）覆盖 3 个新路由。AC-ACC-09-1 只验了后端部分，三端注册和"后台显示已用 2 次"的页面随 FE-610～619；AC-ACC-09-11 只验了接口，页面随 FE-619。AC-CHAT-90-5 的 C1 后端 e2e 通过，部署 e2e 没有执行。变异确认 20 条全部发现 |
+| CS-201、CS-202 | ⬜ 未开始 | C2 |
 
 ## 总览
 
@@ -71,3 +72,21 @@
 ---
 
 运维后台（第 14.2 节）的配置检查和指标都由 im-server 提供（BE-423、BE-438），`tianting-ops` 的配置检查页按接口数据显示，本批没有页面改动。推送、撤回、治理的项随 C3～C6。
+
+---
+
+## 实现时发现的问题
+
+都没有改冻结 PRD 和 AC，也没有改 im-server。下面按最保守的理解实现，要改口径由 Frank 决定。
+
+1. **部署示例缺 `account.invite`**：PRD-admin F-KEY-02 规则 4（v1.3）和 PRD-chat 第 14.1 节要求主凭证有这个 scope，`deploy/im-admin-callers.example.json` 和 `deploy/test_deploy.py` 没跟上，已补。**已部署环境的调用方配置要手动加**，否则运营生成邀请码是 403 / 4030（`TestInviteScopeMissing`）。`deploy/test_deploy.py` 本机缺 pyyaml，没有运行；同样的比对由 console 的 `TestTC_ACC_05_08_ConsoleScopeAndCalls` 覆盖。
+2. **审计动作名不用权限点的名字**：console 里 `account.` 开头的动作按"只改自己的库"处理：对账不查 im-server（`localOnlyAction`），404 记成 `denied`。邀请码是 im-server 的写操作，所以动作名是 `invite.create`、`invite.disable`，权限点仍是 `account.invite`。tianting-admin 的审计页如果有动作名映射要加这两个。
+3. **结果未知时有一个没人知道明文的邀请码**：生成时 504 / 5040，im-server 可能已经生成，明文只在那次响应里，找不回。PRD 没有写怎么办。现在不重试、不补发，对账补审计结论；页面要提示到列表停用最新的几条再重新生成（FE-619）。
+4. **`deleteRequestedAt` 不透传**：`GET /admin/accounts/{userId}` 多返回这个字段，F-ACC-09 规则 5 只列了 4 项，console 用独立类型只留这 4 项。客服如果要看"注销申请中"，要改规则 5。
+5. **账号信息取不到时详情照常返回**：PRD 没有写。现在是 `account: null`、`accountUnavailable: true`，不写成 `hasAccount=false`，客服仍能看资料和强制下线。
+6. **`note` 不进 console 审计**：F-CON-08 规则 4 说 intent 含参数摘要，备注是自由文本，可能被人粘贴邀请码，所以只记 `hasNote`。后 4 位也不记，追溯靠 `inviteId`。列表里备注和后 4 位照常显示。
+7. **邀请码操作不要理由和 step-up**：PRD-admin 第 5.3 节的表没有列，按表实现，只要确认框。公开传播大额邀请码等于开放注册（RC2-18），如果要加 step-up 改第 5.3 节。
+8. **im-server 列表没有 `nextCursor`**：console 按"满一页"算，正好整页时最后会多翻到一个空页。console 的 `limit` 沿用 20、50、100，默认 50。
+9. **`count` 的边界按 im-server**：`count=0` 或省略是 1 个；负数是 4131，不是 4000。AC-ACC-09-7 没有覆盖负数，没有在 console 另外拦。
+10. **枚举口径**：TC-ACC-05-08 按 `password`、`recovery`、`reset` 搜 console 路由，会命中后台账号自己的 3 个接口（`/me/password`、`/me/recovery-codes`、`/accounts/{id}/reset`）。这 3 个不改 IM 用户，用例写成显式白名单，并用源码解析确认它们的处理函数不调用 im-server。
+11. **AC-CHAT-90-5 不在 CS-200 的 AC 行**：验收记录把 console 日志和审计部分记在 CS-200 下，追溯矩阵只挂 BE-422、BE-440。用例已写（`TestTC_CHAT_90_04_NoSecretsInLogsAndAudit`），没有改 AC 行，追溯矩阵不变。

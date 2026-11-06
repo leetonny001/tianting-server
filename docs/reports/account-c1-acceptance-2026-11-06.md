@@ -66,4 +66,18 @@
 - AC-ACC-08-5 的 P99：没有测。
 - 推送令牌（C3）：AC-ACC-03-19、03-27、04-6 的令牌部分。
 - 带【前端】或端到端的 AC 的 SDK、界面部分：FE-600～620。AC-CHAT-90-10、90-15 要三套 SDK。
-- console-server 部分（CS-200）：AC-ACC-05-9 的 console 路由、AC-ACC-09-6、AC-CHAT-90-5 的 console 日志和审计。
+- AC-CHAT-90-5 的部署 e2e（TC-CHAT-90-04 的第二层）和 C2 以后的流程：没有执行，见下一节。
+
+## console-server 部分（CS-200，console-server `6820da8`）
+
+环境：本地开发机，真实 Postgres 17（本机已有的实例）、真实 im-server（SQLite，当前工作区源码构建）。`CON_TEST_REQUIRE_DB=1 go test -race -count=1 ./...` 全过。**都是本地结果。**
+
+| AC | 结果 | 用例 | 说明 |
+|---|---|---|---|
+| AC-ACC-05-9 | 通过 | `TestTC_ACC_05_08_NoUserCredentialRoute`、`TestTC_ACC_05_08_SourceHasNoUserCredentialCalls`、`TestTC_ACC_05_08_ConsoleScopeAndCalls` | console 路由、业务请求字段、im-server 路径、主凭证 scope 都枚举了。后台账号自己的 3 个接口是白名单，确认不调用 im-server。服务端部分见 BE-421 |
+| AC-ACC-09-6 | 通过 | `TestTC_ACC_09_04_Roles`、`TestAdminMatrix` | `support`、`auditor`（还有 `moderator`、`super_admin`）三个路由都 403 / 4030，不调用 im-server，写 denied 审计；`operator` 成功 |
+| AC-CHAT-90-5（C1 流程） | 后端 e2e 通过；部署 e2e 未执行；C2 以后的流程未到 | `TestTC_CHAT_90_04_NoSecretsInLogsAndAudit` | 注册、登录、刷新、改密、找回和后台邀请码、详情，含失败路径。两边日志、console 全库、im-server 审计搜不到密码、恢复码、邀请码、access、refresh、`deviceName`、`sid`，`deploy/ops/scan-logs` 再扫一次，并用对照确认工具能发现 |
+
+变异确认 20 条全部发现（脚本 19 条，部署示例多一个 scope 手工 1 条），工作区还原干净：审计记明文、审计记备注、日志记明文、intent 写失败仍执行、跳过权限检查、权限点换错、`support` 和超管多权限、详情透传、详情多 `sid`、取不到时说成没有账号、列表透传、动作名 `account.` 开头、404 说成没上线、scope 多 `account.reset` 和 `moderation.words`、部署示例多一个 scope、多一个改密路由、调用重置路径、响应不是 `no-store`。
+
+没有验证：AC-ACC-09-1 的三端注册和页面、AC-ACC-09-11 的页面（FE-610～619）。部署示例已加 `account.invite`，`deploy/test_deploy.py` 本机缺 pyyaml 没有运行；已部署环境的调用方配置要手动加。
