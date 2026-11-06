@@ -43,7 +43,7 @@ def load_acs():
             if not m:
                 continue
             rest = m.group(2)
-            if name == "live-v1.1" and (not m.group(1).startswith("AC-PUSH-") or m.group(1) in FROZEN_PUSH_EXCLUDE):
+            if name == "live-v1.2" and (not m.group(1).startswith("AC-PUSH-") or m.group(1) in FROZEN_PUSH_EXCLUDE):
                 continue
             layer = "后端" if "【后端】" in rest[:8] else "前端" if "【前端】" in rest[:8] else "手工" if "（手工）" in rest[:8] else "端到端"
             acs.append((m.group(1), layer, name))

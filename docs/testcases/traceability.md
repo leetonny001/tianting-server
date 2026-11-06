@@ -2,7 +2,7 @@
 
 > 由 `python3 tools/trace.py` 生成，不要手工编辑。
 
-- AC 总数：1316，完全覆盖：1177，有缺口：139
+- AC 总数：1177，完全覆盖：1177，有缺口：0
 - 关联到 AC 的测试用例数：1492
 - 引用了不存在的 AC：无
 - 重复的 AC 编号：无
@@ -14,7 +14,7 @@
 | ui-v1.2 | 280 | 280 |
 | admin-v1.2 | 280 | 280 |
 | ops-v1.3 | 172 | 172 |
-| live-v1.2 | 252 | 113 |
+| live-v1.2 | 113 | 113 |
 
 | AC | PRD | 验证层 | 后端任务（BE / CS） | 前端任务 | 测试用例 | 状态 |
 |---|---|---|---|---|---|---|
@@ -1082,109 +1082,6 @@
 | AC-OPS-90-4 | ops-v1.3 | 后端 | BE-300 | — | TC-OPS-90-04 | ✅ |
 | AC-OPS-90-5 | ops-v1.3 | 端到端 | BE-320 | — | TC-OPS-90-05 | ✅ |
 | AC-OPS-90-6 | ops-v1.3 | 手工 | — | FE-507 | TC-OPS-90-06 | ✅ |
-| AC-ROOM-01-1 | live-v1.2 | 后端 | — | — | — | ❌ 缺 BE/CS、缺 TC |
-| AC-ROOM-01-2 | live-v1.2 | 后端 | — | — | — | ❌ 缺 BE/CS、缺 TC |
-| AC-ROOM-01-3 | live-v1.2 | 端到端 | — | — | — | ❌ 缺任务、缺 TC |
-| AC-ROOM-01-4 | live-v1.2 | 后端 | — | — | — | ❌ 缺 BE/CS、缺 TC |
-| AC-ROOM-01-5 | live-v1.2 | 后端 | — | — | — | ❌ 缺 BE/CS、缺 TC |
-| AC-ROOM-01-6 | live-v1.2 | 后端 | — | — | — | ❌ 缺 BE/CS、缺 TC |
-| AC-ROOM-01-7 | live-v1.2 | 后端 | — | — | — | ❌ 缺 BE/CS、缺 TC |
-| AC-ROOM-01-8 | live-v1.2 | 后端 | — | — | — | ❌ 缺 BE/CS、缺 TC |
-| AC-ROOM-01-9 | live-v1.2 | 后端 | — | — | — | ❌ 缺 BE/CS、缺 TC |
-| AC-ROOM-02-1 | live-v1.2 | 端到端 | — | — | — | ❌ 缺任务、缺 TC |
-| AC-ROOM-02-2 | live-v1.2 | 后端 | — | — | — | ❌ 缺 BE/CS、缺 TC |
-| AC-ROOM-02-3 | live-v1.2 | 后端 | — | — | — | ❌ 缺 BE/CS、缺 TC |
-| AC-ROOM-02-4 | live-v1.2 | 后端 | — | — | — | ❌ 缺 BE/CS、缺 TC |
-| AC-ROOM-02-5 | live-v1.2 | 后端 | — | — | — | ❌ 缺 BE/CS、缺 TC |
-| AC-ROOM-02-6 | live-v1.2 | 后端 | — | — | — | ❌ 缺 BE/CS、缺 TC |
-| AC-ROOM-02-7 | live-v1.2 | 端到端 | — | — | — | ❌ 缺任务、缺 TC |
-| AC-ROOM-02-8 | live-v1.2 | 后端 | — | — | — | ❌ 缺 BE/CS、缺 TC |
-| AC-ROOM-02-9 | live-v1.2 | 后端 | — | — | — | ❌ 缺 BE/CS、缺 TC |
-| AC-ROOM-03-1 | live-v1.2 | 端到端 | — | — | — | ❌ 缺任务、缺 TC |
-| AC-ROOM-03-2 | live-v1.2 | 端到端 | — | — | — | ❌ 缺任务、缺 TC |
-| AC-ROOM-03-3 | live-v1.2 | 端到端 | — | — | — | ❌ 缺任务、缺 TC |
-| AC-ROOM-03-4 | live-v1.2 | 端到端 | — | — | — | ❌ 缺任务、缺 TC |
-| AC-ROOM-03-5 | live-v1.2 | 端到端 | — | — | — | ❌ 缺任务、缺 TC |
-| AC-ROOM-03-6 | live-v1.2 | 端到端 | — | — | — | ❌ 缺任务、缺 TC |
-| AC-ROOM-03-7 | live-v1.2 | 端到端 | — | — | — | ❌ 缺任务、缺 TC |
-| AC-ROOM-03-8 | live-v1.2 | 端到端 | — | — | — | ❌ 缺任务、缺 TC |
-| AC-ROOM-03-9 | live-v1.2 | 端到端 | — | — | — | ❌ 缺任务、缺 TC |
-| AC-ROOM-03-10 | live-v1.2 | 端到端 | — | — | — | ❌ 缺任务、缺 TC |
-| AC-ROOM-04-1 | live-v1.2 | 后端 | — | — | — | ❌ 缺 BE/CS、缺 TC |
-| AC-ROOM-04-2 | live-v1.2 | 后端 | — | — | — | ❌ 缺 BE/CS、缺 TC |
-| AC-ROOM-04-3 | live-v1.2 | 后端 | — | — | — | ❌ 缺 BE/CS、缺 TC |
-| AC-ROOM-04-4 | live-v1.2 | 后端 | — | — | — | ❌ 缺 BE/CS、缺 TC |
-| AC-ROOM-05-1 | live-v1.2 | 后端 | — | — | — | ❌ 缺 BE/CS、缺 TC |
-| AC-ROOM-05-2 | live-v1.2 | 后端 | — | — | — | ❌ 缺 BE/CS、缺 TC |
-| AC-ROOM-05-3 | live-v1.2 | 后端 | — | — | — | ❌ 缺 BE/CS、缺 TC |
-| AC-ROOM-05-4 | live-v1.2 | 端到端 | — | — | — | ❌ 缺任务、缺 TC |
-| AC-ROOM-06-1 | live-v1.2 | 端到端 | — | — | — | ❌ 缺任务、缺 TC |
-| AC-ROOM-06-2 | live-v1.2 | 后端 | — | — | — | ❌ 缺 BE/CS、缺 TC |
-| AC-ROOM-06-3 | live-v1.2 | 后端 | — | — | — | ❌ 缺 BE/CS、缺 TC |
-| AC-ROOM-06-4 | live-v1.2 | 后端 | — | — | — | ❌ 缺 BE/CS、缺 TC |
-| AC-ROOM-06-5 | live-v1.2 | 后端 | — | — | — | ❌ 缺 BE/CS、缺 TC |
-| AC-ROOM-06-6 | live-v1.2 | 后端 | — | — | — | ❌ 缺 BE/CS、缺 TC |
-| AC-ROOM-06-7 | live-v1.2 | 后端 | — | — | — | ❌ 缺 BE/CS、缺 TC |
-| AC-ROOM-06-8 | live-v1.2 | 后端 | — | — | — | ❌ 缺 BE/CS、缺 TC |
-| AC-ROOM-06-9 | live-v1.2 | 后端 | — | — | — | ❌ 缺 BE/CS、缺 TC |
-| AC-ROOM-07-1 | live-v1.2 | 端到端 | — | — | — | ❌ 缺任务、缺 TC |
-| AC-ROOM-07-2 | live-v1.2 | 后端 | — | — | — | ❌ 缺 BE/CS、缺 TC |
-| AC-ROOM-07-3 | live-v1.2 | 后端 | — | — | — | ❌ 缺 BE/CS、缺 TC |
-| AC-ROOM-07-4 | live-v1.2 | 后端 | — | — | — | ❌ 缺 BE/CS、缺 TC |
-| AC-ROOM-07-5 | live-v1.2 | 端到端 | — | — | — | ❌ 缺任务、缺 TC |
-| AC-ROOM-07-6 | live-v1.2 | 后端 | — | — | — | ❌ 缺 BE/CS、缺 TC |
-| AC-ROOM-07-7 | live-v1.2 | 后端 | — | — | — | ❌ 缺 BE/CS、缺 TC |
-| AC-ROOM-07-8 | live-v1.2 | 后端 | — | — | — | ❌ 缺 BE/CS、缺 TC |
-| AC-ROOM-07-9 | live-v1.2 | 后端 | — | — | — | ❌ 缺 BE/CS、缺 TC |
-| AC-ROOM-07-10 | live-v1.2 | 后端 | — | — | — | ❌ 缺 BE/CS、缺 TC |
-| AC-ROOM-07-11 | live-v1.2 | 后端 | — | — | — | ❌ 缺 BE/CS、缺 TC |
-| AC-ROOM-08-1 | live-v1.2 | 后端 | — | — | — | ❌ 缺 BE/CS、缺 TC |
-| AC-ROOM-08-2 | live-v1.2 | 后端 | — | — | — | ❌ 缺 BE/CS、缺 TC |
-| AC-ROOM-08-3 | live-v1.2 | 后端 | — | — | — | ❌ 缺 BE/CS、缺 TC |
-| AC-ROOM-08-4 | live-v1.2 | 后端 | — | — | — | ❌ 缺 BE/CS、缺 TC |
-| AC-ROOM-08-5 | live-v1.2 | 后端 | — | — | — | ❌ 缺 BE/CS、缺 TC |
-| AC-ROOM-08-6 | live-v1.2 | 后端 | — | — | — | ❌ 缺 BE/CS、缺 TC |
-| AC-ROOM-08-7 | live-v1.2 | 后端 | — | — | — | ❌ 缺 BE/CS、缺 TC |
-| AC-ROOM-08-8 | live-v1.2 | 后端 | — | — | — | ❌ 缺 BE/CS、缺 TC |
-| AC-ROOM-08-9 | live-v1.2 | 后端 | — | — | — | ❌ 缺 BE/CS、缺 TC |
-| AC-ROOM-09-1 | live-v1.2 | 端到端 | — | — | — | ❌ 缺任务、缺 TC |
-| AC-ROOM-09-2 | live-v1.2 | 后端 | — | — | — | ❌ 缺 BE/CS、缺 TC |
-| AC-ROOM-09-3 | live-v1.2 | 端到端 | — | — | — | ❌ 缺任务、缺 TC |
-| AC-ROOM-09-4 | live-v1.2 | 后端 | — | — | — | ❌ 缺 BE/CS、缺 TC |
-| AC-ROOM-09-5 | live-v1.2 | 后端 | — | — | — | ❌ 缺 BE/CS、缺 TC |
-| AC-ROOM-09-6 | live-v1.2 | 端到端 | — | — | — | ❌ 缺任务、缺 TC |
-| AC-ROOM-10-1 | live-v1.2 | 端到端 | — | — | — | ❌ 缺任务、缺 TC |
-| AC-ROOM-10-2 | live-v1.2 | 后端 | — | — | — | ❌ 缺 BE/CS、缺 TC |
-| AC-ROOM-10-3 | live-v1.2 | 后端 | — | — | — | ❌ 缺 BE/CS、缺 TC |
-| AC-ROOM-10-4 | live-v1.2 | 后端 | — | — | — | ❌ 缺 BE/CS、缺 TC |
-| AC-ROOM-10-5 | live-v1.2 | 端到端 | — | — | — | ❌ 缺任务、缺 TC |
-| AC-ROOM-10-6 | live-v1.2 | 端到端 | — | — | — | ❌ 缺任务、缺 TC |
-| AC-ROOM-11-1 | live-v1.2 | 后端 | — | — | — | ❌ 缺 BE/CS、缺 TC |
-| AC-ROOM-11-2 | live-v1.2 | 后端 | — | — | — | ❌ 缺 BE/CS、缺 TC |
-| AC-ROOM-11-3 | live-v1.2 | 端到端 | — | — | — | ❌ 缺任务、缺 TC |
-| AC-ROOM-11-4 | live-v1.2 | 后端 | — | — | — | ❌ 缺 BE/CS、缺 TC |
-| AC-ROOM-11-5 | live-v1.2 | 后端 | — | — | — | ❌ 缺 BE/CS、缺 TC |
-| AC-ROOM-11-6 | live-v1.2 | 后端 | — | — | — | ❌ 缺 BE/CS、缺 TC |
-| AC-ROOM-12-1 | live-v1.2 | 端到端 | — | — | — | ❌ 缺任务、缺 TC |
-| AC-ROOM-12-2 | live-v1.2 | 端到端 | — | — | — | ❌ 缺任务、缺 TC |
-| AC-ROOM-12-3 | live-v1.2 | 端到端 | — | — | — | ❌ 缺任务、缺 TC |
-| AC-ROOM-12-4 | live-v1.2 | 端到端 | — | — | — | ❌ 缺任务、缺 TC |
-| AC-ROOM-12-5 | live-v1.2 | 端到端 | — | — | — | ❌ 缺任务、缺 TC |
-| AC-ROOM-12-6 | live-v1.2 | 端到端 | — | — | — | ❌ 缺任务、缺 TC |
-| AC-ROOM-12-7 | live-v1.2 | 端到端 | — | — | — | ❌ 缺任务、缺 TC |
-| AC-ROOM-12-8 | live-v1.2 | 端到端 | — | — | — | ❌ 缺任务、缺 TC |
-| AC-ROOM-12-9 | live-v1.2 | 端到端 | — | — | — | ❌ 缺任务、缺 TC |
-| AC-ROOM-12-10 | live-v1.2 | 端到端 | — | — | — | ❌ 缺任务、缺 TC |
-| AC-ROOM-12-11 | live-v1.2 | 端到端 | — | — | — | ❌ 缺任务、缺 TC |
-| AC-ROOM-13-1 | live-v1.2 | 后端 | — | — | — | ❌ 缺 BE/CS、缺 TC |
-| AC-ROOM-13-2 | live-v1.2 | 后端 | — | — | — | ❌ 缺 BE/CS、缺 TC |
-| AC-ROOM-14-1 | live-v1.2 | 端到端 | — | — | — | ❌ 缺任务、缺 TC |
-| AC-ROOM-14-2 | live-v1.2 | 前端 | — | — | — | ❌ 缺 FE、缺 TC |
-| AC-ROOM-14-3 | live-v1.2 | 前端 | — | — | — | ❌ 缺 FE、缺 TC |
-| AC-ROOM-15-1 | live-v1.2 | 后端 | — | — | — | ❌ 缺 BE/CS、缺 TC |
-| AC-ROOM-15-2 | live-v1.2 | 后端 | — | — | — | ❌ 缺 BE/CS、缺 TC |
-| AC-ROOM-15-3 | live-v1.2 | 后端 | — | — | — | ❌ 缺 BE/CS、缺 TC |
-| AC-ROOM-15-4 | live-v1.2 | 后端 | — | — | — | ❌ 缺 BE/CS、缺 TC |
 | AC-PUSH-01-1 | live-v1.2 | 端到端 | BE-228 | FE-208 | TC-PUSH-01-01 | ✅ |
 | AC-PUSH-01-2 | live-v1.2 | 后端 | BE-228 | — | TC-PUSH-01-02 | ✅ |
 | AC-PUSH-01-3 | live-v1.2 | 端到端 | — | FE-208 | TC-PUSH-01-03 | ✅ |
@@ -1196,7 +1093,6 @@
 | AC-PUSH-02-4 | live-v1.2 | 后端 | BE-228 | — | TC-PUSH-02-04 | ✅ |
 | AC-PUSH-02-5 | live-v1.2 | 后端 | BE-228 | — | TC-PUSH-02-05 | ✅ |
 | AC-PUSH-02-6 | live-v1.2 | 后端 | BE-228 | — | TC-PUSH-02-06 | ✅ |
-| AC-PUSH-02-7 | live-v1.2 | 后端 | — | — | — | ❌ 缺 BE/CS、缺 TC |
 | AC-PUSH-02-8 | live-v1.2 | 后端 | BE-228 | — | TC-PUSH-02-08 | ✅ |
 | AC-PUSH-02-9 | live-v1.2 | 后端 | BE-228 | — | TC-PUSH-02-09 | ✅ |
 | AC-PUSH-02-10 | live-v1.2 | 后端 | BE-228 | — | TC-PUSH-02-10 | ✅ |
@@ -1219,7 +1115,6 @@
 | AC-PUSH-03-13 | live-v1.2 | 后端 | BE-229 | — | TC-PUSH-03-13 | ✅ |
 | AC-PUSH-03-14 | live-v1.2 | 后端 | BE-229 | — | TC-PUSH-03-14 | ✅ |
 | AC-PUSH-03-15 | live-v1.2 | 端到端 | — | FE-208 | TC-PUSH-03-15 | ✅ |
-| AC-PUSH-03-16 | live-v1.2 | 端到端 | — | — | — | ❌ 缺任务、缺 TC |
 | AC-PUSH-03-17 | live-v1.2 | 端到端 | — | FE-208 | TC-PUSH-03-17 | ✅ |
 | AC-PUSH-03-18 | live-v1.2 | 端到端 | — | FE-208 | TC-PUSH-03-18 | ✅ |
 | AC-PUSH-03-19 | live-v1.2 | 端到端 | — | FE-208 | TC-PUSH-03-19 | ✅ |
@@ -1237,7 +1132,6 @@
 | AC-PUSH-03-31 | live-v1.2 | 端到端 | — | FE-208 | TC-PUSH-03-31 | ✅ |
 | AC-PUSH-03-32 | live-v1.2 | 端到端 | — | FE-208 | TC-PUSH-03-32 | ✅ |
 | AC-PUSH-03-33 | live-v1.2 | 端到端 | — | FE-208 | TC-PUSH-03-33 | ✅ |
-| AC-PUSH-03-34 | live-v1.2 | 端到端 | — | — | — | ❌ 缺任务、缺 TC |
 | AC-PUSH-03-35 | live-v1.2 | 端到端 | — | FE-208 | TC-PUSH-03-35 | ✅ |
 | AC-PUSH-04-1 | live-v1.2 | 端到端 | BE-229 | — | TC-PUSH-04-01 | ✅ |
 | AC-PUSH-04-2 | live-v1.2 | 后端 | BE-229 | — | TC-PUSH-04-02 | ✅ |
@@ -1245,11 +1139,6 @@
 | AC-PUSH-04-4 | live-v1.2 | 后端 | BE-229 | — | TC-PUSH-04-04 | ✅ |
 | AC-PUSH-04-5 | live-v1.2 | 后端 | BE-229 | — | TC-PUSH-04-05 | ✅ |
 | AC-PUSH-04-6 | live-v1.2 | 后端 | BE-229 | — | TC-PUSH-04-06 | ✅ |
-| AC-PUSH-05-1 | live-v1.2 | 端到端 | — | — | — | ❌ 缺任务、缺 TC |
-| AC-PUSH-05-2 | live-v1.2 | 后端 | — | — | — | ❌ 缺 BE/CS、缺 TC |
-| AC-PUSH-05-3 | live-v1.2 | 后端 | — | — | — | ❌ 缺 BE/CS、缺 TC |
-| AC-PUSH-05-4 | live-v1.2 | 后端 | — | — | — | ❌ 缺 BE/CS、缺 TC |
-| AC-PUSH-05-5 | live-v1.2 | 后端 | — | — | — | ❌ 缺 BE/CS、缺 TC |
 | AC-PUSH-06-1 | live-v1.2 | 后端 | BE-228 | — | TC-PUSH-06-01 | ✅ |
 | AC-PUSH-06-2 | live-v1.2 | 后端 | BE-228 | — | TC-PUSH-06-02 | ✅ |
 | AC-PUSH-06-4 | live-v1.2 | 后端 | BE-228 | — | TC-PUSH-06-04 | ✅ |
@@ -1265,7 +1154,6 @@
 | AC-PUSH-06-14 | live-v1.2 | 后端 | BE-228 | — | TC-PUSH-06-14 | ✅ |
 | AC-PUSH-06-15 | live-v1.2 | 端到端 | CS-044 | — | TC-PUSH-06-15 | ✅ |
 | AC-PUSH-06-16 | live-v1.2 | 后端 | BE-228 | — | TC-PUSH-06-16 | ✅ |
-| AC-PUSH-06-17 | live-v1.2 | 后端 | — | — | — | ❌ 缺 BE/CS、缺 TC |
 | AC-PUSH-06-18 | live-v1.2 | 端到端 | — | FE-208 | TC-PUSH-06-18 | ✅ |
 | AC-PUSH-07-1 | live-v1.2 | 端到端 | BE-229 | FE-208 | TC-PUSH-07-01 | ✅ |
 | AC-PUSH-07-2 | live-v1.2 | 端到端 | BE-229 | FE-208 | TC-PUSH-07-02 | ✅ |
@@ -1279,10 +1167,7 @@
 | AC-PUSH-08-4 | live-v1.2 | 端到端 | — | FE-208 | TC-PUSH-08-04 | ✅ |
 | AC-PUSH-08-5 | live-v1.2 | 端到端 | — | FE-208 | TC-PUSH-08-05 | ✅ |
 | AC-PUSH-08-6 | live-v1.2 | 端到端 | — | FE-208 | TC-PUSH-08-06 | ✅ |
-| AC-PUSH-08-7 | live-v1.2 | 端到端 | — | — | — | ❌ 缺任务、缺 TC |
 | AC-PUSH-08-8 | live-v1.2 | 端到端 | — | FE-208 | TC-PUSH-08-08 | ✅ |
-| AC-PUSH-08-9 | live-v1.2 | 端到端 | — | — | — | ❌ 缺任务、缺 TC |
-| AC-PUSH-08-10 | live-v1.2 | 端到端 | — | — | — | ❌ 缺任务、缺 TC |
 | AC-PUSH-08-11 | live-v1.2 | 端到端 | — | FE-208 | TC-PUSH-08-11 | ✅ |
 | AC-PUSH-09-1 | live-v1.2 | 后端 | BE-228 | — | TC-PUSH-09-01 | ✅ |
 | AC-PUSH-09-2 | live-v1.2 | 后端 | BE-228 | — | TC-PUSH-09-02 | ✅ |
@@ -1308,29 +1193,5 @@
 | AC-PUSH-12-6 | live-v1.2 | 前端 | — | FE-353 | TC-PUSH-12-06 | ✅ |
 | AC-PUSH-12-7 | live-v1.2 | 前端 | — | FE-353 | TC-PUSH-12-07 | ✅ |
 | AC-PUSH-12-8 | live-v1.2 | 前端 | — | FE-353 | TC-PUSH-12-08 | ✅ |
-| AC-PUSH-12-9 | live-v1.2 | 端到端 | — | — | — | ❌ 缺任务、缺 TC |
 | AC-PUSH-12-10 | live-v1.2 | 前端 | — | FE-353 | TC-PUSH-12-10 | ✅ |
 | AC-PUSH-12-11 | live-v1.2 | 前端 | — | FE-353 | TC-PUSH-12-11 | ✅ |
-| AC-MIG-01-1 | live-v1.2 | 端到端 | — | — | — | ❌ 缺任务、缺 TC |
-| AC-MIG-01-2 | live-v1.2 | 端到端 | — | — | — | ❌ 缺任务、缺 TC |
-| AC-MIG-01-3 | live-v1.2 | 端到端 | — | — | — | ❌ 缺任务、缺 TC |
-| AC-MIG-02-1 | live-v1.2 | 端到端 | — | — | — | ❌ 缺任务、缺 TC |
-| AC-MIG-02-2 | live-v1.2 | 端到端 | — | — | — | ❌ 缺任务、缺 TC |
-| AC-MIG-02-3 | live-v1.2 | 端到端 | — | — | — | ❌ 缺任务、缺 TC |
-| AC-MIG-02-4 | live-v1.2 | 端到端 | — | — | — | ❌ 缺任务、缺 TC |
-| AC-MIG-02-5 | live-v1.2 | 端到端 | — | — | — | ❌ 缺任务、缺 TC |
-| AC-MIG-03-1 | live-v1.2 | 端到端 | — | — | — | ❌ 缺任务、缺 TC |
-| AC-MIG-03-2 | live-v1.2 | 端到端 | — | — | — | ❌ 缺任务、缺 TC |
-| AC-MIG-03-3 | live-v1.2 | 端到端 | — | — | — | ❌ 缺任务、缺 TC |
-| AC-MIG-03-4 | live-v1.2 | 端到端 | — | — | — | ❌ 缺任务、缺 TC |
-| AC-MIG-03-5 | live-v1.2 | 端到端 | — | — | — | ❌ 缺任务、缺 TC |
-| AC-MIG-03-6 | live-v1.2 | 端到端 | — | — | — | ❌ 缺任务、缺 TC |
-| AC-MIG-04-1 | live-v1.2 | 端到端 | — | — | — | ❌ 缺任务、缺 TC |
-| AC-MIG-04-2 | live-v1.2 | 端到端 | — | — | — | ❌ 缺任务、缺 TC |
-| AC-MIG-04-3 | live-v1.2 | 端到端 | — | — | — | ❌ 缺任务、缺 TC |
-| AC-MIG-04-4 | live-v1.2 | 端到端 | — | — | — | ❌ 缺任务、缺 TC |
-| AC-MIG-04-5 | live-v1.2 | 端到端 | — | — | — | ❌ 缺任务、缺 TC |
-| AC-MIG-04-6 | live-v1.2 | 端到端 | — | — | — | ❌ 缺任务、缺 TC |
-| AC-MIG-04-7 | live-v1.2 | 端到端 | — | — | — | ❌ 缺任务、缺 TC |
-| AC-MIG-04-8 | live-v1.2 | 端到端 | — | — | — | ❌ 缺任务、缺 TC |
-| AC-MIG-04-9 | live-v1.2 | 端到端 | — | — | — | ❌ 缺任务、缺 TC |
