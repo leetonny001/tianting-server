@@ -263,3 +263,21 @@ func TestTC_ACC_01_07_DeletedUsernameViaCleanup(t *testing.T) {
 	code, b, _ = e.post("/v1/account/register", e.freshIP(), regBody("GONE_1", nil))
 	wantErr(t, "case", code, b, http.StatusConflict, protocol.CodeUsernameTaken, "")
 }
+
+// F-ACC-04 规则 8：第 ① 步的条件包含"注销申请没有被撤销"。列出到期账号之后申请被撤销，第 ① 步不做。
+func TestFinishDeletionRespectsCancel(t *testing.T) {
+	e := openEnv(t, nil)
+	r := e.register("alice_1", nil)
+	e.mustDelete(r.AccessToken, goodPassword)
+	now := time.Now().Add(8 * oneDay).UnixMilli()
+	due, err := e.st.DueDeletions(t.Context(), now, 10)
+	if err != nil || len(due) != 1 {
+		t.Fatalf("%v %v", due, err)
+	}
+	e.rawExec(`UPDATE accounts SET delete_requested_at = 0 WHERE user_id = 'alice_1'`)
+	ok, err := e.st.FinishDeletion(t.Context(), "alice_1", now, now)
+	if err != nil || ok {
+		t.Fatalf("%v %v", ok, err)
+	}
+	e.mustLogin("alice_1", goodPassword, "ios")
+}

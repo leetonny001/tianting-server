@@ -185,3 +185,19 @@ func TestHookCancelVsNewDeletion(t *testing.T) {
 		t.Errorf("delete_requested_at %d, want %d", n, want)
 	}
 }
+
+// RS5-02 甲：recover 不做版本判断。recover 停在 Argon2 之后，攻击者改密提交，版本变了：放行后 recover 仍然成功，攻击者的新码作废。
+func TestHookRecoverIgnoresVersion(t *testing.T) {
+	e := openEnv(t, nil)
+	v := e.regAcked("victim_1")
+	xs := e.mustLogin("victim_1", goodPassword, "ios")
+	r := pause(t, "victim_1", func() (int, []byte) { return e.recover("victim_1", v.RecoveryCode, newPassword, "") })
+	x := e.mustChangePassword(xs.AccessToken, goodPassword, "Xx-pass-2026-a!")
+	r.release()
+	if r.code != http.StatusOK {
+		t.Fatalf("recover: %d %s", r.code, r.body)
+	}
+	e.wantRecoverFail("attacker code", "victim_1", x.RecoveryCode, "Xx-pass-2026-b!")
+	e.wantRefreshErr("attacker", x.RefreshToken, protocol.ReasonCredentialsChanged)
+	e.mustLogin("victim_1", newPassword, "ios")
+}

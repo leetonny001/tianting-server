@@ -258,7 +258,14 @@ func New(cfg Config) (*App, error) {
 		if len(problems) > 0 {
 			detail = fmt.Sprintf("refresh 密钥台账：%v", problems)
 		}
-		return []DynamicCheck{{ID: "refresh_key_ledger", Passed: len(problems) == 0, Detail: detail}}
+		checks := []DynamicCheck{{ID: "refresh_key_ledger", Passed: len(problems) == 0, Detail: detail}}
+		// 公开传播一个大额码等于开放注册（F-ACC-09 规则 1，RC2-18）：只告警。
+		warnTotal := int64(cmp.Or(cfg.Account.InviteWarnTotal, defaultInviteWarnTotal))
+		total, err := st.InviteRemainingTotal(ctx, clk.Now().UnixMilli())
+		if err != nil {
+			return append(checks, DynamicCheck{ID: "invite_total", Detail: "邀请码总量：查询失败"})
+		}
+		return append(checks, DynamicCheck{ID: "invite_total", Passed: total <= warnTotal, Detail: fmt.Sprintf("有效邀请码剩余 %d 次，告警线 %d（IM_INVITE_WARN_TOTAL）", total, warnTotal)})
 	}
 	jobs := scheduler.New(clk, nil, m.JobRuns, m.JobDuration, cfg.Logger)
 	registerJobs(jobs, st, svc, clk, cmp.Or(cfg.Push.PurgeBatch, defaultPushPurgeBatch))
@@ -266,6 +273,9 @@ func New(cfg Config) (*App, error) {
 	jobs.Register("auth_throttle_purge", jobPeriod, accounts.PurgeThrottle)
 	jobs.Register("session_purge", 24*time.Hour, accounts.PurgeSessions)
 	jobs.Register("account_cleanup", jobPeriod, accounts.Cleanup)
+	jobs.Register("invite_purge", 24*time.Hour, func(ctx context.Context) (int, error) {
+		return st.PurgeInvites(ctx, clk.Now().Add(-invitePurgeAfter).UnixMilli())
+	})
 	if cfg.TestMode {
 		for _, name := range cfg.TestDisableJobs {
 			if err := jobs.Disable(name); err != nil {
@@ -351,6 +361,7 @@ func New(cfg Config) (*App, error) {
 	}
 	adminMux := http.NewServeMux()
 	adm.Register(adminMux)
+	adm.RegisterAccounts(adminMux)
 	if cfg.TestMode {
 		adm.RegisterTestRoutes(adminMux, faults, clk)
 	}
@@ -366,10 +377,12 @@ func New(cfg Config) (*App, error) {
 
 // 定时任务的周期和保留时间。
 const (
-	jobPeriod             = time.Hour
-	auditRetention        = 365 * 24 * time.Hour // PRD-admin F-KEY-04：保留 1 年
-	grantRetention        = 48 * time.Hour       // 授权只有 15 分钟、配额只看当天；审计另有 admin_audit
-	defaultQuarantineDays = 30
+	jobPeriod              = time.Hour
+	auditRetention         = 365 * 24 * time.Hour // PRD-admin F-KEY-04：保留 1 年
+	grantRetention         = 48 * time.Hour       // 授权只有 15 分钟、配额只看当天；审计另有 admin_audit
+	defaultQuarantineDays  = 30
+	invitePurgeAfter       = 90 * 24 * time.Hour // 过期或用完 90 天后清除（F-ACC-09 规则 3，未校准）
+	defaultInviteWarnTotal = 500
 )
 
 // registerJobs 注册全部定时任务（BE-220）。任务名是测试接口和指标标签里的稳定名字。

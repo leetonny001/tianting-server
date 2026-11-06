@@ -92,6 +92,12 @@ type Invite struct {
 	AutoDisabled                                   bool
 }
 
+// AccountInfo 是后台看到的账号信息：没有任何哈希和令牌（F-ACC-09 规则 5）。
+type AccountInfo struct {
+	CreatedAt, LastLoginAt, DeleteRequestedAt int64
+	Sessions                                  int
+}
+
 // NewAccount 是注册事务的内容（F-ACC-01 规则 8）：同一事务写用户、账号、恢复码、设备会话，扣邀请码。
 type NewAccount struct {
 	Account      Account
@@ -246,6 +252,18 @@ type AccountStore interface {
 	PurgeThrottle(ctx context.Context, now int64) (int, error)
 
 	CreateInvite(ctx context.Context, inv Invite) error
+	// CreateInvites 同一事务写一批（F-ACC-09）。
+	CreateInvites(ctx context.Context, invites []Invite) error
+	// ListInvites 按创建时间倒序，after 是上一页最后的 invite_id（空表示第一页）。
+	ListInvites(ctx context.Context, after string, limit int) ([]Invite, error)
+	// DisableInvite 停用，幂等；不存在返回 ErrNotFound（规则 3）。
+	DisableInvite(ctx context.Context, inviteID string, now int64) error
+	// PurgeInvites 删除过期或用完早于 before 的邀请码（invite_purge）。
+	PurgeInvites(ctx context.Context, before int64) (int, error)
+	// InviteRemainingTotal 是有效邀请码的剩余可用次数合计（RC2-18）。
+	InviteRemainingTotal(ctx context.Context, now int64) (int64, error)
+	// AccountInfo 是后台账号信息（规则 5）；没有账号行返回 ErrNotFound。
+	AccountInfo(ctx context.Context, userID string, now int64) (AccountInfo, error)
 	// InviteUsable 判断邀请码现在能不能用。
 	InviteUsable(ctx context.Context, codeHash string, now int64) (bool, error)
 	GetInviteByHash(ctx context.Context, codeHash string) (Invite, error)

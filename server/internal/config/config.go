@@ -417,6 +417,7 @@ func loadAccount(getenv func(string) string, a *app.Config, bad func(string, ...
 	for key, dst := range map[string]*int{
 		"IM_ARGON_SLOTS": &c.ArgonSlots, "IM_ARGON_RECOVER_SLOTS": &c.RecoverSlots, "IM_REFRESH_MAX_PENDING": &c.RefreshMaxPending,
 		"IM_REFRESH_ISSUE_RATE": &c.RefreshIssueRate, "IM_REFRESH_IP_RATE": &c.RefreshIPRate, "IM_RECOVERY_OLD_DAYS": &c.RecoveryOldDays,
+		"IM_INVITE_WARN_TOTAL": &c.InviteWarnTotal,
 	} {
 		if v := getenv(key); v != "" {
 			n, err := strconv.Atoi(v)

@@ -324,3 +324,73 @@ func (s *SQLite) RemoveUserSocial(ctx context.Context, userID, nickname string, 
 	}
 	return t.vers, t.tx.Commit()
 }
+
+func (s *SQLite) CreateInvites(ctx context.Context, invites []Invite) error {
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+	for _, inv := range invites {
+		if _, err := tx.ExecContext(ctx, `INSERT INTO invites (invite_id, code_hash, code_last4, max_uses, expires_at, note, created_by, created_at)
+			VALUES (?, ?, ?, ?, ?, ?, ?, ?)`, inv.InviteID, inv.CodeHash, inv.CodeLast4, inv.MaxUses, inv.ExpiresAt, inv.Note, inv.CreatedBy, inv.CreatedAt); err != nil {
+			return err
+		}
+	}
+	return tx.Commit()
+}
+
+func (s *SQLite) ListInvites(ctx context.Context, after string, limit int) ([]Invite, error) {
+	rows, err := s.db.QueryContext(ctx, `SELECT invite_id, code_last4, note, created_by, max_uses, used_count, expires_at, created_at, disabled_at, auto_disabled
+		FROM invites WHERE ?1 = '' OR invite_id < ?1 ORDER BY invite_id DESC LIMIT ?2`, after, limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []Invite
+	for rows.Next() {
+		var i Invite
+		if err := rows.Scan(&i.InviteID, &i.CodeLast4, &i.Note, &i.CreatedBy, &i.MaxUses, &i.UsedCount, &i.ExpiresAt, &i.CreatedAt, &i.DisabledAt, &i.AutoDisabled); err != nil {
+			return nil, err
+		}
+		out = append(out, i)
+	}
+	return out, rows.Err()
+}
+
+func (s *SQLite) DisableInvite(ctx context.Context, inviteID string, now int64) error {
+	res, err := s.db.ExecContext(ctx, `UPDATE invites SET disabled_at = CASE WHEN disabled_at = 0 THEN ?1 ELSE disabled_at END WHERE invite_id = ?2`, now, inviteID)
+	if err != nil {
+		return err
+	}
+	if n, _ := res.RowsAffected(); n == 0 {
+		return ErrNotFound
+	}
+	return nil
+}
+
+func (s *SQLite) PurgeInvites(ctx context.Context, before int64) (int, error) {
+	res, err := s.db.ExecContext(ctx, `DELETE FROM invites WHERE expires_at < ?1 OR (exhausted_at <> 0 AND exhausted_at < ?1)`, before)
+	if err != nil {
+		return 0, err
+	}
+	n, _ := res.RowsAffected()
+	return int(n), nil
+}
+
+func (s *SQLite) InviteRemainingTotal(ctx context.Context, now int64) (int64, error) {
+	var n int64
+	err := s.db.QueryRowContext(ctx, `SELECT COALESCE(SUM(max_uses - used_count), 0) FROM invites WHERE disabled_at = 0 AND expires_at > ? AND used_count < max_uses`, now).Scan(&n)
+	return n, err
+}
+
+func (s *SQLite) AccountInfo(ctx context.Context, userID string, now int64) (AccountInfo, error) {
+	var a AccountInfo
+	err := s.db.QueryRowContext(ctx, `SELECT a.created_at, a.last_login_at, a.delete_requested_at,
+			(SELECT COUNT(*) FROM device_sessions d WHERE d.user_id = a.user_id AND d.revoked_at = 0 AND d.expires_at > ?)
+		FROM accounts a WHERE a.user_id = ?`, now, userID).Scan(&a.CreatedAt, &a.LastLoginAt, &a.DeleteRequestedAt, &a.Sessions)
+	if errors.Is(err, sql.ErrNoRows) {
+		return AccountInfo{}, ErrNotFound
+	}
+	return a, err
+}

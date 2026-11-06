@@ -273,3 +273,12 @@ func assertMedianClose(t *testing.T, a, b []time.Duration, tolerance float64) {
 		t.Errorf("medians differ by more than %.0f%%: %v, %v", tolerance*100, x, y)
 	}
 }
+
+func jsonOf(t *testing.T, v any) string {
+	t.Helper()
+	b, err := json.Marshal(v)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return string(b)
+}
