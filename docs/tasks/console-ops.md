@@ -253,7 +253,7 @@
 - 批次：第二批
 - 仓库：tianting-console-server
 - 依赖：CS-131
-- AC：AC-OPS-01-19、AC-OPS-02-10、AC-OPS-02-11、AC-OPS-02-12
+- AC：AC-OPS-01-19、AC-OPS-01-20、AC-OPS-02-10、AC-OPS-02-11、AC-OPS-02-12
 - 内容：
   1. 授予 `ops_superadmin` 也进入待批准；新建账号在生效前只有"只需登录"的权限。
   2. 拒绝：任一启用的 `ops_superadmin`，重新验证，理由必填，写 `ops.role.reject`；发起人拒绝等于撤回。
