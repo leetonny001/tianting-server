@@ -20,7 +20,9 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 PRDS = [ROOT / "docs/prd" / n for n in (
     "PRD-core-v1.4.md", "PRD-social-v1.0.md", "PRD-ui-v1.2.md", "PRD-admin-v1.2.md", "PRD-ops-v1.3.md",
-    "PRD-live-v1.2.md")]
+    "PRD-live-v1.2.md", "PRD-chat-v1.0.md")]
+# PRD-chat CH-27：现在只排 C1、C2 和公共部分。C3～C6 决定继续时把里程碑加进来
+CHAT_MILESTONES = ("【C1】", "【C2】", "【全部】")
 # PRD-live v1.0 3.2 节：L2、L3 的 AC 随对应里程碑分发任务和用例
 FROZEN_PUSH_EXCLUDE = {
     "AC-PUSH-02-7", "AC-PUSH-06-17",
@@ -44,6 +46,8 @@ def load_acs():
                 continue
             rest = m.group(2)
             if name == "live-v1.2" and (not m.group(1).startswith("AC-PUSH-") or m.group(1) in FROZEN_PUSH_EXCLUDE):
+                continue
+            if name == "chat-v1.0" and not any(m_ in rest[:16] for m_ in CHAT_MILESTONES):
                 continue
             layer = "后端" if "【后端】" in rest[:8] else "前端" if "【前端】" in rest[:8] else "手工" if "（手工）" in rest[:8] else "端到端"
             acs.append((m.group(1), layer, name))
