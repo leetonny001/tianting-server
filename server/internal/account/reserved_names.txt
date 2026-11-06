@@ -1,0 +1,18 @@
+# 内置保留名（PRD-chat F-ACC-01 规则 4）。一行一个，不区分大小写。部署可以用 IM_RESERVED_NAMES_FILE 增加。
+admin
+administrator
+root
+system
+official
+tianting
+support
+kefu
+service
+security
+help
+test
+null
+none
+operator
+moderator
+staff

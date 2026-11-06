@@ -348,10 +348,24 @@ func (a *Admin) registerSocialTestRoutes(mux *http.ServeMux) {
 	a.route(mux, "POST", "/admin/test/limits/reset", adminauth.ScopeTest, func(w http.ResponseWriter, r *http.Request) {
 		var req struct {
 			UserID string `json:"userId"`
+			Scope  string `json:"scope"` // "auth"：清"用户名 + IP"、IP、邀请码失败计数（PRD-chat 第 4.5 节）
 		}
-		if readJSON(w, r, &req) {
-			a.social.ResetLimits(req.UserID)
+		if !readJSON(w, r, &req) {
+			return
+		}
+		if req.Scope == "auth" {
+			if a.accountTest == nil {
+				writeErr(w, protocol.Errorf(protocol.CodeBadRequest, "account test facilities are not available"))
+				return
+			}
+			if err := a.accountTest.ResetLimits(r.Context()); err != nil {
+				a.internal(w, "reset auth limits", err)
+				return
+			}
 			writeJSON(w, http.StatusOK, struct{}{})
+			return
 		}
+		a.social.ResetLimits(req.UserID)
+		writeJSON(w, http.StatusOK, struct{}{})
 	})
 }

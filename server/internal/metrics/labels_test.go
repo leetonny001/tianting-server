@@ -21,6 +21,8 @@ func TestLabelsAreBounded(t *testing.T) {
 	m.Commands.WithLabelValues(CmdLabel("pushSync"), Code(0)).Inc()
 	m.Pushes.WithLabelValues("all").Inc()
 	m.PushDeliveries.WithLabelValues("user").Inc()
+	m.AccountLogins.WithLabelValues("invalid").Inc()
+	m.Registers.WithLabelValues("ok").Inc()
 	if p := m.LabelProblems(); len(p) != 0 {
 		t.Errorf("problems: %v", p)
 	}

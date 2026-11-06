@@ -31,6 +31,22 @@ const (
 	HandshakeOriginDenied = "origin_rejected"
 )
 
+// 账号的结果（im_account_logins_total、im_registers_total 的 result 标签，PRD-chat 第 14.2 节）。
+const (
+	AccountOK            = "ok"
+	AccountInvalid       = "invalid"
+	AccountLocked        = "locked"
+	AccountRateLimited   = "rate_limited"
+	AccountBusy          = "busy"
+	AccountBanned        = "banned"
+	AccountPending       = "deletion_pending"
+	AccountError         = "error"
+	AccountBadRequest    = "bad_request"
+	AccountClosed        = "closed"
+	AccountInviteInvalid = "invite_invalid"
+	AccountTaken         = "taken"
+)
+
 // 运维接口的结果（im_ops_requests_total 的 result 标签，PRD-ops S-OPS-06）。
 const (
 	OpsOK           = "ok"
@@ -67,6 +83,10 @@ type Metrics struct {
 	Pushes         *prometheus.CounterVec // 新受理的推送数（不含幂等命中的重放），按 target
 	PushDeliveries *prometheus.CounterVec // 接受投递的连接数（含重播），按 target
 	PushInboxRows  prometheus.Gauge       // 收件箱行数：启动时从库里读，写入和清理时增减
+	// 账号（PRD-chat 第 14.2 节）。result 取值见 account 包，都是枚举。
+	AccountLogins      *prometheus.CounterVec
+	Registers          *prometheus.CounterVec
+	InviteAutoDisabled prometheus.Counter // 邀请码因为探测用户名被自动停用（F-ACC-01 规则 7 的告警）
 }
 
 // New 创建并注册全部指标，另外带上 Go 运行时和进程指标。
@@ -128,6 +148,18 @@ func New() *Metrics {
 	m.PushInboxRows = prometheus.NewGauge(prometheus.GaugeOpts{
 		Name: "im_push_inbox_rows", Help: "Rows in the per-user push inbox.",
 	})
+	m.AccountLogins = prometheus.NewCounterVec(prometheus.CounterOpts{
+		Name: "im_account_logins_total", Help: "Account logins by result.",
+	}, []string{"result"})
+	m.Registers = prometheus.NewCounterVec(prometheus.CounterOpts{
+		Name: "im_registers_total", Help: "Account registrations by result.",
+	}, []string{"result"})
+	m.InviteAutoDisabled = prometheus.NewCounter(prometheus.CounterOpts{
+		Name: "im_invites_auto_disabled_total", Help: "Invite codes automatically disabled after too many taken usernames.",
+	})
+	f(m.AccountLogins)
+	f(m.Registers)
+	f(m.InviteAutoDisabled)
 	f(m.Pushes)
 	f(m.PushDeliveries)
 	f(m.PushInboxRows)
@@ -209,7 +241,9 @@ var allowedLabelValues = map[string]map[string]bool{
 	"phase":     set("handshake", "session"),
 	"platform":  set("android", "ios", "web", "pc", "unknown"),
 	"conv_type": set("c2c", "group", "room", "unknown"),
-	"result": set(HandshakeOK, HandshakeRateLimited, HandshakeBadPlatform, HandshakeAuthRequired, HandshakeTokenInvalid,
+	"result": set(AccountOK, AccountInvalid, AccountLocked, AccountRateLimited, AccountBusy, AccountBanned, AccountPending,
+		AccountError, AccountBadRequest, AccountClosed, AccountInviteInvalid, AccountTaken,
+		HandshakeOK, HandshakeRateLimited, HandshakeBadPlatform, HandshakeAuthRequired, HandshakeTokenInvalid,
 		HandshakeTokenRevoked, HandshakeTokenExpired, HandshakeError, HandshakeOriginDenied, OpsOK, OpsUnauthorized, OpsForbidden, OpsThrottled, OpsError, "unknown"),
 	"reason": set("tokenInvalid", "tokenExpired", "banned", "suspended", "replaced", "tooManyConnections", "serverShutdown",
 		"missing", "caller", "signature", "window", "nonce", "node", "unknown"),

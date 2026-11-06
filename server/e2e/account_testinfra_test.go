@@ -60,3 +60,18 @@ func TestTC_ACC_07_04_PublicConfig(t *testing.T) {
 		t.Errorf("privacyNotice must be absent: %s", b)
 	}
 }
+
+// BE-405：测试设施的接口。/admin/test/faults 的 argonBlock 可以打开和查询；limits/reset scope=auth 清计数。
+func TestAccountTestFacilities(t *testing.T) {
+	e := newAcctEnv(t, nil)
+	code, b := e.adminPost("/admin/test/faults", map[string]any{"argonBlock": true}, adminKey)
+	if code != http.StatusOK || !strings.Contains(string(b), `"argonBlocked":0`) {
+		t.Errorf("%d %s", code, b)
+	}
+	if code, b := e.adminPost("/admin/test/faults", map[string]any{"argonBlock": false}, adminKey); code != http.StatusOK {
+		t.Errorf("%d %s", code, b)
+	}
+	if code, b := e.adminPost("/admin/test/limits/reset", map[string]any{"scope": "auth"}, adminKey); code != http.StatusOK {
+		t.Errorf("%d %s", code, b)
+	}
+}

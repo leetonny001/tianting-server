@@ -50,11 +50,13 @@ type Admin struct {
 	sessions sessions.Source
 	faults   TestFaults
 	jobs     JobRunner
-	mod      *ModerationConfig // 第二批开启时非 nil（IM_V13_ADMIN_FEATURES）
-	pusher   PushService       // 系统推送开启时非 nil（IM_PUSH_ENABLED）
-	clock    clock.Clock
-	log      *slog.Logger
-	testMode bool
+	// accountTest 只在测试模式设置（PRD-chat 第 4.5 节）。
+	accountTest AccountTest
+	mod         *ModerationConfig // 第二批开启时非 nil（IM_V13_ADMIN_FEATURES）
+	pusher      PushService       // 系统推送开启时非 nil（IM_PUSH_ENABLED）
+	clock       clock.Clock
+	log         *slog.Logger
+	testMode    bool
 	// auditFail 由测试接口 /admin/test/faults 打开，模拟 admin_audit 写失败（AC-KEY-04-2）。
 	auditFail atomic.Bool
 }
@@ -65,6 +67,14 @@ type TestFaults interface {
 	SetPingFail(fail bool)
 }
 
+// AccountTest 是账号功能的测试设施（PRD-chat 第 4.5 节，由 account.Service 实现）。
+type AccountTest interface {
+	SetArgonBlock(on bool)
+	ArgonBlocked() int
+	FailRegisterTx(n int)
+	ResetLimits(ctx context.Context) error
+}
+
 // JobRunner 手动触发定时任务（测试模式 POST /admin/test/jobs/{name}/run，BE-220）。
 type JobRunner interface {
 	Run(ctx context.Context, name string) error
@@ -72,6 +82,9 @@ type JobRunner interface {
 
 // WithJobs 接上定时任务。
 func (a *Admin) WithJobs(j JobRunner) { a.jobs = j }
+
+// WithAccountTest 接上账号功能的测试设施。
+func (a *Admin) WithAccountTest(t AccountTest) { a.accountTest = t }
 
 // WithTestFaults 接上节点级故障注入。
 func (a *Admin) WithTestFaults(f TestFaults) { a.faults = f }
@@ -144,6 +157,9 @@ func (a *Admin) RegisterTestRoutes(mux *http.ServeMux, faults *logic.Faults, clk
 			AdminAuditWrite string `json:"adminAuditWrite"` // "fail" 打开，"" 关闭
 			OpsDelayMs      *int64 `json:"opsDelayMs"`      // 运维接口人为延迟（PRD-ops S-OPS-24）
 			StorePing       string `json:"storePing"`       // "fail" 让就绪检查失败，"" 恢复
+			// 账号（PRD-chat 第 4.5 节）。不传不改：查询 argonBlocked 时不影响已经打开的钩子。
+			ArgonBlock     *bool `json:"argonBlock"`     // 闸门拿到位之后停住，让闸门占满
+			RegisterTxFail int   `json:"registerTxFail"` // 接下来几次注册事务失败
 		}
 		if readJSON(w, r, &req) {
 			a.auditFail.Store(req.AdminAuditWrite == "fail")
@@ -153,7 +169,19 @@ func (a *Admin) RegisterTestRoutes(mux *http.ServeMux, faults *logic.Faults, clk
 					a.faults.SetOpsDelay(*req.OpsDelayMs)
 				}
 			}
-			writeJSON(w, http.StatusOK, struct{}{})
+			var blocked int
+			if a.accountTest != nil {
+				if req.ArgonBlock != nil {
+					a.accountTest.SetArgonBlock(*req.ArgonBlock)
+				}
+				if req.RegisterTxFail > 0 {
+					a.accountTest.FailRegisterTx(req.RegisterTxFail)
+				}
+				blocked = a.accountTest.ArgonBlocked()
+			}
+			writeJSON(w, http.StatusOK, struct {
+				ArgonBlocked int `json:"argonBlocked"`
+			}{blocked})
 		}
 	})
 	a.route(mux, "POST", "/admin/test/clock", adminauth.ScopeTest, func(w http.ResponseWriter, r *http.Request) {

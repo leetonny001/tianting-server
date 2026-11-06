@@ -215,9 +215,25 @@ func New(cfg Config) (*App, error) {
 		}
 		svc.EnableAdminFeatures()
 	}
+	var accountFaults *account.Faults
+	if cfg.TestMode {
+		accountFaults = account.NewFaults()
+	} else {
+		cfg.Account.TestDisableLock = false // 只在测试模式生效（第 4.5 节）
+	}
+	accounts, err := account.New(account.Deps{
+		Config: cfg.Account, Store: st, Signer: signer, Router: router, Clock: clk, Faults: accountFaults, Log: cfg.Logger,
+		Logins: m.AccountLogins, Registers: m.Registers, InviteAutoDisabled: m.InviteAutoDisabled,
+	})
+	if err != nil {
+		st.Close()
+		return nil, err
+	}
 	a := &App{store: st, hub: h, metrics: m, stop: make(chan struct{}), loopback: loopback}
 	jobs := scheduler.New(clk, nil, m.JobRuns, m.JobDuration, cfg.Logger)
 	registerJobs(jobs, st, svc, clk, cmp.Or(cfg.Push.PurgeBatch, defaultPushPurgeBatch))
+	jobs.Register("account_events_purge", jobPeriod, accounts.PurgeEvents)
+	jobs.Register("auth_throttle_purge", jobPeriod, accounts.PurgeThrottle)
 	if cfg.TestMode {
 		for _, name := range cfg.TestDisableJobs {
 			if err := jobs.Disable(name); err != nil {
@@ -273,6 +289,9 @@ func New(cfg Config) (*App, error) {
 	adm.WithSocial(svc)
 	adm.WithSessions(h)
 	adm.WithTestFaults(a)
+	if cfg.TestMode {
+		adm.WithAccountTest(accounts)
+	}
 	adm.WithJobs(jobs)
 	if cfg.V13AdminFeatures {
 		adm.WithModeration(admin.ModerationConfig{Service: svc, Cipher: cipher, QuarantineDays: cmp.Or(cfg.QuarantineDays, defaultQuarantineDays), C2CBodyAccess: cfg.C2CBodyAccess})
