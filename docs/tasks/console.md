@@ -30,7 +30,7 @@
 | CS-021 ～ CS-026 业务接口 | ✅ 2026-11-04（只在本地） | 用户、导入、社交、群、元数据。经代理对真实 im-server 测试（代理负责数调用次数、注入失败），含真实 WebSocket 连接。AC-CON-08-1、08-2、08-4、08-9、08-10、08-11 随之通过，CS-012 全部 AC 完成。**未验收**：AC-ADM-14-6（依赖 B6）；im-server 自身行为（改模式后 4035、官方账号发私聊、`historyVisible` 的 sync、解散后 send / sync / read 4043）没有在 console 端到端里重复测，也没有逐条核对 server 用例；前端相关的 AC 等 FE-400 起 |
 | CS-060、CS-061 | ✅ 2026-11-06 | tianting-console-server `56eb2fb`、`fdc59f3`；CI 未执行（P-21） |
 | CS-062 SSO | ⏸ 暂不做（P-23，没有明确需求） | |
-| CS-063 | ⬜ 未开始 | 全群禁言、所在群、用户会话列表的 console 接口 |
+| CS-063 | ✅ 2026-11-06 | tianting-console-server `945992d`；CI 未执行（P-21） |
 
 ## 总览
 
