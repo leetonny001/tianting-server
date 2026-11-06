@@ -16,7 +16,9 @@
 
 | 任务 | 状态 | 说明 |
 |---|---|---|
-| 全部 | ⬜ 未开始 | 依赖 BE-400、BE-401 的协议；服务端没好时用假 HTTP 开发 |
+| FE-600 | ✅ 完成（sdk-ts 部分） | 假 HTTP、`client` scope 错误码（TC-CHAT-90-12）、`frames.json` 的 Schema 校验（TC-CHAT-90-09，不新增依赖）、`account-session.json` 执行器（TC-CHAT-90-13，随 FE-610 提交）。AC-CHAT-90-10、90-14、90-15 是三套 SDK 的 AC，这里只是 sdk-ts；`chat-sync.json` 和附件状态机随 FE-630。结果都是本地结果：Node 26、macOS，tianting-sdk-ts@a5dbdef，CI 不运行 |
+| FE-610 | 🟡 SDK 部分完成 | `AccountClient` 14 个接口、`tokenProvider`、单飞、串行队列、踢线缓存、4011 比代号都做了，单测 + 真实 im-server（本地，SQLite，tianting-sdk-ts@b7b45ec，CI 不运行）通过，变异确认 57 项全部被测试发现。**没有验收的部分**：AC 里的弹窗、页面、"我"页显示属于 FE-613～618，这里只验证 SDK 给出的事件和数据；AC-ACC-03-42 的 `/v1/files/urls` 随 C2 才有，现在用 `/v1/account/events` 代替，FE-630 要补；AC-ACC-03-37 的"100 天到期"和 AC-ACC-04-25 的四条序列在服务端 e2e（BE-422），SDK 只验证 4290 退避和同样显示日期；向量里 `source=kicked` 直接调入口，经过 FakeTransport 的路径在 TC 用例里 |
+| 其余 | ⬜ 未开始 | Kotlin、Swift 照 [SDK 设计说明第 6 节](../sdk/README.md) 做 |
 
 ## 总览
 
@@ -344,3 +346,25 @@
   3. **AC-FILE-90-2 等云厂商（CH-05）**：合同工具见 BE-439；这里是上线前用生产 CORS、CSP 走查 H5、Android、iOS 的上传下载。`trace.py` 要求手工 AC 有 FE 任务，这是实际内容，不是占位。
   4. AC-CHAT-90-8、90-9：文件页面的状态、图标、深色、无障碍（图片替代文本"图片"，文件读文件名和大小；新消息播报）。
 - 工作量：4 人日（测试）
+
+---
+
+## 实现时发现的问题
+
+PRD 冻结，没有改，都按最保守的理解实现，等 Frank 决定。第 1 条是协议文件和服务端不一致，SDK 跟服务端走。
+
+| # | 位置 | 问题 | 现在的实现 |
+|---|---|---|---|
+| 1 | `http-client.schema.json` 的 `endpoints` | `POST /v1/account/recovery-code` 的 `response` 还写着 `AuthResponse`，服务端实际返回 `RecoveryCodeResponse`（backend-chat 问题 8 补了定义，没有改这一行） | SDK 按 `{recoveryCode, recoveryCodeGen}`，真实服务端跑通。没有改 protocol/，建议 BE 改这一行 |
+| 2 | F-ACC-03 规则 7 | 只说"比较代号"。新 `sid` 的 `gen` 从 1 开始（`service.go`），改密后旧连接的 4011 只比 `gen` 会判成"本地不比它新"，多发一次刷新 | `sid` 不同算本地更新，相同才比 `gen`。`account-session.json` 没有这个用例，建议 BE-402 补 |
+| 3 | F-ACC-03 规则 6 | 429、网络错误、5xx "退避重试"没有给参数 | 和重连相同：1、2、4…30 秒，±20% |
+| 4 | F-ACC-03 规则 5、6 | 等退避或等 `retryAfterSeconds` 时回前台、收到 `kicked` 怎么办没写；`model.go` 没有等待状态，向量里的 `trigger timer` 就是到点 | 只有到点的定时器能发请求，其他入口不提前 |
+| 5 | F-ACC-03 规则 6 | 4xx 但响应不是约定的 JSON（代理、强制门户的页面）没写；`model.go` 对没列出的码回登录页 | 没有 `code` 的响应按网络错误处理，不回登录页。有 `code` 且不认识的按 `model.go` 回登录页 |
+| 6 | F-ACC-04 规则 3 | 只写了改密缓存踢线。规则 6 的退出其他设备"效果同规则 3"，找回和注销申请服务端也是先踢后回 | 这几个都缓存；退出登录也缓存（规则 1 要求先 logout 再 1000）。封禁等其他原因不缓存 |
+| 7 | F-ACC-03 规则 5 | 串行队列只列了改密、找回、退出其他设备和刷新 | 登录、注册、注销申请也进队列。重新生成恢复码、确认、改资料不换 token，不进队列 |
+| 8 | F-ACC-05 规则 1 | 响应带恢复码时存储里的旧 token 怎么办没写。留着的话，改密后在保存页杀 App，重启会用已吊销的旧值刷新，弹"凭证有变化"，和 AC-ACC-05-19"回登录页"不一致 | 立即清掉 |
+| 9 | F-ACC-05 规则 1 | 恢复码未确认时退出其他设备，响应没有恢复码，新 token 是否落盘没写 | 继续只放内存 |
+| 10 | AC-ACC-05-15 | 回登录页时这条服务端会话还有效，PRD 没要求退出 | 只清本地，不调 logout，会话到期后由 `session_purge` 清除 |
+| 11 | F-ACC-03 规则 5 | 过期判断用哪个钟没写。`serverTime` 只在 `auth` ack 才有，启动判断时没有 | 用本地时钟。偏快：提前刷新，刷新回来不再检查，不会循环；偏慢：服务端回 4011，走规则 7 |
+| 12 | FE-600 第 2 条 | "`kickReasons` 忽略不认识的值"和现有用例（`moderation.test.ts`：不认识的 reason + 4012 时 `fatal` 带原 reason）在字面上冲突 | 关闭码可以重连就忽略这个值；否则按关闭码结束，`fatal` 带原值，账号模式按关闭码清 token。没有改现有用例 |
+| 13 | AC-ACC-03-42 | `/v1/files/urls` 和 `getFileUrls` 随 C2，C1 测不了原文 | 用 `listEvents` 验证同样的语义，FE-630 要用原接口再跑一次 |
