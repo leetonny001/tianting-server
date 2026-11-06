@@ -2,7 +2,7 @@
 
 | 项 | 内容 |
 |---|---|
-| 依据 | [PRD-chat v1.0](../prd/PRD-chat-v1.0.md)（冻结）第 4～6、11、12、14、15、16、18 节；[ARCH-v1](../arch/ARCH-v1.md)；[协议](../../protocol/README.md)、[错误码](../../protocol/ERRORS.md)、[管理接口](../../protocol/ADMIN.md) |
+| 依据 | [PRD-chat v1.1](../prd/PRD-chat-v1.1.md)（冻结）第 4～6、11、12、14、15、16、18 节；[ARCH-v1](../arch/ARCH-v1.md)；[协议](../../protocol/README.md)、[错误码](../../protocol/ERRORS.md)、[管理接口](../../protocol/ADMIN.md) |
 | 范围 | **只有 C1、C2 和公共部分**（PRD 决定 CH-27）。C3～C6 的 AC 不进任务；【全部】的 AC 只验证到 C2 为止的部分（PRD 第 15 节的累计表） |
 | 负责 | 后端（AI） |
 | 仓库 | im-server（GitHub 仓库 `tianting-server`，本地 `im-mvp/server/`）；协议在同仓库 `protocol/`，部署在 `deploy/`，工具在 `tools/` |
@@ -40,7 +40,7 @@
 | 文档 | 4 | 3 | 1.5 | 公共：BE-400 1、BE-401 0.5、BE-408 2.5。C1：BE-423 1.5、BE-424 1、FE-620 0.5。C2：BE-438 1、BE-439 0.5 |
 | **合计（三份任务单）** | **17** | **60.5** | **67.5** | **145，和第 18 节一致** |
 
-**差异说明**：合计和第 18 节没有差异，因为这里是按第 18 节的列拆分，不是独立重估，**都是低置信**。下面这些第 18 节没有单独算，也没有另加人日，如果 C1 校准时超出就从这里看：① 第 4.5 节没有列的暂停点和故障注入（BE-404、BE-405）；② `IM_RESTORE_EPOCH` 的代码路径（BE-415）；③ 邀请码重新启用和可信出口网段的配置（BE-421、BE-423）。
+**差异说明**：合计和第 18 节没有差异，因为这里是按第 18 节的列拆分，不是独立重估，**都是低置信**。下面这些第 18 节没有单独算，也没有另加人日，如果 C1 校准时超出就从这里看：① 第 4.5 节没有列的暂停点和故障注入（BE-404、BE-405）；② `sessions revoke-all` 命令路径（BE-415）；③ 邀请码重新启用和可信出口网段的配置（BE-421、BE-423）。
 
 **依赖顺序**：BE-400、BE-401 → BE-408、BE-402、BE-403 → BE-405、BE-407 → BE-410 → BE-411 → BE-412 → BE-413、BE-414 → BE-415 → BE-416 → BE-417 → BE-418 → BE-419、BE-420、BE-421 → BE-424、BE-423 → BE-422 →（C1 结束，校准）→ BE-404、BE-406 → BE-430 → BE-431 → BE-432 → BE-433 → BE-434 → BE-435 → BE-436 → BE-437 → BE-438、BE-439 → BE-440。console 和前端的依赖写在各自任务里。
 
@@ -109,7 +109,7 @@
 - 批次：C2
 - 仓库：tianting-server（`server/internal/objstore/objstoretest`）
 - 依赖：BE-401
-- AC：AC-FILE-01-8、AC-FILE-01-15
+- AC：AC-FILE-01-8、AC-FILE-01-15、AC-CHAT-90-18
 - 内容：
   1. 第 4.5 节：**独立进程**（console 的是另一模块的 `internal` 包，用不了），只在 `IM_TEST_MODE=1` 的测试编排里启动。校验预签名、大小、过期、`response-*` 头、CORS、Copy、ETag 条件。
   2. 可注入：删除失败、不可用（拒绝连接、黑洞）、Copy 失败、**HEAD 之后替换对象**（RC2-07）。
@@ -212,7 +212,7 @@
 - AC：AC-ACC-01-16、AC-ACC-02-4、AC-ACC-02-5、AC-ACC-02-10、AC-ACC-02-11、AC-ACC-02-12、AC-ACC-02-14、AC-ACC-04-22、AC-ACC-04-24、AC-ACC-05-3、AC-ACC-05-18
 - 内容：
   1. 引入 `x/crypto/argon2`（im-server 现在没有这个依赖，console 的 `internal/secret` 不能引用），m=64 MiB、t=3（F-ACC-01 规则 5）。
-  2. 闸门（F-ACC-01 异常，R-CB-25）：`IM_ARGON_SLOTS`=4；注册、登录、找回、改密、注销才进；`token/refresh`、`logout` 不进；**先过限流，再进闸门**；排队最多 1 秒，超时 503 / 5030；改密 1 个专用位；`recover` 自己的专用位（`IM_ARGON_RECOVER_SLOTS`、`IM_RECOVER_QUEUE`），恢复码命中才用。专用位是否算在 4 个之内，PRD 没说清（问题 3），这里按"4 个之外"实现，部署算内存按 6 个。
+  2. 闸门（F-ACC-01 异常，R-CB-25）：`IM_ARGON_SLOTS`=4；注册、登录、找回、改密、注销才进；`token/refresh`、`logout` 不进；**先过限流，再进闸门**；排队最多 1 秒，超时 503 / 5030；改密 1 个专用位；`recover` 自己的专用位（`IM_ARGON_RECOVER_SLOTS`、`IM_RECOVER_QUEUE`），恢复码命中才用。专用位在 4 个之外，最多 6 个（PRD v1.1 第 4.1 节）。
   3. `auth_throttle`（F-ACC-02 规则 3）：按"用户名哈希 + IP 前缀"15 分钟 5 次，429 / 4294，`details.retryAfterSeconds`；不存在的用户名同样累计；每 IP 每分钟 20 次 4290；按用户名的渐进延迟，最多 3 秒，放在闸门之外；同一用户名同时只算 1 个哈希。所有校验密码的接口共用（RS4-11、RS4-12）。
   4. 登录失败的日志和事件只记用户名哈希（规则 3a）。
 - 工作量：1.5 人日（服务端）
@@ -250,7 +250,7 @@
 - 批次：C1
 - 仓库：tianting-server
 - 依赖：BE-413、BE-414
-- AC：AC-ACC-03-1、AC-ACC-03-2、AC-ACC-03-3、AC-ACC-03-4、AC-ACC-03-15、AC-ACC-03-19、AC-ACC-03-21、AC-ACC-03-22、AC-ACC-03-24、AC-ACC-03-25、AC-ACC-03-27、AC-ACC-03-31、AC-ACC-03-32、AC-ACC-03-33、AC-ACC-03-35、AC-ACC-03-37、AC-ACC-03-38、AC-ACC-03-40、AC-ACC-03-44、AC-ACC-03-45、AC-ACC-03-46、AC-ACC-03-48
+- AC：AC-ACC-03-1、AC-ACC-03-2、AC-ACC-03-3、AC-ACC-03-4、AC-ACC-03-15、AC-ACC-03-19、AC-ACC-03-21、AC-ACC-03-22、AC-ACC-03-24、AC-ACC-03-25、AC-ACC-03-27、AC-ACC-03-31、AC-ACC-03-32、AC-ACC-03-33、AC-ACC-03-35、AC-ACC-03-37、AC-ACC-03-38、AC-ACC-03-40、AC-ACC-03-44、AC-ACC-03-45、AC-ACC-03-46、AC-ACC-03-48、AC-ACC-03-49、AC-ACC-03-50
 - 内容：
   1. refresh token 格式 `kid.sid.gen.nonce.mac`（规则 3）：独立的 refresh 密钥；**持久化密钥台账（`kid`、`retiredAt`），退役条件 365 天**；配置检查拦截提前删除。`/v1/account/token/refresh` 每 IP 每分钟 60 次。
   2. 规则 4 全部：判定顺序（`mac` → 会话存在 → 已吊销 → 已过期 → 代号 → 签发频率）；`pending` 只按数量淘汰（`IM_REFRESH_MAX_PENDING`）；`pending` 转正、`overlapUntil`、`overlapMinGen`；代号由 `nextGen` 分配，永不复用（RS5-05）；**不用确定性派生 token**。
@@ -259,7 +259,7 @@
   5. 每次刷新和转正比较 IP 前缀（`seen_ip_prefixes`），新前缀写事件；响应带其他会话数量和最近活跃时间（RS4-08）。指标 `im_refresh_reissue_total`、`im_refresh_replay_total`。
   6. `recoverBefore`（规则 6a）：按账号状态每次计算；`mac` 正确时 4019 都带。
   7. `session_purge` 每天清除过期 30 天以上的会话（规则 13）。**绑定令牌的删除随 C3**（`device_push` 还没有）。
-  8. `IM_RESTORE_EPOCH`（第 12.2 节，RS4-14）：一段时间内把代号不匹配按软拒绝。**PRD 只写在运维手册一行，没有 AC 和工作量**（问题 6），先实现最小路径并用单测覆盖。
+  8. `im-server sessions revoke-all`（第 12.2 节，RS4-14，AC-ACC-03-50）：吊销全部设备会话，`reason=revoked`，不计重放。
 - 工作量：3.5 人日（服务端）
 
 ### BE-416 auth 校验、踢线和周期复查
@@ -341,7 +341,7 @@
   2. `GET /admin/accounts/{userId}`（`user.read`）：账号信息，没有哈希和令牌。
   3. 配置检查：有效邀请码剩余次数合计超过 `IM_INVITE_WARN_TOTAL` 告警（RC2-18）。`admin` 路由和 `console` scope 的枚举测试：没有任何改密码的接口（AC-ACC-05-9）。
   4. `AC-KEY-02-2` 的参数化表加 `account.invite`。
-  5. **第 12.2 节要求"邀请码自动停用要告警到人，并能重新启用"，第 11.6 节和 F-ACC-09 都没有重新启用的接口，也没有 AC**（问题 7）。先只做停用；重新启用等 Frank 定。
+  5. 邀请码自动停用要告警到人；**第一批不做重新启用，用新建邀请码恢复**（PRD v1.1 第 12.2 节）。
 - 工作量：1 人日（服务端）
 
 ### BE-422 C1 后端验收：攻击序列和全量用例
@@ -364,7 +364,7 @@
 - 依赖：BE-415、BE-421
 - AC：AC-CHAT-90-17
 - 内容：
-  1. **运维手册：数据库恢复**（RS4-14）：恢复到旧时间点后 ① 轮换过的客户端的值比库里新，会被当成重放批量吊销；② 已吊销的会话和已改的密码回到旧状态。步骤：设置 `IM_RESTORE_EPOCH`，一段时间内代号不匹配按软拒绝；吊销恢复点之后可能有变化的会话，提示用户重新确认。
+  1. **运维手册：数据库恢复**（RS4-14）：恢复到旧时间点后，轮换过的客户端的值比库里新，已吊销的会话和已改的密码回到旧状态。步骤：运行 `im-server sessions revoke-all`，用户重新登录；告知恢复点之后改过密码的用户重新确认。
   2. **运维手册：refresh 密钥台账**（F-ACC-03 规则 3，RS5-04）：`kid`、`retiredAt`；退役条件 365 天，不是 JWT 的 30 天；配置检查拦截提前删除；**密钥泄露的应急操作：主动提前删除并接受全员重新登录**。
   3. **部署说明：NAT 和可信网段**（RS4-15、RS7）：全公司共用注册 20 次 / 小时、登录 20 次 / 分钟，同办公室的人能用"用户名 + 同一 IP"锁住同事；`recover` 每 IP 每分钟 20 次可以短时压制同网用户，换移动网络能绕开；可信出口网段可配更高额度（配置项名 `IM_TRUSTED_EGRESS_CIDRS`，PRD 没有定义，实现时加）。
   4. 部署说明：`GOMEMLIMIT` 把 Argon2 算进去（第 15 节）；`IM_ALLOW_TOKEN_ISSUE`；注册模式。
@@ -470,7 +470,7 @@
 - 批次：C2
 - 仓库：tianting-server
 - 依赖：BE-435
-- AC：AC-FILE-01-24、AC-FILE-01-26、AC-FILE-06-1、AC-FILE-06-2、AC-FILE-06-5、AC-FILE-06-7、AC-FILE-06-9、AC-FILE-06-10、AC-FILE-06-11、AC-FILE-06-12
+- AC：AC-FILE-01-24、AC-FILE-01-26、AC-FILE-06-1、AC-FILE-06-2、AC-FILE-06-5、AC-FILE-06-7、AC-FILE-06-9、AC-FILE-06-10、AC-FILE-06-11、AC-FILE-06-12、AC-FILE-06-13
 - 内容：
   1. F-FILE-06 规则 2：状态机；`purging` 是中间态；`pending` → `purging` 只匹配租约过期或没有租约的行。
   2. 规则 3：180 天到期，对象删除，`expired=true`，清除 `files.name`，递增 `mod_ver`（F-RCL-03 规则 2 从 C2 开始实现）。规则 4 的**后台删除**路径：`revoked`、文件名进隔离加密区、对象保留 30 天。撤回路径随 C4。**这条路径的物理删除只有 C4 的 AC**（问题 10），本批用 TC-FILE-04-05 验到 `revoked` 为止。
@@ -528,15 +528,6 @@
 
 ---
 
-## 发现的 PRD 问题（实现和测试时按这里的处理，不改 PRD，等 Frank 或走变更）
+## PRD 问题的处理
 
-1. **AC-FILE-01-2 走不到 `complete`**：PUT 签入了 Content-Length，声明 1 MiB 实际 2 MiB 的 PUT 会被存储拒绝（GATE-objstore：403），`complete` 得到的是 4096，不是 `uploadMismatch`。用例改用假 S3 的测试接口直接写入。
-2. **AC-FILE-01-18 和 RS5-16 冲突**：每 15 分钟 20 个 100 MiB，第 5 轮就撞上 8 GiB 的声明上限（`IM_UPLOAD_DAILY_DECLARED`）；"24 小时后集中 `complete`"也和未绑定 24 小时清理冲突。用例调大上限，在 24 小时之前 `complete`。
-3. **专用位算不算在 `IM_ARGON_SLOTS` 里**：F-ACC-01 异常说"留 1 个专用位"，AC-ACC-01-16 又要匿名占满 4 个、改密不受影响。这里按"4 个之外"实现，同时计算最多 6 个，约 384 MiB，比第 15 节和 AC-CHAT-90-11 的 300 MiB 多，后者只算登录路径。
-4. **第 4.5 节缺的测试接口**：`complete` 的暂停点、假 S3 直接写入和生命周期推进、入表前暂停、入表后复查失败、周期复查失败、丢弃吊销事件。放进 BE-404、BE-405。
-5. **第 4.5 节"生产拒绝启动"没有 AC**：只用单测覆盖。
-6. **`IM_RESTORE_EPOCH` 只在第 12.2 节一行**：要写代码，没有 AC、没有工作量。
-7. **邀请码"重新启用"**：第 12.2 节要求，第 11.6 节和 F-ACC-09 没有接口和 AC。
-8. **PUT 地址有效期没有配置项**：AC-FILE-01-16 要调短。
-9. **AC-FILE-02-2、02-11 和 Schema**：第 11.1 节说上行 `image` 只有 `fileId`、`MsgBody` 用 `additionalProperties:false` 分支，而这两条 AC 要伪造字段不报错。这里按 AC，`image` 内部不收紧。
-10. **后台删除文件的物理删除**：F-FILE-06 规则 4 在 C2 就有路径，唯一验证 30 天后物理删除的 AC 标在 C4。
+分发时发现的矛盾和缺口已在 [PRD-chat v1.1](../prd/PRD-chat-v1.1.md) 第 22 节修正，这里不再单独记录。

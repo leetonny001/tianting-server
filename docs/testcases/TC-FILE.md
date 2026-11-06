@@ -1,6 +1,6 @@
 # 测试用例：图片和文件消息（FILE，C2）
 
-> 依据：[PRD-chat v1.0](../prd/PRD-chat-v1.0.md)（冻结）第 4、6 节、第 15 节 AC-FILE-90；[GATE-objstore](../review/GATE-objstore-2026-11-06.md)；[tools/objstore-contract](../../tools/objstore-contract/README.md)。任务单：[backend-chat](../tasks/backend-chat.md)、[console-chat](../tasks/console-chat.md)、[frontend-chat](../tasks/frontend-chat.md)。
+> 依据：[PRD-chat v1.1](../prd/PRD-chat-v1.1.md)（冻结）第 4、6 节、第 15 节 AC-FILE-90；[GATE-objstore](../review/GATE-objstore-2026-11-06.md)；[tools/objstore-contract](../../tools/objstore-contract/README.md)。任务单：[backend-chat](../tasks/backend-chat.md)、[console-chat](../tasks/console-chat.md)、[frontend-chat](../tasks/frontend-chat.md)。
 > 范围：标了【C2】的 AC-FILE（CH-27）。依赖撤回、清空、举报的 AC 随 C4～C6。
 >
 > 通用约定：
@@ -111,6 +111,7 @@
 | TC-FILE-90-01 | 真实 MinIO 合同测试 | AC-FILE-90-1 | 合同测试 | P0 |
 | TC-FILE-90-02 | 云厂商合同测试 | AC-FILE-90-2 | 手工 | P0 |
 | TC-FILE-91-01 | 元数据响应搜不到文件名（AC-ADM-30-7 的扩展，C2 起生效） | AC-ADM-30-7 | 后端 e2e | P0 |
+| TC-FILE-06-12 | 后台删除的图片 30 天后物理删除 | AC-FILE-06-13 | 后端 e2e | P0 |
 
 ---
 
@@ -353,7 +354,7 @@
   3. 另一用户同样 20 个，`DELETE` 其中 1 个，再申请
 - 预期结果：
   1. 第 1 步 4290；第 2、3 步都成功
-- 说明：PRD 没有给 PUT 有效期命名配置项，实现时要加一个（见文件末尾的说明）
+- 说明：有效期用 `IM_UPLOAD_PUT_TTL` 调短
 
 ### TC-FILE-01-17 uploadPendingLimit：提示，不重试；用户取消时发 DELETE
 - 关联 AC：AC-FILE-01-17
@@ -1468,15 +1469,22 @@
 
 ---
 
-## 说明：写用例时发现的问题
+### TC-FILE-06-12 后台删除的图片 30 天后物理删除
+- 关联 AC：AC-FILE-06-13
+- 优先级：P0
+- 批次：C2
+- 层级：后端 e2e
+- 环境：E1 单节点 + 假 S3
+- 前置条件：已绑定的图片消息，被后台删除
+- 步骤：
+  1. 第 29 天：查对象；参与者申请地址
+  2. 推进到第 31 天运行 `file_purge`
+  3. 查对象和 `final/{fileId}/` 前缀
+- 预期结果：
+  1. 第 29 天对象还在，申请的这一项 `code=4048`；第 31 天对象和前缀都被清除
 
-不改 PRD，这里记录用例是怎么处理的，汇总在 [backend-chat](../tasks/backend-chat.md) 文末。
+## 说明
 
-1. **AC-FILE-01-2**：PUT 签入了 Content-Length，声明 1 MiB 实际 2 MiB 的 PUT 被存储拒绝（GATE-objstore：403），`complete` 得到 4096，不是 `uploadMismatch`。用例用假 S3 测试接口直接写入，只验 `complete` 的核对逻辑。
-2. **AC-FILE-01-18**：每 15 分钟 20 个 100 MiB 第 5 轮就撞上声明上限 8 GiB（RS5-16 后加的）；"24 小时后 `complete`"和未绑定 24 小时清理冲突。用例调大上限，把时钟推到 24 小时之前，少跑几轮。
-3. **AC-FILE-01-11**：不取消就先撞上未完成数 20，第 61 次到不了。用例边申请边取消。
-4. **AC-FILE-01-16**：要调短 PUT 地址有效期，第 4.1 节没有配置项。
-5. **AC-FILE-02-2、02-11**：第 11.1 节说上行 `image` 只有 `fileId`，这两条 AC 要伪造字段不报错。用例按 AC。
-6. **AC-FILE-04-1、04-2、04-3、04-5**：写的是"404"，而 F-FILE-04 规则 1 和 AC-FILE-04-9 是批量接口，单项不可访问 HTTP 200 + `code=4048`。用例断言 `code=4048`。规则 3 的"一律 404 / 4048"也应该按这个理解。
-7. **AC-FILE-90-1**：工具现在不验证生命周期实际清除和 CORS 限定来源，AC 接受"检查配置生效"。
-8. **后台删除文件的物理删除**：路径在 C2 就有，唯一验证 30 天后物理删除的 AC 标在 C4。本批只验到 `revoked`。
+分发时发现的矛盾已在 [PRD-chat v1.1](../prd/PRD-chat-v1.1.md) 第 22 节修正，用例和 AC 一致。
+
+- AC-FILE-90-1 工具不验证生命周期实际清除和 CORS 限定来源，AC 接受"检查配置生效"。真实 MinIO 这一项每次要 Frank 同意临时构建。

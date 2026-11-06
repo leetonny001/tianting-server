@@ -1,6 +1,6 @@
 # 测试用例：账号注册和登录（ACC，C1；头像部分 C2）
 
-> 依据：[PRD-chat v1.0](../prd/PRD-chat-v1.0.md)（冻结）第 4、5 节；[ERRORS.md](../../protocol/ERRORS.md)。任务单：[backend-chat](../tasks/backend-chat.md)、[console-chat](../tasks/console-chat.md)、[frontend-chat](../tasks/frontend-chat.md)。
+> 依据：[PRD-chat v1.1](../prd/PRD-chat-v1.1.md)（冻结）第 4、5 节；[ERRORS.md](../../protocol/ERRORS.md)。任务单：[backend-chat](../tasks/backend-chat.md)、[console-chat](../tasks/console-chat.md)、[frontend-chat](../tasks/frontend-chat.md)。
 > 范围：标了【C1】【C2】的 AC-ACC（CH-27）。C3～C6 的 AC-ACC 不在这里。
 >
 > 通用约定：
@@ -191,6 +191,8 @@
 | TC-ACC-10-01 | 三个入口都能打开隐私说明；加载失败的提示 | AC-ACC-10-1 | Playwright（H5）+ 原生 UI 测试 | P0 |
 | TC-ACC-10-02 | 注册记录同意的版本 | AC-ACC-10-2 | 后端 e2e | P0 |
 | TC-ACC-10-03 | 版本更新：下次登录提示一次 | AC-ACC-10-3 | Playwright（H5）+ 原生 UI 测试 | P0 |
+| TC-ACC-03-49 | 吊销之后 refresh 的 reason 按原因返回 | AC-ACC-03-49 | 后端 e2e | P0 |
+| TC-ACC-03-50 | 恢复数据库后吊销全部会话 | AC-ACC-03-50 | 后端 e2e | P0 |
 
 ---
 
@@ -2706,12 +2708,40 @@
 
 ---
 
-## 说明：写用例时发现的问题
+### TC-ACC-03-49 吊销之后 refresh 的 reason 按原因返回
+- 关联 AC：AC-ACC-03-49
+- 优先级：P0
+- 批次：C1
+- 层级：后端 e2e
+- 环境：E1 单节点
+- 前置条件：5 条设备会话，每条保留 `mac` 正确的 refresh
+- 步骤：
+  1. 第 1 条 `logout`，第 2 条管理接口强制下线，第 3 条封禁用户
+  2. 第 4 条推进到过期
+  3. 第 5 条转正后推进 3 分钟，用旧值触发重放吊销，再用旧值请求一次
+  4. 分别刷新
+- 预期结果：
+  1. 都是 401 / 4019，`reason` 依次 `revoked`、`revoked`、`revoked`、`expired`、`replayDetected`
 
-不改 PRD，这里记录用例是怎么处理的，汇总在 [backend-chat](../tasks/backend-chat.md) 文末。
+### TC-ACC-03-50 恢复数据库后吊销全部会话
+- 关联 AC：AC-ACC-03-50
+- 优先级：P0
+- 批次：C1
+- 层级：后端 e2e
+- 环境：E1 单节点
+- 前置条件：u1、u2 各有 1 条在线设备会话
+- 步骤：
+  1. 运行 `im-server sessions revoke-all`
+  2. 用旧 refresh 刷新，用旧 access `auth`
+  3. 查 `im_refresh_replay_total`
+  4. 用密码重新登录
+- 预期结果：
+  1. 在线连接被 `kicked/sessionRevoked` 踢下；刷新 4019 `reason=revoked`；指标不变；重新登录成功
 
-1. **AC-ACC-04-15**：AC 写"攻击者偷到 D1 的 refresh 并转正，D1 改密（access 未过期）"。按 F-ACC-03 规则 4，攻击者转正更新的一代后，D1 的 access 已被替换，`password` 得到 401 / 4011，走不到改密。只有攻击者持和 D1 **同一代**的值时这条序列才成立，TC-ACC-04-14 这样写。
-2. **AC-ACC-03-19、03-27、04-6**：提到推送令牌（"推送令牌还在""绑定的令牌被清除""调用了系统的令牌注销"），但 `device_push` 和 FCM、APNs 接入都在 C3。C1 只验证其余部分，C3 上线时补。
-3. **AC-ACC-04-29**：只有 Postgres 实现后才能跑，C1 验收记未执行。
-4. **AC-ACC-04-31**：序列里"攻击者第 7 次 429"要发生在受害者找回之前，受害者成功后攻击者的码已作废。用例按这个顺序。
-5. **吊销原因的 `reason`**：F-ACC-03 规则 4 说"已吊销：4019，`reason` 按吊销原因"，第 11.5 节只列了 `credentialsChanged`、`loggedOutOthers`、`accountDeleted`，自己退出、强制下线、封禁、重放吊销之后再来的请求没有对应值。相关用例只断言 401 / 4019，不断言 `reason`。
+## 说明
+
+分发时发现的矛盾已在 [PRD-chat v1.1](../prd/PRD-chat-v1.1.md) 第 22 节修正，用例和 AC 一致。
+
+- AC-ACC-04-29 只有 Postgres 实现后才能跑，C1 验收记未执行。
+- AC-ACC-03-19、03-27、04-6 的推送令牌部分 C3 上线时验。
+- AC-ACC-04-31 的"攻击者第 7 次 429"要发生在受害者找回之前，受害者成功后攻击者的码已作废。

@@ -2,7 +2,7 @@
 
 | 项 | 内容 |
 |---|---|
-| 依据 | [PRD-chat v1.0](../prd/PRD-chat-v1.0.md)（冻结）第 11.6、14 节和 F-ACC-09；[PRD-admin v1.2](../prd/PRD-admin-v1.2.md) 基座（权限点、两阶段审计、错误码）；[errors.json](../../protocol/errors.json) |
+| 依据 | [PRD-chat v1.1](../prd/PRD-chat-v1.1.md)（冻结）第 11.6、14 节和 F-ACC-09；[PRD-admin v1.2](../prd/PRD-admin-v1.2.md) 基座（权限点、两阶段审计、错误码）；[errors.json](../../protocol/errors.json) |
 | 范围 | **只有 C1、C2**（CH-27）。词库、举报（`moderation.words`、`report.*`、`console-msgread` 增加 `report.evidence`）属于 C6，这里不做 |
 | 负责 | 后端（AI） |
 | 仓库 | tianting-console-server（Go）。管理后台页面在 tianting-admin，见 [frontend-chat.md](frontend-chat.md)；im-server 接口见 [backend-chat.md](backend-chat.md) |
@@ -64,7 +64,7 @@
 - AC：无（C2 没有专属 AC）
 - 内容：
   1. 第 14.1 节"文件内容凭授权看，文件经 console-server 代理，后台 CSP 不放宽（R-CS-24）"；im-server 侧接口是 `POST /admin/files/{fileId}/fetch`（第 11.6 节）。
-  2. **PRD 没说清**：第 11.6 节这个接口的 scope 是 `report.evidence` 或 `msg.quarantine`（C4、C6 才有业务），第 14.1 节写"沿用 `msg.read.group`"。C2 上线后群消息正文页能看到文件消息，但按第 11.6 节取不到内容。先做 `msg.quarantine` 这条路径（隔离原文已有），正文页显示文件名和"不可预览"；`msg.read.group` 是否放开等 Frank 定。
+  2. **Frank 2026-11-06 决定不放开**（PRD v1.1 第 14.1 节）：正文页只显示文件名和"不可预览"，文件内容只走 `msg.quarantine`（隔离原文已有），举报证据的 `report.evidence` 随 C6。法务回复后再决定是否放开 `msg.read.group`。
   3. 代理响应固定 `Content-Disposition: attachment`，不内联；写审计。
 - 工作量：0.5 人日（console + 后台页面列）
 
