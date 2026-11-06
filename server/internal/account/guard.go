@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
+	"net/netip"
 	"sync"
 	"time"
 
@@ -39,6 +40,9 @@ type Guard struct {
 	clk      clock.Clock
 	disabled bool // IM_TEST_DISABLE_AUTH_LOCK
 	limit    int
+	// 可信出口网段的 IP 总量额度放大（第 12.2 节，RS4-15）。不放大"用户名 + IP"的失败次数。
+	egress       []netip.Prefix
+	egressFactor int
 
 	mu       sync.Mutex
 	inflight map[string]bool // 用户名哈希：同一用户名同时只算 1 个哈希（单节点内）
@@ -90,6 +94,7 @@ func (g *Guard) LimitIP(ctx context.Context, scope, ip string, limit int, window
 	if g.disabled {
 		return nil
 	}
+	limit = g.ipLimit(ip, limit)
 	now, windowMs := g.clk.Now().UnixMilli(), window.Milliseconds()
 	h, err := g.st.HitThrottle(ctx, "ip:"+scope+":"+clientip.LimitKey(ip), now, windowMs, limit, 0)
 	if err != nil {
@@ -99,6 +104,26 @@ func (g *Guard) LimitIP(ctx context.Context, scope, ip string, limit int, window
 		return rateLimited(ceilSeconds(h.WindowStart + windowMs - now))
 	}
 	return nil
+}
+
+// ipLimit 是这个 IP 的总量额度：可信出口网段放大。
+func (g *Guard) ipLimit(ip string, limit int) int {
+	addr, err := netip.ParseAddr(ip)
+	if err != nil || len(g.egress) == 0 {
+		return limit
+	}
+	addr = addr.Unmap()
+	for _, p := range g.egress {
+		if p.Contains(addr) {
+			return limit * max(g.egressFactor, 1)
+		}
+	}
+	return limit
+}
+
+// TrustEgress 配置可信出口网段。
+func (g *Guard) TrustEgress(prefixes []netip.Prefix, factor int) {
+	g.egress, g.egressFactor = prefixes, factor
 }
 
 // Begin 是校验密码之前的公共流程。顺序：IP 限流 → 用户名 + IP 锁定 → 渐进延迟（在闸门之外）→ 同一用户名只算 1 个哈希。

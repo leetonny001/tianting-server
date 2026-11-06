@@ -3,6 +3,7 @@ package account
 import (
 	"context"
 	"errors"
+	"net/netip"
 	"testing"
 	"time"
 )
@@ -104,4 +105,19 @@ func TestRecoverSchedTimeout(t *testing.T) {
 		t.Fatal(err)
 	}
 	f()
+}
+
+// 可信出口网段放大 IP 总量额度，其他 IP 不变（第 12.2 节，BE-423）。
+func TestGuardTrustedEgress(t *testing.T) {
+	g := NewGuard(nil, nil, false, 0)
+	g.TrustEgress([]netip.Prefix{netip.MustParsePrefix("203.0.113.0/24")}, 10)
+	if got := g.ipLimit("203.0.113.9", 20); got != 200 {
+		t.Errorf("trusted: %d", got)
+	}
+	if got := g.ipLimit("198.51.100.9", 20); got != 20 {
+		t.Errorf("other: %d", got)
+	}
+	if got := g.ipLimit("not-an-ip", 20); got != 20 {
+		t.Errorf("bad ip: %d", got)
+	}
 }

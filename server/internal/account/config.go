@@ -4,6 +4,7 @@ package account
 
 import (
 	"cmp"
+	"net/netip"
 	"time"
 )
 
@@ -50,6 +51,10 @@ type Config struct {
 	RefreshIPRate     int // token/refresh 每 IP 每分钟，默认 60
 	RecoveryOldDays   int // 旧恢复码保留天数，默认 7
 	InviteWarnTotal   int // 有效邀请码剩余次数合计的告警线，默认 500（app 里取默认值）
+
+	// TrustedEgress、TrustedEgressFactor 是 IM_TRUSTED_EGRESS_CIDRS、IM_TRUSTED_EGRESS_FACTOR（第 12.2 节，RS4-15）。
+	TrustedEgress       []netip.Prefix
+	TrustedEgressFactor int
 
 	ArgonSlots   int           // 普通闸门，默认 4
 	RecoverSlots int           // recover 专用位，默认 1

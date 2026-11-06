@@ -34,6 +34,7 @@
 | BE-420 | ✅ 完成（本任务 AC 都有用例） | AC-ACC-04-21、04-28、05-16、08-1、08-2、08-3、08-4、08-5（恢复和不重复；ack P99 是开发机参考，不算通过，见 BE-422 报告）通过；连带 AC-ACC-04-22、04-25 序列乙。`account_cleanup`：第 ① 步条件带"申请没被撤销"，第 ② 步在 `logic`，幂等。TC-ACC-01-07 改走真实注销。头像对象随 BE-437。**保留口径 CH-23 还没确认（规则 6），按 PRD 第 5 条表实现** |
 | BE-421 | ✅ 完成（本任务 AC 都有用例） | AC-ACC-05-9（服务端路由和 scope；console 路由随 CS-200）、09-1（后端部分）、09-2、09-5、09-7、09-9、09-10、09-12、09-13、09-14 通过；AC-ACC-03-33 的后台响应部分通过。配置检查项 `invite_total` 查库现算。AC-ACC-09-6 的 console 角色随 CS-200，这里验了 scope 和旧密钥拒绝 |
 | BE-424 | ✅ 完成（文档） | `docs/reports/privacy-notice-checklist-draft.md`：规则 3 的告知项、C1 和 C2 相关的事实和法务问题。**只是清单草稿，不代替法律文本** |
+| BE-423 | ✅ 完成 | `deploy/ACCOUNT-RUNBOOK.md`：配置、`GOMEMLIMIT`、配置检查和指标、密钥台账和泄露应急、数据库恢复、NAT。`IM_TRUSTED_EGRESS_CIDRS`、`IM_TRUSTED_EGRESS_FACTOR`（PRD 没有定义名字，任务单要求实现时加）。AC-CHAT-90-17（TC-CHAT-90-15）的用例在 BE-422 的提交里 |
 | 全部 | ⬜ 未开始 | C1 结束后按实际用时校准工作量（CH-27），再由 Frank 决定 C3 起的部分 |
 
 ## 总览

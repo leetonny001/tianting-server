@@ -428,6 +428,24 @@ func loadAccount(getenv func(string) string, a *app.Config, bad func(string, ...
 			*dst = n
 		}
 	}
+	if raw := getenv("IM_TRUSTED_EGRESS_CIDRS"); raw != "" {
+		for _, part := range strings.Split(raw, ",") {
+			p, err := netip.ParsePrefix(strings.TrimSpace(part))
+			if err != nil {
+				bad("IM_TRUSTED_EGRESS_CIDRS: %v", err)
+				continue
+			}
+			c.TrustedEgress = append(c.TrustedEgress, p)
+		}
+	}
+	if v := getenv("IM_TRUSTED_EGRESS_FACTOR"); v != "" {
+		n, err := strconv.Atoi(v)
+		if err != nil || n < 1 {
+			bad("IM_TRUSTED_EGRESS_FACTOR: must be a positive integer, got %q", v)
+		} else {
+			c.TrustedEgressFactor = n
+		}
+	}
 	c.PrivacyVersion, c.PrivacyURL = getenv("IM_PRIVACY_NOTICE_VERSION"), getenv("IM_PRIVACY_NOTICE_URL")
 	// 保留名可以用配置文件增加（F-ACC-01 规则 4）：一行一个，# 开头是注释。
 	if path := getenv("IM_RESERVED_NAMES_FILE"); path != "" {

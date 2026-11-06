@@ -1,6 +1,7 @@
 package account
 
 import (
+	"cmp"
 	"context"
 	"encoding/json"
 	"errors"
@@ -59,6 +60,7 @@ type Service struct {
 func New(d Deps) (*Service, error) {
 	cfg := d.Config.WithDefaults()
 	s := &Service{Deps: d, cfg: cfg, gate: NewGate(cfg, d.Faults), guard: NewGuard(d.Store, d.Clock, cfg.TestDisableLock, 0), reserved: reservedNames(cfg.ExtraReserved)}
+	s.guard.TrustEgress(cfg.TrustedEgress, cmp.Or(cfg.TrustedEgressFactor, defaultEgressFactor))
 	if len(cfg.RefreshKeys) == 0 {
 		return s, nil
 	}
@@ -111,7 +113,10 @@ func (s *Service) PurgeThrottle(ctx context.Context) (int, error) {
 	return s.Store.PurgeThrottle(ctx, s.Clock.Now().UnixMilli())
 }
 
-const eventRetention = 180 * 24 * time.Hour
+const (
+	eventRetention      = 180 * 24 * time.Hour
+	defaultEgressFactor = 10
+)
 
 // sessionPurgeAfter 是 session_purge 的保留期（F-ACC-03 规则 13）：过期 30 天以上的设备会话才清除。
 const sessionPurgeAfter = 30 * 24 * time.Hour
