@@ -280,6 +280,7 @@ type groupResp struct {
 	Notice         string   `json:"notice"`
 	CreatedBy      string   `json:"createdBy"`
 	Managed        bool     `json:"managed"`
+	AllMuted       bool     `json:"allMuted"` // 全群禁言（F-ADM-42）。第二批开关关闭时禁言不生效，这里也是 false
 }
 
 func (a *Admin) getGroup(w http.ResponseWriter, r *http.Request) {
@@ -313,9 +314,19 @@ func (a *Admin) getGroup(w http.ResponseWriter, r *http.Request) {
 			admins = append(admins, m.UserID)
 		}
 	}
+	allMuted := false
+	if a.mod != nil {
+		// 直接查库，不走发言路径的缓存：后台刚开关完刷新详情，要看到真实状态。
+		m, err := a.store.GroupAllMute(r.Context(), gid)
+		if err != nil {
+			a.internal(w, "get group mute", err)
+			return
+		}
+		allMuted = m.Active(a.clock.Now().UnixMilli())
+	}
 	writeJSON(w, http.StatusOK, groupResp{
 		GroupID: g.GroupID, Name: g.Name, HistoryVisible: g.HistoryVisible, CreatedAt: g.CreatedAt, MemberCount: g.MemberCount, Members: nonNil(members),
-		Owner: g.OwnerID, Admins: admins, Notice: g.Notice, CreatedBy: g.CreatedBy, Managed: g.Managed(),
+		Owner: g.OwnerID, Admins: admins, Notice: g.Notice, CreatedBy: g.CreatedBy, Managed: g.Managed(), AllMuted: allMuted,
 	})
 }
 

@@ -60,7 +60,7 @@ HMAC：`HMAC-SHA256(secret, 待签名串)`；Ed25519：私钥对待签名串签�
 | 接口 | 请求 | 成功响应 | 说明 |
 |---|---|---|---|
 | `POST /admin/groups` | `{groupId, name, members?, historyVisible?, owner?}` | 201 `{}` | 建群（托管群，默认没有群主）。初始成员 ≤ 2000（不受 500 批量限制）。`ug-` 前缀保留给客户端建的群：400 / 4004。`owner` 需要 `social.settings`，必须在 `members` 里（否则 404 / 4046） |
-| `GET /admin/groups/{groupId}` | — | `{groupId, name, historyVisible, createdAt, memberCount, members, owner, admins, notice, createdBy, managed}` | 查询群；`managed=true` 表示托管群，`owner` 为空表示没有群主 |
+| `GET /admin/groups/{groupId}` | — | `{groupId, name, historyVisible, createdAt, memberCount, members, owner, admins, notice, createdBy, managed, allMuted}` | 查询群；`managed=true` 表示托管群，`owner` 为空表示没有群主；`allMuted` 是全群禁言状态（PRD-admin F-ADM-42，`IM_V13_ADMIN_FEATURES` 关闭时恒为 `false`） |
 | `PATCH /admin/groups/{groupId}` | `{name?, historyVisible?, notice?, owner?}` | `{}` | 修改设置；至少传一项。`historyVisible` 在查询时生效。`owner`：字符串指定 / 更换群主（必须是成员，否则 404 / 4046），`null` 收回；需要同时有 `group.write` 和 `social.settings`，旧密钥 403 / 4030；生成 `ownerChanged` 提示消息（`from=""`）。其他字段不产生提示消息 |
 | `POST /admin/groups/{groupId}/members` | `{members}` | `{added}` | 加成员，单次 ≤ 500；已经是成员的忽略（不重置入群位置） |
 | `DELETE /admin/groups/{groupId}/members` | `{members}` | `{removed}` | 移除成员，单次 ≤ 500；不是成员的忽略。被移出的人收到 `convRemoved {reason: "removed"}` |

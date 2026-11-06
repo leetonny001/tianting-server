@@ -307,6 +307,54 @@ func TestAdmGroupAllMuteAdminAPI(t *testing.T) {
 	}
 }
 
+// BE-244（AC-ADM-42-3）：GET /admin/groups/{id} 返回 allMuted，开、关之后立刻反映真实状态，只读 group.read 就够。
+func TestTCADM4203GroupDetailAllMuted(t *testing.T) {
+	p := newP1Env(t)
+	p.usersNamed("u1")
+	p.createGroup("g1", "u1")
+	p.createGroup("g2", "u1")
+	allMuted := func(gid string) bool {
+		t.Helper()
+		code, b := p.getAs(p.reads, "/admin/groups/"+gid)
+		if code != http.StatusOK {
+			t.Fatalf("get group: %d %s", code, b)
+		}
+		var g map[string]any
+		if err := json.Unmarshal(b, &g); err != nil {
+			t.Fatal(err)
+		}
+		v, ok := g["allMuted"].(bool)
+		if !ok {
+			t.Fatalf("allMuted missing: %s", b)
+		}
+		return v
+	}
+	if allMuted("g1") {
+		t.Error("new group is muted")
+	}
+	p.muteAll("g1")
+	if !allMuted("g1") {
+		t.Error("allMuted = false after mute")
+	}
+	if allMuted("g2") {
+		t.Error("another group is muted")
+	}
+	p.unmuteAll("g1")
+	if allMuted("g1") {
+		t.Error("allMuted = true after unmute")
+	}
+}
+
+// 第二批开关关闭时禁言不生效，详情也不能显示"全员禁言中"。
+func TestAdmGroupDetailAllMutedFeatureOff(t *testing.T) {
+	e := newEnv(t)
+	e.createGroup("g1")
+	code, b := e.adminDo(http.MethodGet, "/admin/groups/g1", nil, adminKey)
+	if code != http.StatusOK || !bytes.Contains(b, []byte(`"allMuted":false`)) {
+		t.Errorf("get group: %d %s", code, b)
+	}
+}
+
 // 双节点：在节点 1 开启，连在节点 2 的成员 1 秒内被拒；关闭后 1 秒内恢复（主题 groupAllMutes）。
 func TestAdmGroupAllMuteTwoNodes(t *testing.T) {
 	db := t.TempDir() + "/shared.db"

@@ -21,7 +21,7 @@ tt stop-observability          同时停止 console-server、Grafana、Prometheu
 tt start-observability         重新启动它们
 tt query <PromQL>              查 Prometheus，输出 result 数组
 tt notifications               webhook 接收器收到的全部通知
-tt bootstrap <用户名>           创建运维空间第一个超管（需要 --console）
+tt bootstrap <用户名>           创建运维空间超管，少于 2 个时可以建第二个（需要 --console）
 tt compose ...                 带上正确参数的 docker compose
 tt put-manifest <source> <完成时间毫秒> <JSON>   用备份凭证往 MinIO 写一份清单
 tt reconcile                   导出审计和节点日志，运行 deploy/ops/reconcile（AC-OPS-14-6）
