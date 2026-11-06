@@ -19,12 +19,13 @@
 |---|---|---|
 | BE-400 | ✅ 完成（服务端部分） | errors.json、ERRORS.md、kickReasons、`kicked.recoverBefore`、`securityNotice`、`recoveryCodeUnacked`、`http-client.schema.json` 账号部分、ADMIN.md、README.md。AC-CHAT-90-14 服务端一致性（TC-CHAT-90-12）通过；**三套 SDK 枚举未做（FE-600～602）**。ADMIN.md 的账号接口随 BE-421 实现 |
 | BE-402 | 🟡 部分完成 | 已做：`frames.json` 的 `kicked.recoverBefore`、`securityNotice` 用例；`account-session.json` 和 Go 参考客户端（`server/e2e/accountmodel`）覆盖规则 5 单飞、规则 6 和 6a 失败分类、规则 7 的 4011。**留到后续**：规则 4 的判定表和转正（随 BE-415，服务端有了判定才能校验）；三套 SDK 跑向量（FE-600～602），所以 AC-CHAT-90-10、90-15 未完成 |
-| BE-405 | 🟡 部分完成 | 本次提交：`testhook`（`-tags imhooks`，nm 断言生产构建没有符号）、`IM_TEST_DISABLE_AUTH_LOCK`、生产拒绝启动（四个开关和带钩子的二进制）。其余见后续提交。 |
+| BE-405 | 🟡 部分完成 | 已做：`testhook`（`-tags imhooks`，nm 断言生产构建没有符号）、`IM_TEST_DISABLE_AUTH_LOCK`、`limits/reset scope=auth`、Argon2 阻塞、注册事务失败、上海 00:00 时钟助手、生产拒绝启动（四个开关和带钩子的二进制）。AC-CHAT-90-18、AC-ACC-02-3 通过。**AC-ACC-04-18、04-19、05-11 要 recover 和改密接口，随 BE-417、418**，现在只验了登录路径的钩子序列。**留到后续**：吊销写失败、入表前吊销、入表后和周期复查失败、丢弃吊销事件、入表前暂停（随 BE-416、417 和用到它们的代码一起加，不留没接上的开关）；`IM_TEST_DISABLE_IDLE` 等三个开关现在只拦生产，功能随 BE-406 |
 | BE-408 | ✅ 完成 | PRD-core v1.5、PRD-social v1.1、PRD-ui v1.3、PRD-admin v1.3、PRD-ops v1.4、ARCH 更新；作废 AC-UI-03-9，改写 AC-AUTH-02-4、AC-UI-15-3、AC-UI-16-6、AC-ADM-30-7；同步 TC 和 `trace.py`（PRDS；PRD-live 没有升版，它的 name 判断不变）。AC 总数 1463 → 1462。`docs/sdk/README.md` 按任务单由 FE-620 更新；前端代码（`nginx.conf`、`vite.config.ts`）随 FE-613 |
 | BE-410 | ✅ 完成 | `0015_accounts.sql`、`store.AccountStore`、`storetest` 11 个契约用例；AC-CHAT-90-6（TC-CHAT-90-06，存储层）通过。`users.deleted_at` 的入口都改了，注销流程随 BE-420。Postgres 随 B6 |
-| BE-411 | 🟡 基座完成 | `clientip` 共用、`auth.Check` 共用（WS 和 Bearer）、`/v1` 基座、`GET /v1/config`。AC-ACC-07-4（TC-ACC-07-04）通过，`features.files` 和 `IM_FILES_ENABLED` 随 C2。AC-CHAT-90-16 单测通过，e2e（真实接口、真实 10 秒）随 BE-414 的提交 |
-| BE-412 | 🟡 闸门和计数完成 | `x/crypto/argon2`（v0.58.0，和 console-server 同版本）、闸门（普通 4 + 改密 1 + recover 1）、`Guard`（`auth_throttle`、IP 限流、渐进延迟、单哈希）。见后续提交的接口用例；AC-ACC-01-16、04-22、04-24、05-3、05-18 要 refresh、logout、改密、recover 接口，**这些 AC 的接口部分随 BE-415、417、418 才能验**，这里只验闸门和计数 |
+| BE-411 | ✅ 完成 | `clientip` 共用、`auth.Check` 共用（WS 和 Bearer）、`/v1` 基座、`GET /v1/config`。AC-ACC-07-4（TC-ACC-07-04，`features.files` 和 `IM_FILES_ENABLED` 随 C2）、AC-CHAT-90-16（TC-CHAT-90-14，含真实 10 秒慢请求）通过 |
+| BE-412 | 🟡 部分验证 | `x/crypto`（v0.58.0，和 console-server 同版本）、闸门、`Guard`、接口 e2e 通过：AC-ACC-02-4、02-5、02-10、02-11、02-12、02-14。**AC-ACC-01-16、04-22、04-24、05-3、05-18 只验了闸门和计数（`internal/account` 单测、注册路径 e2e），它们要的 refresh、logout、改密、recover 接口在 BE-415、417、418，到时才能标完成** |
 | BE-413 | ✅ 完成（本任务 AC 都有用例） | AC-ACC-01-1～8、10、11、14、15、17、19、21、AC-ACC-10-2 通过（TC-ACC-01-*、TC-ACC-10-02，本地 e2e）。**AC-ACC-01-5 的例子 `bob` 只有 3 位，走不到 4095**，用例改成 `bobby`，PRD 问题待处理。TC-ACC-01-01 第 3 步 `recovery-code/ack` 随 BE-418，用存储层代替。AC-ACC-01-6 的已注销前置用 `MarkUserDeleted`，`account_cleanup` 随 BE-420 |
+| BE-414 | ✅ 完成（本任务 AC 都有用例） | AC-ACC-02-1、2、3、6、7、13（服务端部分）和 02-4、5、10、11、12、14 通过（TC-ACC-02-*，本地 e2e）。AC-ACC-02-3 不带 `-race` 用生产参数，带 `-race` 用 8 MiB。`account_events`、`GET /v1/account/events`、`account_events_purge`、`auth_throttle_purge`、两个指标。AC-CHAT-90-16（TC-CHAT-90-14）通过。提前做了 AC-ACC-07-2（演示登录拒绝有账号的用户）：账号从这段开始存在。AC-ACC-02-13 的界面随 FE-610～612 |
 | 全部 | ⬜ 未开始 | C1 结束后按实际用时校准工作量（CH-27），再由 Frank 决定 C3 起的部分 |
 
 ## 总览
