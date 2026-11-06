@@ -150,6 +150,7 @@ func (s *Service) Password(ctx context.Context, claims auth.Claims, in PasswordI
 		s.Log.Error("hash password", "err", err)
 		return nil, internalErr()
 	}
+	v.done() // 哈希算完了：不再占着这个用户名
 	testhook.AfterArgon(v.attempt.UsernameHash)
 
 	now := s.Clock.Now()
@@ -198,6 +199,7 @@ func (s *Service) LogoutOthers(ctx context.Context, claims auth.Claims, in Passw
 	}
 	defer v.done()
 	v.release()
+	v.done() // 哈希算完了：不再占着这个用户名
 	testhook.AfterArgon(v.attempt.UsernameHash)
 	now := s.Clock.Now()
 	session, refreshToken, e := s.newSessionFor(claims, ctx, ip, now)

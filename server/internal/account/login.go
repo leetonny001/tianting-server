@@ -119,6 +119,7 @@ func (s *Service) login(ctx context.Context, in LoginInput, ip string) (*AuthRes
 		}
 	}
 	release()
+	attempt.Done() // 哈希算完了：不再占着这个用户名
 	// Argon2 在事务外（F-ACC-04 规则 8）：账号并发钩子停在这里，提交事务的第一条语句再校验版本。
 	testhook.AfterArgon(attempt.UsernameHash)
 

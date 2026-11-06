@@ -29,13 +29,14 @@ type Store interface {
 
 // Deps 是 Service 的依赖。
 type Deps struct {
-	Config Config
-	Store  Store
-	Signer *auth.Signer
-	Router delivery.Router
-	Clock  clock.Clock
-	Faults *Faults // 生产环境为 nil
-	Log    *slog.Logger
+	Config  Config
+	Store   Store
+	Signer  *auth.Signer
+	Router  delivery.Router
+	Clock   clock.Clock
+	Faults  *Faults // 生产环境为 nil
+	Cleaner Cleaner // account_cleanup 第 ② 步
+	Log     *slog.Logger
 	// Logins、Registers 是 im_account_logins_total{result}、im_registers_total{result}（第 14.2 节）；InviteAutoDisabled 是自动停用的告警。
 	Logins, Registers  *prometheus.CounterVec
 	InviteAutoDisabled prometheus.Counter
@@ -79,6 +80,7 @@ func (s *Service) ArgonBlocked() int     { return s.Faults.ArgonBlocked() }
 func (s *Service) FailRegisterTx(n int)  { s.Faults.FailRegisterTx(n) }
 
 // 第 4.5 节其余的账号故障注入（admin.AccountTest）。
+func (s *Service) FailCleanupAfter(n int)                 { s.Faults.FailCleanupAfter(n) }
 func (s *Service) FailRevokeWrite(n int)                  { s.Faults.FailRevokeWrite(n) }
 func (s *Service) RevokeBeforeRegister(userID string)     { s.Faults.RevokeBeforeRegister(userID) }
 func (s *Service) FailEntryRechecks(n int)                { s.Faults.FailEntryRechecks(n) }

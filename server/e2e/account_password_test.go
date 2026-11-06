@@ -315,10 +315,12 @@ func TestTC_ACC_03_16_NoSIDAfterPassword(t *testing.T) {
 	if n := e.count(`SELECT token_version FROM users WHERE user_id = 'alice_1'`); n != before {
 		t.Errorf("token_version changed: %d", n)
 	}
-	for _, path := range []string{"password", "logout", "logout-others", "recovery-code", "recovery-code/ack"} {
+	for _, path := range []string{"password", "logout", "logout-others", "recovery-code", "recovery-code/ack", "delete"} {
 		code, b := e.bearerPost("/v1/account/"+path, t2, e.freshIP(), map[string]any{"oldPassword": newPassword, "newPassword": goodPassword, "password": newPassword})
 		wantErr(t, path, code, b, http.StatusForbidden, protocol.CodeForbidden, protocol.ReasonAccountSessionRequired)
 	}
+	code, b := e.bearerDo(http.MethodPatch, "/v1/account/profile", t2, e.freshIP(), map[string]any{"nickname": "x"})
+	wantErr(t, "profile", code, b, http.StatusForbidden, protocol.CodeForbidden, protocol.ReasonAccountSessionRequired)
 }
 
 // TC-ACC-03-34（AC-ACC-03-34，服务端部分，RS4-07）：离线受害者遇到攻击者改密：access 未过期 kicked/passwordChanged，已过期 4019，都带 recoverBefore=T+7 天。

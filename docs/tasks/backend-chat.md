@@ -23,7 +23,7 @@
 | BE-408 | ✅ 完成 | PRD-core v1.5、PRD-social v1.1、PRD-ui v1.3、PRD-admin v1.3、PRD-ops v1.4、ARCH 更新；作废 AC-UI-03-9，改写 AC-AUTH-02-4、AC-UI-15-3、AC-UI-16-6、AC-ADM-30-7；同步 TC 和 `trace.py`（PRDS；PRD-live 没有升版，它的 name 判断不变）。AC 总数 1463 → 1462。`docs/sdk/README.md` 按任务单由 FE-620 更新；前端代码（`nginx.conf`、`vite.config.ts`）随 FE-613 |
 | BE-410 | ✅ 完成 | `0015_accounts.sql`、`store.AccountStore`、`storetest` 11 个契约用例；AC-CHAT-90-6（TC-CHAT-90-06，存储层）通过。`users.deleted_at` 的入口都改了，注销流程随 BE-420。Postgres 随 B6 |
 | BE-411 | ✅ 完成 | `clientip` 共用、`auth.Check` 共用（WS 和 Bearer）、`/v1` 基座、`GET /v1/config`。AC-ACC-07-4（TC-ACC-07-04，`features.files` 和 `IM_FILES_ENABLED` 随 C2）、AC-CHAT-90-16（TC-CHAT-90-14，含真实 10 秒慢请求）通过 |
-| BE-412 | 🟡 部分验证 | `x/crypto`（v0.58.0，和 console-server 同版本）、闸门、`Guard`、接口 e2e 通过：AC-ACC-01-16、02-4、02-5、02-10、02-11、02-12、02-14、04-24、05-3、05-18。AC-ACC-04-22 要 `delete` 接口，随 BE-420 |
+| BE-412 | ✅ 完成 | `x/crypto`（v0.58.0，和 console-server 同版本）、闸门、`Guard`、接口 e2e 通过：AC-ACC-01-16、02-4、02-5、02-10、02-11、02-12、02-14、04-22、04-24、05-3、05-18 |
 | BE-413 | ✅ 完成（本任务 AC 都有用例） | AC-ACC-01-1～8、10、11、14、15、17、19、21、AC-ACC-10-2 通过（TC-ACC-01-*、TC-ACC-10-02，本地 e2e）。**AC-ACC-01-5 的例子 `bob` 只有 3 位，走不到 4095**，用例改成 `bobby`，PRD 问题待处理。TC-ACC-01-01 第 3 步 `recovery-code/ack` 随 BE-418，用存储层代替。AC-ACC-01-6 的已注销前置用 `MarkUserDeleted`，`account_cleanup` 随 BE-420 |
 | BE-414 | ✅ 完成（本任务 AC 都有用例） | AC-ACC-02-1、2、3、6、7、13（服务端部分）和 02-4、5、10、11、12、14 通过（TC-ACC-02-*，本地 e2e）。AC-ACC-02-3 不带 `-race` 用生产参数，带 `-race` 用 8 MiB。`account_events`、`GET /v1/account/events`、`account_events_purge`、`auth_throttle_purge`、两个指标。AC-CHAT-90-16（TC-CHAT-90-14）通过。提前做了 AC-ACC-07-2（演示登录拒绝有账号的用户）：账号从这段开始存在。AC-ACC-02-13 的界面随 FE-610～612 |
 | BE-415 | ✅ 完成（本任务 AC 都有用例） | AC-ACC-03-1、2、3、4、15、19、21、22、24、25、27、31、32、33、35、37（服务端部分）、38、40、44（logout 部分；credentialsChanged 部分随 BE-417）、45、46、48、49、50 通过（TC-ACC-03-*，本地 e2e）。`0016_account_sessions.sql`：签发频率存在会话行上；`refresh_key_ledger` 台账，`im-server refresh-keys forget` 是泄露应急；配置检查项 `refresh_key_ledger`，生产配置拒绝启动。`im-server sessions revoke-all`。AC-ACC-03-19、03-27 的推送令牌部分 C3 上线时验。AC-ACC-03-33 的后台响应部分随 BE-421 |
@@ -31,6 +31,7 @@
 | BE-417 | ✅ 完成，AC-ACC-04-29 未执行 | 和 BE-418 同一个提交（接口互相依赖）。AC-ACC-04-1、2（服务端部分）、3、4、7、8、10（服务端部分）、11、12、14、15、16（服务端部分）、18、19、25 通过；连带 AC-ACC-03-16、03-34、03-44。用密码的提交事务第一条语句都锁 `accounts` 行（`store.CommitCredentials`）。**AC-ACC-04-29 只有 Postgres 下可达，用例标未执行，不算通过**。显示内容设置和令牌重新注册随 C3 |
 | BE-418 | ✅ 完成（本任务 AC 都有用例） | AC-ACC-04-13、20、23、24、30、31，AC-ACC-05-1、2、3、6、8、11、12、13、14、17、18、19（服务端部分）通过。`store.CommitRecover`：第一条语句不带版本条件锁行并递增；旧码优先；上限只约束最新一代。`recoverSched` 按 `(userId, gen)` 调度，单个实例生效，集群随 B6。TC-ACC-01-01 第 3 步改用 `recovery-code/ack` 接口 |
 | BE-419 | ✅ 完成（本任务 AC 都有用例） | AC-ACC-06-1、06-2、07-1（`server/e2e` 里演示和管理接口的用例不改代码全过，见汇报里的例外说明）、07-2、07-3 通过。`4048` 提前进 `errors.json`（C1 的 `avatarFileId` 要用，BE-401 不用再加） |
+| BE-420 | ✅ 完成（本任务 AC 都有用例） | AC-ACC-04-21、04-28、05-16、08-1、08-2、08-3、08-4、08-5（恢复和不重复；ack P99 是开发机参考，不算通过，见 BE-422 报告）通过；连带 AC-ACC-04-22、04-25 序列乙。`account_cleanup`：第 ① 步条件带"申请没被撤销"，第 ② 步在 `logic`，幂等。TC-ACC-01-07 改走真实注销。头像对象随 BE-437。**保留口径 CH-23 还没确认（规则 6），按 PRD 第 5 条表实现** |
 | 全部 | ⬜ 未开始 | C1 结束后按实际用时校准工作量（CH-27），再由 Frank 决定 C3 起的部分 |
 
 ## 总览

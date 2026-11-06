@@ -23,6 +23,7 @@ type Faults struct {
 	registerTx   int             // 还要失败几次注册事务
 	revokeWrite  int             // 还要失败几次吊销写
 	revokeBefore map[string]bool // 这些用户的下一条连接入表前吊销它的 sid
+	cleanupSteps int             // >0 时 account_cleanup 第 ② 步再走这么多步就失败（AC-ACC-08-5）
 	entryRecheck int             // 还要失败几次入表后复查
 	periodic     map[string]int  // 用户 → 还要失败几次周期复查
 }
@@ -193,4 +194,30 @@ func (c ConnFaults) FailPeriodicRecheck(userID string) bool {
 	}
 	c.f.periodic[userID]--
 	return true
+}
+
+// FailCleanupAfter 让 account_cleanup 第 ② 步再走 n 步之后失败（AC-ACC-08-5）。
+func (f *Faults) FailCleanupAfter(n int) {
+	if f == nil {
+		return
+	}
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.cleanupSteps = n
+}
+
+func (f *Faults) takeCleanupStep() error {
+	if f == nil {
+		return nil
+	}
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if f.cleanupSteps == 0 {
+		return nil
+	}
+	f.cleanupSteps--
+	if f.cleanupSteps == 0 {
+		return errInjected
+	}
+	return nil
 }

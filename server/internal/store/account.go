@@ -22,6 +22,9 @@ var (
 // RevokeReasonRevoked 是自己退出、强制下线、封禁、sessions revoke-all 的吊销原因（F-ACC-03 规则 3 的 reason=revoked）。
 const RevokeReasonRevoked = "revoked"
 
+// ReasonAccountDeletedRevoke 是注销到期时的吊销原因（冷静期里已经吊销过，这里只兜底）。
+const ReasonAccountDeletedRevoke = "accountDeleted"
+
 // Account 是一行账号。
 type Account struct {
 	UserID               string
@@ -194,6 +197,15 @@ type AccountStore interface {
 	FindRecoveryCode(ctx context.Context, userID, hash string) (RecoveryCode, error)
 	// CancelDeletion 撤销注销申请：版本或申请时间变了返回 ErrCredentialsChanged。
 	CancelDeletion(ctx context.Context, userID string, version, requestedAt, now int64, event AccountEvent) error
+	// DueDeletions 列出冷静期已到、还没标记注销的账号（F-ACC-08 规则 3）。
+	DueDeletions(ctx context.Context, requestedBefore int64, limit int) ([]string, error)
+	// FinishDeletion 是到期的第 ① 步：第一条语句带"注销申请还在且已到期"的条件（F-ACC-04 规则 8）。申请被撤销或换过返回 false。
+	FinishDeletion(ctx context.Context, userID string, requestedBefore, now int64) (bool, error)
+	// PendingCleanups 列出第 ① 步做完、第 ② 步没做完的账号。
+	PendingCleanups(ctx context.Context, limit int) ([]string, error)
+	MarkCleanupDone(ctx context.Context, userID string, now int64) error
+	// RemoveUserSocial 删除已注销用户的好友和黑名单，昵称改掉。幂等。返回版本变化的用户。
+	RemoveUserSocial(ctx context.Context, userID, nickname string, now int64) (map[string]int64, error)
 	// UpdateNickname 改昵称（F-ACC-06）。用户不存在或已注销返回 ErrNotFound。
 	UpdateNickname(ctx context.Context, userID, nickname string) error
 	// UpdatePasswordHash 只在版本没变时重写哈希（参数升级，F-ACC-02 异常）。不改版本，不算改密。

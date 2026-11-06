@@ -182,6 +182,7 @@ func (s *Service) RegenerateRecovery(ctx context.Context, claims auth.Claims, in
 	}
 	defer v.done()
 	v.release()
+	v.done() // 哈希算完了：不再占着这个用户名
 	testhook.AfterArgon(v.attempt.UsernameHash)
 	code, err := newRecoveryCode()
 	if err != nil {

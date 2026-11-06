@@ -74,6 +74,7 @@ type AccountTest interface {
 	ArgonBlocked() int
 	FailRegisterTx(n int)
 	FailRevokeWrite(n int)
+	FailCleanupAfter(n int)
 	RevokeBeforeRegister(userID string)
 	FailEntryRechecks(n int)
 	FailPeriodicRechecks(userID string, n int)
@@ -170,6 +171,7 @@ func (a *Admin) RegisterTestRoutes(mux *http.ServeMux, faults *logic.Faults, clk
 			RegisterTxFail       int    `json:"registerTxFail"`       // 接下来几次注册事务失败
 			RevokeWriteFail      int    `json:"revokeWriteFail"`      // 接下来几次吊销写失败（改密整体回滚，AC-ACC-04-7）
 			RevokeBeforeRegister string `json:"revokeBeforeRegister"` // 这个用户的下一条连接入表前吊销（AC-ACC-03-17）
+			CleanupFailAfter     int    `json:"cleanupFailAfter"`     // account_cleanup 第 ② 步再走这么多步就失败（AC-ACC-08-5）
 			EntryRecheckFail     int    `json:"entryRecheckFail"`     // 接下来几次入表后复查报错（AC-ACC-03-36）
 			PeriodicRecheckFail  *struct {
 				UserID string `json:"userId"`
@@ -192,6 +194,9 @@ func (a *Admin) RegisterTestRoutes(mux *http.ServeMux, faults *logic.Faults, clk
 				}
 				if req.RegisterTxFail > 0 {
 					a.accountTest.FailRegisterTx(req.RegisterTxFail)
+				}
+				if req.CleanupFailAfter > 0 {
+					a.accountTest.FailCleanupAfter(req.CleanupFailAfter)
 				}
 				if req.RevokeWriteFail > 0 {
 					a.accountTest.FailRevokeWrite(req.RevokeWriteFail)

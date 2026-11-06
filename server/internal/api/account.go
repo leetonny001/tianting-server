@@ -22,6 +22,8 @@ type AccountService interface {
 	RegenerateRecovery(ctx context.Context, claims auth.Claims, in account.PasswordOnlyInput, ip string) (*account.RecoveryCodeResponse, *protocol.Error)
 	AckRecovery(ctx context.Context, userID string, in account.RecoveryAckInput) *protocol.Error
 	UpdateProfile(ctx context.Context, userID string, in account.ProfileInput) *protocol.Error
+	Delete(ctx context.Context, claims auth.Claims, in account.PasswordOnlyInput, ip string) *protocol.Error
+	CancelDelete(ctx context.Context, in account.DeleteCancelInput, ip string) *protocol.Error
 }
 
 // RegisterAccount 注册 /v1/account/*（PRD-chat 第 11.2 节）。
@@ -124,6 +126,29 @@ func (v *V1) RegisterAccount(mux *http.ServeMux, svc AccountService) {
 			return
 		}
 		if e := svc.UpdateProfile(r.Context(), claims.UserID, in); e != nil {
+			WriteError(w, e)
+			return
+		}
+		WriteJSON(w, struct{}{})
+	})
+	v.Handle(mux, "POST /v1/account/delete", func(w http.ResponseWriter, r *http.Request) {
+		var in account.PasswordOnlyInput
+		claims, ok := v.accountBearer(w, r, &in)
+		if !ok {
+			return
+		}
+		if e := svc.Delete(r.Context(), claims, in, v.Proxies.IP(r)); e != nil {
+			WriteError(w, e)
+			return
+		}
+		WriteJSON(w, struct{}{})
+	})
+	v.Handle(mux, "POST /v1/account/delete/cancel", func(w http.ResponseWriter, r *http.Request) {
+		var in account.DeleteCancelInput
+		if !v.ReadBody(w, r, &in) {
+			return
+		}
+		if e := svc.CancelDelete(r.Context(), in, v.Proxies.IP(r)); e != nil {
 			WriteError(w, e)
 			return
 		}

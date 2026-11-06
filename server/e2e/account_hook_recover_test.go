@@ -141,3 +141,47 @@ func TestHookLockedAndHashingRecover(t *testing.T) {
 		t.Fatalf("right code: %d %s", c, b)
 	}
 }
+
+// TC-ACC-04-20（AC-ACC-04-21，RS4-06 丁）：delete 在 Argon2 后暂停，recover 撤销注销后放行：delete 401；清理不处理。
+func TestHookDeleteVsRecover(t *testing.T) {
+	e := openEnv(t, nil)
+	clk := e.freeze()
+	v := e.regAcked("victim_1")
+	xs := e.mustLogin("victim_1", goodPassword, "ios")
+	xs2 := e.mustLogin("victim_1", goodPassword, "web")
+	e.mustDelete(xs2.AccessToken, goodPassword) // 已申请
+	_ = xs
+	// 撤销后第二个 delete 才有可能：先撤销，暂停一个新的 delete，再 recover。
+	if code, b, _ := e.post("/v1/account/delete/cancel", e.freshIP(), map[string]any{"username": "victim_1", "password": goodPassword}); code != http.StatusOK {
+		t.Fatalf("%d %s", code, b)
+	}
+	l := e.mustLogin("victim_1", goodPassword, "pc")
+	x := pause(t, "victim_1", func() (int, []byte) { return e.deleteAccount(l.AccessToken, goodPassword) })
+	e.mustRecover("victim_1", v.RecoveryCode, newPassword)
+	x.release()
+	wantErr(t, "delete", x.code, x.body, http.StatusUnauthorized, protocol.CodeAccountCredentials, "")
+	clk.advance(8 * oneDay)
+	e.cleanup()
+	e.mustLogin("victim_1", newPassword, "ios")
+}
+
+// TC-ACC-04-26（AC-ACC-04-28，RS5-21）：delete/cancel 在 Argon2 后暂停，recover 后重新申请：撤销 401，新申请不被撤销。
+func TestHookCancelVsNewDeletion(t *testing.T) {
+	e := openEnv(t, nil)
+	clk := e.freeze()
+	v := e.regAcked("victim_1")
+	e.mustDelete(v.AccessToken, goodPassword)
+	x := pause(t, "victim_1", func() (int, []byte) {
+		c, b, _ := e.post("/v1/account/delete/cancel", e.freshIP(), map[string]any{"username": "victim_1", "password": goodPassword})
+		return c, b
+	})
+	clk.advance(time.Second)
+	r := e.mustRecover("victim_1", v.RecoveryCode, newPassword)
+	e.mustDelete(r.AccessToken, newPassword)
+	want := clk.now.UnixMilli()
+	x.release()
+	wantErr(t, "cancel", x.code, x.body, http.StatusUnauthorized, protocol.CodeAccountCredentials, "")
+	if n := e.count(`SELECT delete_requested_at FROM accounts WHERE user_id = 'victim_1'`); int64(n) != want {
+		t.Errorf("delete_requested_at %d, want %d", n, want)
+	}
+}

@@ -225,7 +225,7 @@ func New(cfg Config) (*App, error) {
 	accounts, err := account.New(account.Deps{
 		Config: cfg.Account, Store: st, Signer: signer, Router: router, Clock: clk, Faults: accountFaults, Log: cfg.Logger,
 		Logins: m.AccountLogins, Registers: m.Registers, InviteAutoDisabled: m.InviteAutoDisabled,
-		RefreshReissue: m.RefreshReissue, RefreshReplay: m.RefreshReplay,
+		RefreshReissue: m.RefreshReissue, RefreshReplay: m.RefreshReplay, Cleaner: svc,
 	})
 	if err != nil {
 		st.Close()
@@ -265,6 +265,7 @@ func New(cfg Config) (*App, error) {
 	jobs.Register("account_events_purge", jobPeriod, accounts.PurgeEvents)
 	jobs.Register("auth_throttle_purge", jobPeriod, accounts.PurgeThrottle)
 	jobs.Register("session_purge", 24*time.Hour, accounts.PurgeSessions)
+	jobs.Register("account_cleanup", jobPeriod, accounts.Cleanup)
 	if cfg.TestMode {
 		for _, name := range cfg.TestDisableJobs {
 			if err := jobs.Disable(name); err != nil {

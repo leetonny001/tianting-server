@@ -226,3 +226,101 @@ func (s *SQLite) UpdateNickname(ctx context.Context, userID, nickname string) er
 	}
 	return nil
 }
+
+func listIDs(ctx context.Context, db *sql.DB, query string, args ...any) ([]string, error) {
+	rows, err := db.QueryContext(ctx, query, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []string
+	for rows.Next() {
+		var id string
+		if err := rows.Scan(&id); err != nil {
+			return nil, err
+		}
+		out = append(out, id)
+	}
+	return out, rows.Err()
+}
+
+func (s *SQLite) DueDeletions(ctx context.Context, requestedBefore int64, limit int) ([]string, error) {
+	return listIDs(ctx, s.db, `SELECT a.user_id FROM accounts a JOIN users u ON u.user_id = a.user_id
+		WHERE a.delete_requested_at <> 0 AND a.delete_requested_at <= ? AND u.deleted_at = 0 ORDER BY a.delete_requested_at LIMIT ?`, requestedBefore, limit)
+}
+
+func (s *SQLite) FinishDeletion(ctx context.Context, userID string, requestedBefore, now int64) (bool, error) {
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return false, err
+	}
+	defer tx.Rollback()
+	res, err := tx.ExecContext(ctx, `UPDATE accounts SET password_hash = '' WHERE user_id = ? AND delete_requested_at <> 0 AND delete_requested_at <= ?`, userID, requestedBefore)
+	if err != nil {
+		return false, err
+	}
+	if n, _ := res.RowsAffected(); n == 0 {
+		return false, nil
+	}
+	if _, err := tx.ExecContext(ctx, `DELETE FROM recovery_codes WHERE user_id = ?`, userID); err != nil {
+		return false, err
+	}
+	if err := revokeUserSessions(ctx, tx, userID, ReasonAccountDeletedRevoke, now); err != nil {
+		return false, err
+	}
+	if _, err := tx.ExecContext(ctx, `UPDATE users SET deleted_at = ?, token_version = token_version + 1 WHERE user_id = ?`, now, userID); err != nil {
+		return false, err
+	}
+	return true, tx.Commit()
+}
+
+func (s *SQLite) PendingCleanups(ctx context.Context, limit int) ([]string, error) {
+	return listIDs(ctx, s.db, `SELECT a.user_id FROM accounts a JOIN users u ON u.user_id = a.user_id
+		WHERE u.deleted_at <> 0 AND a.cleanup_done_at = 0 ORDER BY u.deleted_at LIMIT ?`, limit)
+}
+
+// MarkCleanupDone 第 ② 步做完：设备会话也删除（规则 5 的数据处理）。
+func (s *SQLite) MarkCleanupDone(ctx context.Context, userID string, now int64) error {
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+	if _, err := tx.ExecContext(ctx, `DELETE FROM device_sessions WHERE user_id = ?`, userID); err != nil {
+		return err
+	}
+	if _, err := tx.ExecContext(ctx, `UPDATE accounts SET cleanup_done_at = ? WHERE user_id = ?`, now, userID); err != nil {
+		return err
+	}
+	return tx.Commit()
+}
+
+// RemoveUserSocial 删除一个已注销用户的好友和黑名单（两个方向）、申请，头像和昵称改掉（F-ACC-08 规则 3 第 ② 步）。幂等。返回版本变化的用户。
+func (s *SQLite) RemoveUserSocial(ctx context.Context, userID, nickname string, now int64) (map[string]int64, error) {
+	peers, err := listIDs(ctx, s.db, `SELECT peer_id FROM friends WHERE owner_id = ? AND deleted = 0`, userID)
+	if err != nil {
+		return nil, err
+	}
+	t, err := s.beginSocial(ctx, now)
+	if err != nil {
+		return nil, err
+	}
+	defer t.tx.Rollback()
+	if err := t.lockUsers(append([]string{userID}, peers...)...); err != nil {
+		return nil, err
+	}
+	for _, p := range peers {
+		for _, side := range [][2]string{{userID, p}, {p, userID}} {
+			if _, err := t.removeEdge(side[0], side[1]); err != nil {
+				return nil, err
+			}
+		}
+	}
+	if _, err := t.exec(`UPDATE blocks SET deleted = 1, updated_at = ? WHERE (owner_id = ? OR peer_id = ?) AND deleted = 0`, now, userID, userID); err != nil {
+		return nil, err
+	}
+	if _, err := t.exec(`UPDATE users SET nickname = ?, avatar = '' WHERE user_id = ?`, nickname, userID); err != nil {
+		return nil, err
+	}
+	return t.vers, t.tx.Commit()
+}
