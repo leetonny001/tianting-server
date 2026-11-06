@@ -973,7 +973,7 @@ func (s *SQLite) purgeOwner(ctx context.Context, owner string, before int64) (in
 func (s *SQLite) Relation(ctx context.Context, me, peer, convID string) (Relation, error) {
 	var r Relation
 	err := s.db.QueryRowContext(ctx, `SELECT
-		EXISTS (SELECT 1 FROM users WHERE user_id = ?2),
+		EXISTS (SELECT 1 FROM users WHERE user_id = ?2 AND deleted_at = 0),
 		EXISTS (SELECT 1 FROM friends WHERE owner_id = ?1 AND peer_id = ?2 AND deleted = 0),
 		EXISTS (SELECT 1 FROM friends WHERE owner_id = ?2 AND peer_id = ?1 AND deleted = 0),
 		EXISTS (SELECT 1 FROM blocks WHERE owner_id = ?2 AND peer_id = ?1 AND deleted = 0),

@@ -495,7 +495,7 @@ func (s *SQLite) UpsertUsers(ctx context.Context, users []User) error {
 	for _, u := range users {
 		if _, err := tx.ExecContext(ctx,
 			`INSERT INTO users (user_id, nickname, avatar, created_at) VALUES (?, ?, ?, ?)
-			 ON CONFLICT (user_id) DO UPDATE SET nickname = excluded.nickname, avatar = excluded.avatar`,
+			 ON CONFLICT (user_id) DO UPDATE SET nickname = excluded.nickname, avatar = excluded.avatar WHERE users.deleted_at = 0`,
 			u.UserID, u.Nickname, u.Avatar, now); err != nil {
 			return fmt.Errorf("upsert user %s: %w", u.UserID, err)
 		}
@@ -522,11 +522,10 @@ func (s *SQLite) GetUser(ctx context.Context, userID string) (User, error) {
 }
 
 func (s *SQLite) UserExists(ctx context.Context, userID string) (bool, error) {
-	_, err := s.GetUser(ctx, userID)
-	if errors.Is(err, ErrNotFound) {
-		return false, nil
-	}
-	return err == nil, err
+	// 已注销的用户按不存在处理（PRD-chat F-ACC-08 规则 4），GetUser 仍然能读到，后台要显示。
+	var exists bool
+	err := s.db.QueryRowContext(ctx, `SELECT EXISTS (SELECT 1 FROM users WHERE user_id = ? AND deleted_at = 0)`, userID).Scan(&exists)
+	return exists, err
 }
 
 func (s *SQLite) MissingUsers(ctx context.Context, userIDs []string) ([]string, error) {
@@ -538,7 +537,7 @@ func (s *SQLite) MissingUsers(ctx context.Context, userIDs []string) ([]string, 
 			args[i] = id
 		}
 		// #nosec G202 -- 拼接的只有占位符，取值全部走参数绑定
-		rows, err := s.db.QueryContext(ctx, `SELECT user_id FROM users WHERE user_id IN (`+placeholders(len(ids))+`)`, args...)
+		rows, err := s.db.QueryContext(ctx, `SELECT user_id FROM users WHERE deleted_at = 0 AND user_id IN (`+placeholders(len(ids))+`)`, args...)
 		if err != nil {
 			return nil, err
 		}

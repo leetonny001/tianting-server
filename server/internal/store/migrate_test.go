@@ -3,6 +3,7 @@ package store
 import (
 	"context"
 	"database/sql"
+	"fmt"
 	"path/filepath"
 	"slices"
 	"strings"
@@ -189,4 +190,94 @@ func TestMigration0003Backfill(t *testing.T) {
 	if last != "group" {
 		t.Errorf("group last text = %q", last)
 	}
+}
+
+// TC-CHAT-90-06（AC-CHAT-90-6）：全新库和 0014 版本的库（含 Alice、alice，有消息和群）都能升级，已有数据不变；
+// Alice、alice 都在，accounts 没有行；升级后旧版本二进制（只认识到 0014）拒绝启动。
+func TestTC_CHAT_90_06_MigrateAccounts(t *testing.T) {
+	ctx := context.Background()
+	ms, err := SQLiteMigrations()
+	if err != nil {
+		t.Fatal(err)
+	}
+	idx := slices.IndexFunc(ms, func(m Migration) bool { return m.Version == 14 })
+	if idx < 0 || len(ms) <= idx+1 {
+		t.Fatal("expected migrations after 0014")
+	}
+	old := ms[:idx+1]
+
+	t.Run("全新库", func(t *testing.T) {
+		db := rawDB(t)
+		if _, err := Migrate(ctx, db, ms); err != nil {
+			t.Fatal(err)
+		}
+		for _, table := range []string{"accounts", "recovery_codes", "auth_throttle", "account_events", "device_sessions", "invites"} {
+			var n int
+			if err := db.QueryRow(`SELECT COUNT(*) FROM ` + table).Scan(&n); err != nil || n != 0 {
+				t.Errorf("%s: n=%d err=%v", table, n, err)
+			}
+		}
+	})
+
+	t.Run("0014 库", func(t *testing.T) {
+		db := rawDB(t)
+		if _, err := Migrate(ctx, db, old); err != nil {
+			t.Fatal(err)
+		}
+		for _, stmt := range []string{
+			`INSERT INTO users (user_id, nickname, created_at) VALUES ('Alice', '大写', 1), ('alice', '小写', 2)`,
+			`INSERT INTO chat_groups (group_id, name, created_at) VALUES ('g1', '群', 3)`,
+			`INSERT INTO group_members (group_id, user_id, join_seq, joined_at) VALUES ('g1', 'Alice', 0, 3), ('g1', 'alice', 0, 3)`,
+			`INSERT INTO conv_seq (conv_id, max_seq) VALUES ('group:g1', 1)`,
+			`INSERT INTO messages (msg_id, conv_id, seq, from_uid, client_msg_id, type, body, ts) VALUES ('m1', 'group:g1', 1, 'Alice', 'c1', 'text', '{"text":"hi"}', 4)`,
+		} {
+			if _, err := db.Exec(stmt); err != nil {
+				t.Fatalf("%s: %v", stmt, err)
+			}
+		}
+		dump := func() string {
+			var b strings.Builder
+			for _, q := range []string{
+				`SELECT user_id, nickname, created_at, token_version FROM users ORDER BY user_id`,
+				`SELECT group_id, user_id, join_seq FROM group_members ORDER BY user_id`,
+				`SELECT msg_id, conv_id, seq, from_uid, body FROM messages`,
+			} {
+				rows, err := db.Query(q)
+				if err != nil {
+					t.Fatal(err)
+				}
+				cols, _ := rows.Columns()
+				vals := make([]any, len(cols))
+				ptrs := make([]any, len(cols))
+				for i := range vals {
+					ptrs[i] = &vals[i]
+				}
+				for rows.Next() {
+					if err := rows.Scan(ptrs...); err != nil {
+						t.Fatal(err)
+					}
+					fmt.Fprintln(&b, vals...)
+				}
+				rows.Close()
+			}
+			return b.String()
+		}
+		before := dump()
+		if _, err := Migrate(ctx, db, ms); err != nil {
+			t.Fatal(err)
+		}
+		if after := dump(); after != before {
+			t.Errorf("existing data changed:\n%s\nvs\n%s", before, after)
+		}
+		var accounts, deleted int
+		db.QueryRow(`SELECT COUNT(*) FROM accounts`).Scan(&accounts)
+		db.QueryRow(`SELECT COUNT(*) FROM users WHERE deleted_at <> 0`).Scan(&deleted)
+		if accounts != 0 || deleted != 0 {
+			t.Errorf("accounts=%d deleted=%d", accounts, deleted)
+		}
+		// 旧版本二进制按现有规则拒绝：数据库里有它不认识的迁移。
+		if _, err := Status(ctx, db, old); err == nil {
+			t.Error("an old binary must refuse a database with newer migrations")
+		}
+	})
 }
