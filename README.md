@@ -1,6 +1,6 @@
 # 天听（tianting-server）
 
-**天听**是自研 IM 平台：Go 服务端 + 统一 SDK + 移动端（Android / iOS）+ PC + H5 + 管理后台 / 运维后台，替换腾讯 IM。
+**天听**是自研 IM 平台：Go 服务端 + 统一 SDK + 移动端（Android / iOS）+ PC + H5 + 管理后台 / 运维后台，按类似微信的 IM 产品设计。
 本仓库是服务端，同时存放协议和全部需求 / 架构 / 测试 / 流程文档；其他部分各自一个仓库：
 
 | 仓库 | 内容 | 本地目录（同级） |
@@ -28,7 +28,7 @@
 - [x] 统一 SDK（TypeScript，[tianting-sdk-ts](https://github.com/leetonny001/tianting-sdk-ts)）：连接管理、同步引擎、发送队列、已读；82 个单元测试 + 对真实服务端的集成测试
 - [ ] H5 客户端（UI 参考微信）、PC、Android、iOS
 - [ ] 管理后台 H5、运维后台 H5
-- [ ] 聊天室与系统推送（替换腾讯 IM）
+- [x] 系统推送（站内通知）
 
 ## 服务端
 

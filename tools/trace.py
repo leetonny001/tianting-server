@@ -20,7 +20,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 PRDS = [ROOT / "docs/prd" / n for n in (
     "PRD-core-v1.4.md", "PRD-social-v1.0.md", "PRD-ui-v1.2.md", "PRD-admin-v1.2.md", "PRD-ops-v1.3.md",
-    "PRD-live-v1.1.md")]
+    "PRD-live-v1.2.md")]
 # PRD-live v1.0 3.2 节：L2、L3 的 AC 随对应里程碑分发任务和用例
 FROZEN_PUSH_EXCLUDE = {
     "AC-PUSH-02-7", "AC-PUSH-06-17",
