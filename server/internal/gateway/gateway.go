@@ -490,11 +490,14 @@ type conn struct {
 
 	// 待发送队列。按需分配、按需启动写协程，写空后协程退出：
 	// 1 万条空闲连接如果各自预分配 256 格的 channel、常驻一个写协程，要多占约 60MB 堆和约 80MB 栈（Q5a 内存分析）。
-	qmu      sync.Mutex
-	queue    [][]byte
-	writing  bool // 是否有写协程在运行；同一时刻最多一个，保证帧的顺序
-	kickOnce sync.Once
-	closed   atomic.Pointer[closeReason] // 服务端主动关闭的原因；为空表示是客户端关的
+	qmu     sync.Mutex
+	queue   [][]byte
+	writing bool // 是否有写协程在运行；同一时刻最多一个，保证帧的顺序
+	kicking bool // 已经决定踢线，新帧不再入队
+	// afterDrain 是等队列写完才发的踢线（写协程运行时才有）。
+	afterDrain func()
+	kickOnce   sync.Once
+	closed     atomic.Pointer[closeReason] // 服务端主动关闭的原因；为空表示是客户端关的
 	// 周期复查：上一次的时间（注入的时钟）和连续失败次数。
 	lastRecheck  atomic.Int64
 	recheckFails atomic.Int32
@@ -534,7 +537,7 @@ func (c *conn) Gen() int64       { return c.claims.Gen }
 func (c *conn) Kick(reason string) {
 	c.kickOnce.Do(func() {
 		c.closed.CompareAndSwap(nil, &closeReason{code: protocol.KickCloseCode[reason], reason: kickedPrefix + reason, by: "server"})
-		go c.gw.kick(c.ws, reason)
+		c.kickAfterQueue(protocol.KickedEvent{Type: protocol.EventKicked, Reason: reason})
 	})
 }
 
@@ -542,7 +545,7 @@ func (c *conn) Kick(reason string) {
 func (c *conn) KickWith(reason string, recoverBefore *int64) {
 	c.kickOnce.Do(func() {
 		c.closed.CompareAndSwap(nil, &closeReason{code: protocol.KickCloseCode[reason], reason: kickedPrefix + reason, by: "server"})
-		go c.gw.kickEvent(c.ws, protocol.KickedEvent{Type: protocol.EventKicked, Reason: reason, RecoverBefore: recoverBefore})
+		c.kickAfterQueue(protocol.KickedEvent{Type: protocol.EventKicked, Reason: reason, RecoverBefore: recoverBefore})
 	})
 }
 
@@ -551,8 +554,23 @@ func (c *conn) Suspend(until *int64) {
 	c.kickOnce.Do(func() {
 		reason := protocol.KickSuspended
 		c.closed.CompareAndSwap(nil, &closeReason{code: protocol.KickCloseCode[reason], reason: kickedPrefix + reason, by: "server"})
-		go c.gw.kickEvent(c.ws, protocol.KickedEvent{Type: protocol.EventKicked, Reason: reason, Until: protocol.NullableMs(until)})
+		c.kickAfterQueue(protocol.KickedEvent{Type: protocol.EventKicked, Reason: reason, Until: protocol.NullableMs(until)})
 	})
+}
+
+// kickAfterQueue 等已经入队的帧写完再发 kicked 并关闭：踢线前发的 securityNotice 不能被关闭抢先（F-ACC-02 规则 3b）。
+// 从这里起新帧不再入队，队列有限，等待有上限；写超时或写失败时 drain 直接断开连接。
+func (c *conn) kickAfterQueue(ev protocol.KickedEvent) {
+	kick := func() { c.gw.kickEvent(c.ws, ev) }
+	c.qmu.Lock()
+	c.kicking = true
+	if c.writing {
+		c.afterDrain = kick
+		c.qmu.Unlock()
+		return
+	}
+	c.qmu.Unlock()
+	go kick()
 }
 
 // Send 非阻塞入队。积压超过 SendBuffer 说明客户端读得太慢，直接断开它，由客户端重连后 sync 补齐。
@@ -563,6 +581,10 @@ func (c *conn) Send(frame []byte) bool {
 	default:
 	}
 	c.qmu.Lock()
+	if c.kicking {
+		c.qmu.Unlock()
+		return false
+	}
 	if len(c.queue) >= c.gw.cfg.SendBuffer {
 		c.qmu.Unlock()
 		c.gw.metrics.SlowConsumers.Inc()
@@ -588,7 +610,12 @@ func (c *conn) drain() {
 		c.queue = nil // 释放底层数组，空闲时不占内存
 		if len(batch) == 0 {
 			c.writing = false
+			after := c.afterDrain
+			c.afterDrain = nil
 			c.qmu.Unlock()
+			if after != nil {
+				after()
+			}
 			return
 		}
 		c.qmu.Unlock()

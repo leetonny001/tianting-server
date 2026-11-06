@@ -135,7 +135,7 @@ func (s *Service) replay(ctx context.Context, d store.DeviceSession, ip string, 
 	inc(s.RefreshReplay)
 	before := s.recoverBefore(ctx, d.UserID)
 	s.Router.KickSession(d.UserID, d.SID, protocol.KickSessionRevoked, before)
-	s.notify(d.UserID, EventRefreshReplay, d.Platform, ms)
+	s.notify(d.UserID, d.SID, EventRefreshReplay, d.Platform, ms)
 	s.Log.Warn("refresh replay detected", "uid", d.UserID, "sid_hash", SIDHash(d.SID))
 	return true, s.refreshErr(ctx, d.UserID, protocol.ReasonReplayDetected)
 }
@@ -149,7 +149,7 @@ func (s *Service) promote(d *store.DeviceSession, p store.PendingGen, now time.T
 	d.ExpiresAt = s.slidExpiry(*d, now)
 }
 
-// seeIP 比较 IP 前缀（规则 4 的检测盲区缓解）：新前缀写事件，只提醒不吊销。
+// seeIP 比较 IP 前缀（规则 4 的检测盲区缓解）：新前缀写事件，提交之后用 notifyNewPrefix 提醒，只提醒不吊销。
 func seeIP(d *store.DeviceSession, ip string, ms int64) []store.AccountEvent {
 	prefix := clientip.EventPrefix(ip)
 	if slices.Contains(d.SeenIPPrefixes, prefix) {
@@ -161,6 +161,14 @@ func seeIP(d *store.DeviceSession, ip string, ms int64) []store.AccountEvent {
 	}
 	d.SeenIPPrefixes = seen
 	return []store.AccountEvent{{UserID: d.UserID, Kind: EventNewIPPrefix, At: ms, Platform: d.Platform, IPPrefix: prefix, SIDHash: SIDHash(d.SID)}}
+}
+
+// notifyNewPrefix 在事务提交之后提醒其他设备（F-ACC-02 规则 3b）。PRD 和安全复查都没有规定频率，这里不限频（问题表 A13）：
+// 每条会话每个前缀最多一次，弱网切换回见过的前缀不再提醒。
+func (s *Service) notifyNewPrefix(events []store.AccountEvent, sid string) {
+	for _, ev := range events {
+		s.notify(ev.UserID, sid, ev.Kind, ev.Platform, ev.At)
+	}
 }
 
 // issueRefresh 是第 ⑥ 步和签发。again=true 表示条件更新失败，要重新判定。
@@ -206,6 +214,7 @@ func (s *Service) issueRefresh(ctx context.Context, d store.DeviceSession, pendi
 	if !ok {
 		return nil, true, nil
 	}
+	s.notifyNewPrefix(events, d.SID)
 	if reissue {
 		inc(s.RefreshReissue)
 	}
@@ -249,7 +258,7 @@ func (s *Service) issueLimited(ctx context.Context, d store.DeviceSession, now t
 		return nil, true, nil
 	}
 	if d.LimitedStreak >= limitedStreakMax {
-		s.notify(d.UserID, EventRefreshRateLimited, d.Platform, ms)
+		s.notify(d.UserID, d.SID, EventRefreshRateLimited, d.Platform, ms)
 	}
 	return nil, false, retry
 }
@@ -367,6 +376,7 @@ func (a *Access) Promote(ctx context.Context, claims auth.Claims, ip string) aut
 		if ok {
 			// 断开这条 sid 上代号不是新 current 的连接：被攻击者转正时，在线的受害者马上发现。
 			s.Router.KickStaleGen(d.UserID, d.SID, nd.CurrentGen)
+			s.notifyNewPrefix(events, d.SID)
 			return auth.Result{Claims: claims, Verdict: auth.VerdictOK}
 		}
 	}

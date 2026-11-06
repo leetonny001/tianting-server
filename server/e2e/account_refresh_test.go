@@ -246,10 +246,7 @@ func TestTC_ACC_03_25_StolenToken(t *testing.T) {
 		if len(evs) != 1 || evs[0].SIDHash != account.SIDHash(sid) {
 			t.Errorf("events: %+v", evs)
 		}
-		f := other.waitCmd(protocol.CmdEvent)
-		if !strings.Contains(string(f.Data), `"securityNotice"`) || !strings.Contains(string(f.Data), account.EventRefreshReplay) {
-			t.Errorf("d2: %s", f.Data)
-		}
+		waitNotice(other, account.EventRefreshReplay)
 		e.wantRefreshErr("attacker", x.RefreshToken, protocol.ReasonReplayDetected)
 		waitKicked(xc, protocol.KickSessionRevoked, protocol.CloseTokenRevoked)
 	}
@@ -552,10 +549,7 @@ func TestTC_ACC_03_47_SustainedLimit(t *testing.T) {
 			}
 		}
 		if hour == 5 {
-			c.expectNoMsg(100 * time.Millisecond)
-			if len(c.pending) != 0 {
-				t.Fatalf("notified too early: %s", c.pending[0].Data)
-			}
+			wantNoNotice(t, c, account.EventRefreshRateLimited) // refresh 用 freshIP，newIpPrefix 不算
 		}
 		if hour < 6 {
 			clk.advance(time.Hour)
@@ -564,10 +558,7 @@ func TestTC_ACC_03_47_SustainedLimit(t *testing.T) {
 	if n := len(e.events("alice_1", account.EventRefreshRateLimited)); n != 6 {
 		t.Errorf("events %d", n)
 	}
-	f := c.waitCmd(protocol.CmdEvent)
-	if !strings.Contains(string(f.Data), account.EventRefreshRateLimited) {
-		t.Errorf("%s", f.Data)
-	}
+	waitNotice(c, account.EventRefreshRateLimited)
 	if d := e.session(sidOf(r1.RefreshToken)); d.RevokedAt != 0 {
 		t.Error("must not revoke")
 	}

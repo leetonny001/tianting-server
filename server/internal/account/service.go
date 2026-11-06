@@ -220,12 +220,13 @@ func (s *Service) issue(d store.DeviceSession, version int64, refreshToken strin
 }
 
 // notify 给账号的其他在线设备下发 securityNotice（F-ACC-02 规则 3b）。尽力而为，事件已经写进 account_events。
-func (s *Service) notify(userID, kind, platform string, at int64) {
+// exceptSID 是发起方的设备会话：它的连接不提醒，同一 sid 的其他连接也不提醒（多标签页已互斥）。
+func (s *Service) notify(userID, exceptSID, kind, platform string, at int64) {
 	b, err := json.Marshal(protocol.Event(protocol.SecurityNoticeEvent{Type: protocol.EventSecurityNotice, Kind: kind, At: at, Platform: platform}))
 	if err != nil {
 		return
 	}
-	s.Router.DeliverToUser(userID, b, "")
+	s.Router.DeliverToUserExceptSID(userID, b, exceptSID)
 }
 
 // gateErr 把闸门的错误映射成响应。

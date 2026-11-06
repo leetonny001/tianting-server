@@ -182,6 +182,8 @@ func (s *Service) Password(ctx context.Context, claims auth.Claims, in PasswordI
 		return nil, internalErr()
 	}
 	resp.RecoveryCode, resp.RecoveryCodeGen = code, res.RecoveryGen
+	// 提醒排在踢线之前，踢线之后连接就关了（F-ACC-02 规则 3b、F-ACC-05 规则 5）。发起的旧 sid 不提醒。新 sid 这时还没有连接。
+	s.notify(claims.UserID, claims.SID, EventPasswordChanged, session.Platform, ms)
 	// 踢线放在提交之后。旧 sid 也踢：SDK 缓存这个踢线等响应（规则 3）。新 sid 不踢。
 	s.Router.KickUserExcept(claims.UserID, session.SID, protocol.KickPasswordChanged, s.recoverBefore(ctx, claims.UserID))
 	s.Log.Info("account password changed", "uid", claims.UserID)

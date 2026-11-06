@@ -11,6 +11,7 @@ import (
 type fakeClient struct {
 	id     string
 	uid    string
+	sid    string
 	mu     sync.Mutex
 	got    [][]byte
 	fail   bool
@@ -20,7 +21,7 @@ type fakeClient struct {
 func (f *fakeClient) SessionInfo() sessions.Conn  { return sessions.Conn{ConnID: f.id} }
 func (f *fakeClient) Platform() string            { return "web" }
 func (f *fakeClient) ConnID() string              { return f.id }
-func (f *fakeClient) SID() string                 { return "" }
+func (f *fakeClient) SID() string                 { return f.sid }
 func (f *fakeClient) Gen() int64                  { return 0 }
 func (f *fakeClient) KickWith(r string, _ *int64) { f.Kick(r) }
 func (f *fakeClient) UserID() string              { return f.uid }
@@ -41,6 +42,26 @@ func (f *fakeClient) Kick(reason string) {
 	f.kicked = reason
 }
 func (f *fakeClient) count() int { f.mu.Lock(); defer f.mu.Unlock(); return len(f.got) }
+
+func TestDeliverToUserExceptSID(t *testing.T) {
+	h := New()
+	tab1 := &fakeClient{id: "1", uid: "u1", sid: "s1"}
+	tab2 := &fakeClient{id: "2", uid: "u1", sid: "s1"}
+	phone := &fakeClient{id: "3", uid: "u1", sid: "s2"}
+	stranger := &fakeClient{id: "4", uid: "u2", sid: "s3"}
+	for _, c := range []*fakeClient{tab1, tab2, phone, stranger} {
+		h.Register(c, 0)
+	}
+	if n := h.DeliverToUserExceptSID("u1", []byte("x"), "s1"); n != 1 {
+		t.Fatalf("delivered %d, want 1", n)
+	}
+	if tab1.count() != 0 || tab2.count() != 0 || phone.count() != 1 || stranger.count() != 0 {
+		t.Errorf("tab1=%d tab2=%d phone=%d stranger=%d", tab1.count(), tab2.count(), phone.count(), stranger.count())
+	}
+	if n := h.DeliverToUserExceptSID("u1", []byte("y"), ""); n != 3 {
+		t.Errorf("empty sid delivered %d, want 3", n)
+	}
+}
 
 func TestSendToUserReachesAllDevicesExceptSender(t *testing.T) {
 	h := New()

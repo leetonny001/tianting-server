@@ -111,6 +111,18 @@ func (h *Hub) DeliverToUser(userID string, frame []byte, exceptConn string) int 
 	return h.SendToUser(userID, frame, exceptConn)
 }
 
+// DeliverToUserExceptSID 实现 delivery.Router。
+func (h *Hub) DeliverToUserExceptSID(userID string, frame []byte, exceptSID string) int {
+	n := 0
+	// 在锁外发送，原因同 SendToUser。
+	for _, c := range h.userClients(userID, func(c Client) bool { return exceptSID == "" || c.SID() != exceptSID }) {
+		if c.Send(frame) {
+			n++
+		}
+	}
+	return n
+}
+
 // SetDropKicks 打开或关闭"丢弃吊销事件"，只有测试模式的路由会调用。
 func (h *Hub) SetDropKicks(on bool) { h.dropKicks.Store(on) }
 

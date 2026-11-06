@@ -352,7 +352,8 @@ type SecurityNoticeEvent struct {
 	Platform string `json:"platform"`
 }
 
-// securityNotice 的 kind。改密、找回等随 BE-417、BE-418 增加。
+// securityNotice 的 kind 就是 account_events 的类型，定义和发送点在 internal/account（notify 的调用方）：
+// newDeviceLogin、passwordChanged、passwordRecovered、recoveryCodeRegenerated、refreshReplay、refreshRateLimited、newIpPrefix。
 const SecurityNewDeviceLogin = "newDeviceLogin"
 
 // NullableMs 把"到期时间，永久为 null"编码成字段值：用于只在特定情况出现、出现时可以是 null 的字段。

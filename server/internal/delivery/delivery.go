@@ -19,6 +19,9 @@ type Session interface {
 type Router interface {
 	// DeliverToUser 投递给用户的所有连接，跳过 exceptConn（空字符串表示不跳过）。返回本节点接受投递的连接数（只用于指标）。
 	DeliverToUser(userID string, frame []byte, exceptConn string) int
+	// DeliverToUserExceptSID 投递给用户除这条设备会话之外的所有连接（securityNotice 的"其他设备"，发起方可能是 HTTP 请求，没有连接 ID）。
+	// exceptSID 为空表示不跳过。返回值同 DeliverToUser。
+	DeliverToUserExceptSID(userID string, frame []byte, exceptSID string) int
 	// KickUser 给用户的所有连接下发 kicked 并关闭。
 	KickUser(userID, reason string)
 	// SuspendUser 给用户的所有连接下发 kicked {reason: suspended, until}（永久为 nil）并关闭（封禁，F-ADM-13 规则 2）。

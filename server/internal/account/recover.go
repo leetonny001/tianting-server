@@ -160,6 +160,8 @@ func (s *Service) Recover(ctx context.Context, in RecoverInput, ip string) (*Aut
 		return nil, internalErr()
 	}
 	resp.RecoveryCode, resp.RecoveryCodeGen = code, gen
+	// 提醒排在踢线之前，踢线之后连接就关了（F-ACC-02 规则 3b）。发起找回的设备还没有连接。
+	s.notify(acct.UserID, session.SID, EventPasswordRecover, in.Platform, ms)
 	s.Router.KickUserExcept(acct.UserID, session.SID, protocol.KickPasswordChanged, s.recoverBefore(ctx, acct.UserID))
 	s.Log.Info("account recovered", "uid", acct.UserID)
 	return resp, nil
@@ -199,7 +201,7 @@ func (s *Service) RegenerateRecovery(ctx context.Context, claims auth.Claims, in
 		return nil, s.commitErr(err, claims.UserID)
 	}
 	if d, err := s.Store.GetDeviceSession(ctx, claims.SID); err == nil {
-		s.notify(claims.UserID, EventRecoveryRegen, d.Platform, ms)
+		s.notify(claims.UserID, claims.SID, EventRecoveryRegen, d.Platform, ms)
 	}
 	return &RecoveryCodeResponse{RecoveryCode: code, RecoveryCodeGen: res.RecoveryGen}, nil
 }

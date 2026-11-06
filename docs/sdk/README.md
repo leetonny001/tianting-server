@@ -192,7 +192,7 @@ im.disconnect();                            // 退出登录
   - App 不再等退出结束才能登录。旧 `IMClient` 要在新会话开始前关掉：它还绑着 `tokenProvider`，会用新 token 重连；它的 `disconnect` 清的本地库和新会话共用。H5 每次退出换一个 `AccountClient` 实例，本来就不等。
 - **踢线的会话结束**：关闭码 4010、4012 的踢线清掉本地 token；`tooManyConnections` 不清（账号本身没问题）。`serverShutdown` 按退避重连。
 - **不认识的踢线原因**：关闭码说可以重连就忽略；否则按关闭码结束，原因原样告诉界面（`moderation.test.ts` 已有用例）。
-- **securityNotice**：放行服务端实际发的四种（`server/internal/account` 的 `notify` 调用）：`newDeviceLogin`、`recoveryCodeRegenerated`、`refreshReplay`、`refreshRateLimited`。不认识的 `kind` 不发给 App。`passwordChanged`、`passwordRecovered`、`loggedOutOthers`、`newIpPrefix` 等只写 `account_events`，不发这个帧：改密、找回时其他设备收到的是 `kicked`。真实服务端的集成测试验证了 `recoveryCodeRegenerated`（三套都有）。
+- **securityNotice**：放行服务端实际发的七种（`server/internal/account` 的 `notify` 调用）：`newDeviceLogin`、`passwordChanged`、`passwordRecovered`、`recoveryCodeRegenerated`、`refreshReplay`、`refreshRateLimited`、`newIpPrefix`。不认识的 `kind` 不发给 App。`loggedOutOthers`、注销等只写 `account_events`，不发这个帧。发起方所在的 `sid` 不提醒。改密、找回时其他设备先收到提醒，再收到 `kicked`。真实服务端的集成测试：`recoveryCodeRegenerated` 三套都有，`passwordChanged` 三套都有；`refreshReplay`、`refreshRateLimited`、`newIpPrefix`、`passwordRecovered` 只有 sdk-ts（`test/integration/security-notice.test.ts`）。
 - **日志**：只有方法、路径、状态码、错误码、动作。token、refresh、恢复码、密码不进 URL、日志、事件和错误信息；传输层的原始错误不带进异常（错误信息可能有 URL）。
 
 ### HTTP 客户端不能隐式重发（S2、K4，第 21 节 16）

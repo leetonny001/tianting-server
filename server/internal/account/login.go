@@ -162,7 +162,7 @@ func (s *Service) login(ctx context.Context, in LoginInput, ip string) (*AuthRes
 		resp.RecoveryCode, resp.RecoveryCodeGen = code, result.RecoveryGen
 	}
 	// 踢线和提醒都放在提交之后。不踢其他设备（规则 5）。
-	s.notify(acct.UserID, EventNewDeviceLogin, in.Platform, now.UnixMilli())
+	s.notify(acct.UserID, session.SID, EventNewDeviceLogin, in.Platform, now.UnixMilli())
 	s.Log.Info("account login", "uid", acct.UserID, "platform", in.Platform)
 	return resp, metrics.AccountOK, nil
 }
