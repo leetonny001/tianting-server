@@ -20,6 +20,8 @@ const (
 	CodeTokenRevoked             = 4012
 	CodeAdminKeyInvalid          = 4013
 	CodeAdminSignatureInvalid    = 4017
+	CodeAccountCredentials       = 4018 // 用户名、密码或恢复码错误，不区分（PRD-chat F-ACC-02 规则 2）
+	CodeRefreshTokenInvalid      = 4019 // PRD-chat F-ACC-03
 	CodeUserBanned               = 4034
 	CodeMessageNotFound          = 4044
 	CodeMsgReadGrantRequired     = 4039
@@ -38,6 +40,7 @@ const (
 	CodeGroupExists              = 4090
 	CodeFriendRequestHandled     = 4091
 	CodePushIDConflict           = 4094
+	CodeUsernameTaken            = 4095
 	CodeGroupMemberLimitExceeded = 4130
 	CodeBatchLimitExceeded       = 4131
 	CodeFriendLimitExceeded      = 4132
@@ -48,6 +51,7 @@ const (
 	CodeStrangerMsgLimit         = 4137
 	CodeRateLimited              = 4290
 	CodeQuotaExceeded            = 4292
+	CodeAccountLocked            = 4294 // details.retryAfterSeconds，不自动重试
 	CodeInternal                 = 5000
 	CodeServiceUnavailable       = 5030
 )
@@ -68,11 +72,13 @@ var codes = map[int]codeInfo{
 	CodeInvalidConvID:            {"INVALID_CONV_ID", 400},
 	CodeClientMsgIDConflict:      {"CLIENT_MSG_ID_CONFLICT", 0},
 	CodeInvalidPlatform:          {"INVALID_PLATFORM", 0},
-	CodeTokenInvalid:             {"TOKEN_INVALID", 0},
-	CodeTokenExpired:             {"TOKEN_EXPIRED", 0},
-	CodeTokenRevoked:             {"TOKEN_REVOKED", 0},
+	CodeTokenInvalid:             {"TOKEN_INVALID", 401},
+	CodeTokenExpired:             {"TOKEN_EXPIRED", 401},
+	CodeTokenRevoked:             {"TOKEN_REVOKED", 401},
 	CodeAdminKeyInvalid:          {"ADMIN_KEY_INVALID", 401},
 	CodeAdminSignatureInvalid:    {"ADMIN_SIGNATURE_INVALID", 401},
+	CodeAccountCredentials:       {"ACCOUNT_CREDENTIALS_INVALID", 401},
+	CodeRefreshTokenInvalid:      {"REFRESH_TOKEN_INVALID", 401},
 	CodeUserBanned:               {"USER_BANNED", 403},
 	CodeMessageNotFound:          {"MESSAGE_NOT_FOUND", 404},
 	CodeMsgReadGrantRequired:     {"MSG_READ_GRANT_REQUIRED", 403},
@@ -91,6 +97,7 @@ var codes = map[int]codeInfo{
 	CodeGroupExists:              {"GROUP_EXISTS", 409},
 	CodeFriendRequestHandled:     {"FRIEND_REQUEST_HANDLED", 0},
 	CodePushIDConflict:           {"PUSH_ID_CONFLICT", 409},
+	CodeUsernameTaken:            {"USERNAME_TAKEN", 409},
 	CodeGroupMemberLimitExceeded: {"GROUP_MEMBER_LIMIT_EXCEEDED", 400},
 	CodeBatchLimitExceeded:       {"BATCH_LIMIT_EXCEEDED", 400},
 	CodeFriendLimitExceeded:      {"FRIEND_LIMIT_EXCEEDED", 400},
@@ -101,6 +108,7 @@ var codes = map[int]codeInfo{
 	CodeStrangerMsgLimit:         {"STRANGER_MSG_LIMIT", 0},
 	CodeRateLimited:              {"RATE_LIMITED", 429},
 	CodeQuotaExceeded:            {"QUOTA_EXCEEDED", 429},
+	CodeAccountLocked:            {"ACCOUNT_LOGIN_LOCKED", 429},
 	CodeInternal:                 {"INTERNAL", 500},
 	CodeServiceUnavailable:       {"SERVICE_UNAVAILABLE", 503},
 }
@@ -159,14 +167,57 @@ const (
 	KickReplaced     = "replaced"
 	KickTooManyConns = "tooManyConnections"
 	KickShutdown     = "serverShutdown"
+	// 账号的设备会话被吊销（PRD-chat F-ACC-03 规则 2），都可以带 recoverBefore。
+	KickPasswordChanged = "passwordChanged"
+	KickSessionRevoked  = "sessionRevoked"
+	KickAccountDeleted  = "accountDeleted"
 )
 
 // KickCloseCode 返回被踢原因对应的关闭码。
 var KickCloseCode = map[string]int{
-	KickTokenInvalid: CloseTokenInvalid,
-	KickTokenExpired: CloseTokenExpired,
-	KickBanned:       CloseTokenRevoked,
-	KickSuspended:    CloseTokenRevoked,
-	KickTooManyConns: CloseTooManyConns,
-	KickShutdown:     CloseGoingAway,
+	KickTokenInvalid:    CloseTokenInvalid,
+	KickTokenExpired:    CloseTokenExpired,
+	KickBanned:          CloseTokenRevoked,
+	KickSuspended:       CloseTokenRevoked,
+	KickTooManyConns:    CloseTooManyConns,
+	KickShutdown:        CloseGoingAway,
+	KickPasswordChanged: CloseTokenRevoked,
+	KickSessionRevoked:  CloseTokenRevoked,
+	KickAccountDeleted:  CloseTokenRevoked,
+}
+
+// 错误的 reason（PRD-chat 第 11.5 节，C1 部分）。errors.json 的 reasons 是真相源，errors_test.go 保证一致。
+const (
+	ReasonPasswordWeak           = "passwordWeak"
+	ReasonRecoveryCodeStale      = "recoveryCodeStale"
+	ReasonTokenSuperseded        = "tokenSuperseded"
+	ReasonRefreshInvalid         = "invalid"
+	ReasonRefreshExpired         = "expired"
+	ReasonRefreshRevoked         = "revoked"
+	ReasonRefreshSuperseded      = "superseded"
+	ReasonReplayDetected         = "replayDetected"
+	ReasonCredentialsChanged     = "credentialsChanged"
+	ReasonLoggedOutOthers        = "loggedOutOthers"
+	ReasonAccountDeleted         = "accountDeleted"
+	ReasonRegisterClosed         = "registerClosed"
+	ReasonInviteInvalid          = "inviteInvalid"
+	ReasonAccountSessionRequired = "accountSessionRequired"
+	ReasonAccountExists          = "accountExists"
+	ReasonAccountDeletionPending = "accountDeletionPending"
+	ReasonFeatureDisabled        = "featureDisabled"
+	ReasonRecoverLimited         = "recoverLimited"
+)
+
+// reasons 按错误码列出 reason，只给一致性测试用。
+var reasons = map[int][]string{
+	CodeBadRequest:          {ReasonPasswordWeak, ReasonRecoveryCodeStale},
+	CodeTokenExpired:        {ReasonTokenSuperseded},
+	CodeRefreshTokenInvalid: {ReasonRefreshInvalid, ReasonRefreshExpired, ReasonRefreshRevoked, ReasonRefreshSuperseded, ReasonReplayDetected, ReasonCredentialsChanged, ReasonLoggedOutOthers, ReasonAccountDeleted},
+	CodeForbidden:           {ReasonRegisterClosed, ReasonInviteInvalid, ReasonAccountSessionRequired, ReasonAccountExists, ReasonAccountDeletionPending, ReasonFeatureDisabled},
+	CodeRateLimited:         {ReasonRecoverLimited},
+}
+
+// WithReason 构造带 reason 的协议错误。
+func WithReason(code int, reason, msg string) *Error {
+	return &Error{Code: code, Msg: msg, Reason: reason}
 }

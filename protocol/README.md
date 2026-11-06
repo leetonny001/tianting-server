@@ -1,13 +1,14 @@
 # IM 协议（v1）
 
-协议的唯一真相源，对应 [PRD v1.2](../docs/prd/PRD-core-v1.2.md)。服务端和三套 SDK（[tianting-sdk-ts](https://github.com/leetonny001/tianting-sdk-ts)、tianting-sdk-kotlin、tianting-sdk-swift）都以这里为准，并跑同一批用例。SDK 仓库里放的是副本，协议只在这里改，改完通知各 SDK 仓库运行 `scripts/sync-protocol.sh`。
+协议的唯一真相源，对应 [PRD v1.2](../docs/prd/PRD-core-v1.2.md) 和 [PRD-chat v1.1](../docs/prd/PRD-chat-v1.1.md)。服务端和三套 SDK（[tianting-sdk-ts](https://github.com/leetonny001/tianting-sdk-ts)、tianting-sdk-kotlin、tianting-sdk-swift）都以这里为准，并跑同一批用例。SDK 仓库里放的是副本，协议只在这里改，改完通知各 SDK 仓库运行 `scripts/sync-protocol.sh`。
 
 | 文件 | 内容 |
 |---|---|
 | `schema/frame.schema.json` | WebSocket 帧的 JSON Schema（2020-12） |
+| `schema/http-client.schema.json` | 客户端 HTTP 接口 `/v1/*` 的 Schema（PRD-chat 第 11.2 节） |
 | `vectors/frames.json` | 单帧校验用例：`valid` 必须通过，`invalid` 必须拒绝 |
 | `errors.json` / [ERRORS.md](ERRORS.md) | 错误码、关闭码、被踢原因 |
-| [ADMIN.md](ADMIN.md) | 管理接口（给业务服务端） |
+| [ADMIN.md](ADMIN.md) | 管理接口（只在管理端口） |
 
 ## 1. 连接
 
@@ -19,8 +20,8 @@ ws(s)://{host}/ws?platform={android|ios|web|pc}
 
 - **token 不放在 URL 里**（会被代理、CDN、浏览器历史记录），连接后第一帧用 `auth` 发送（PRD C-52）。收到 auth 的 ack 才算上线。
 - 5 秒内没有发 `auth`，或第一帧不是 `auth`：以 4401 关闭（可以重连），不发 `kicked`。
-- token 由业务服务端调用 `POST /admin/users/token` 获取（对应腾讯 IM 的 userSig）。
-- 凭证问题：下发 `{"cmd":"event","data":{"type":"kicked","reason":"tokenInvalid|tokenExpired|banned"}}`，再以 4010 / 4011 / 4012 关闭（检查顺序 4010 → 4012 → 4011）。
+- token 有三个来源（PRD-chat F-ACC-07 规则 1），校验相同：① 账号登录 `POST /v1/account/login`、`register`（带 `sid` 和代号 `gen`，有 refresh token）；② 演示登录 `POST /demo/login`（开发和演示环境）；③ 管理接口 `POST /admin/users/token`（没有 `sid`，最高权限，生产环境默认不放行）。
+- 凭证问题：下发 `{"cmd":"event","data":{"type":"kicked","reason":"tokenInvalid|tokenExpired|banned|passwordChanged|sessionRevoked|accountDeleted"}}`，再以 4010 / 4011 / 4012 关闭（检查顺序 4010 → 4012 → 4011）。后三个原因可以带 `recoverBefore`。
 - platform 缺失或不合法：握手后立即以 4009 关闭，不发 `kicked`（最先检查）。
 - 浏览器的 Origin 必须在白名单内（`IM_ALLOWED_ORIGINS`），否则握手返回 HTTP 403。
 - 同一用户最多 10 个连接，超出时最早的连接收到 `kicked/tooManyConnections` 并以 4429 关闭（不重连）。
@@ -31,7 +32,7 @@ ws(s)://{host}/ws?platform={android|ios|web|pc}
 
 | 命令 | 方向 | 用途 | ack 数据 |
 |---|---|---|---|
-| `auth` | 上行 | 鉴权，必须是第一帧；成功后再发返回 4000 | `{userId, serverTime}` |
+| `auth` | 上行 | 鉴权，必须是第一帧；成功后再发返回 4000 | `{userId, serverTime, recoveryCodeUnacked?}` |
 | `send` | 上行 | 发消息 | `{msgId, convId, seq, ts}` |
 | `sync` | 上行 | 拉消息：`afterSeq`（补拉之后的）或 `beforeSeq`（翻页拉之前的），二选一 | `{messages, hasMore}`，按 seq 升序 |
 | `convs` | 上行 | 拉会话列表：按 `updatedAt` 倒序、`convId` 升序，最多 500 个 | `{convs, truncated}` |

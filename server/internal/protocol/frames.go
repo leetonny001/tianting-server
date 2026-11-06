@@ -46,14 +46,15 @@ const (
 
 // 事件类型。
 const (
-	EventKicked       = "kicked"
-	EventConvAdded    = "convAdded"
-	EventConvRemoved  = "convRemoved"
-	EventReadUpdated  = "readUpdated"
-	EventMsgDeleted   = "msgDeleted"
-	EventMuted        = "muted"
-	EventUnmuted      = "unmuted"
-	EventGroupChanged = "groupChanged"
+	EventKicked         = "kicked"
+	EventSecurityNotice = "securityNotice"
+	EventConvAdded      = "convAdded"
+	EventConvRemoved    = "convRemoved"
+	EventReadUpdated    = "readUpdated"
+	EventMsgDeleted     = "msgDeleted"
+	EventMuted          = "muted"
+	EventUnmuted        = "unmuted"
+	EventGroupChanged   = "groupChanged"
 )
 
 const (
@@ -204,6 +205,8 @@ type AuthAck struct {
 	ServerTime int64  `json:"serverTime"`
 	// MutedUntil 只在用户被用户级禁言时出现，永久禁言为 null（第二批，F-ADM-40 规则 4）。
 	MutedUntil json.RawMessage `json:"mutedUntil,omitempty"`
+	// RecoveryCodeUnacked 只在账号最新一代恢复码没有确认时出现（PRD-chat F-ACC-05 规则 1）。
+	RecoveryCodeUnacked bool `json:"recoveryCodeUnacked,omitempty"`
 }
 
 // SendAck 是 send 成功的应答。聊天室消息没有 seq。
@@ -336,7 +339,21 @@ type KickedEvent struct {
 	Reason string `json:"reason"`
 	// Until 只在 reason=suspended 时出现：封禁到期的毫秒时间戳，永久为 null（F-ADM-13 规则 2）。
 	Until json.RawMessage `json:"until,omitempty"`
+	// RecoverBefore 只在 passwordChanged、sessionRevoked、accountDeleted 时可能出现：
+	// 最早的旧恢复码截止时间，每次按账号状态计算（PRD-chat F-ACC-03 规则 6a）。
+	RecoverBefore *int64 `json:"recoverBefore,omitempty"`
 }
+
+// SecurityNoticeEvent 提醒账号的其他在线设备（PRD-chat F-ACC-02 规则 3b）。客户端忽略不认识的 kind。
+type SecurityNoticeEvent struct {
+	Type     string `json:"type"`
+	Kind     string `json:"kind"`
+	At       int64  `json:"at"`
+	Platform string `json:"platform"`
+}
+
+// securityNotice 的 kind。改密、找回等随 BE-417、BE-418 增加。
+const SecurityNewDeviceLogin = "newDeviceLogin"
 
 // NullableMs 把"到期时间，永久为 null"编码成字段值：用于只在特定情况出现、出现时可以是 null 的字段。
 func NullableMs(ms *int64) json.RawMessage {

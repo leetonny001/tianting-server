@@ -1,4 +1,4 @@
-# 管理接口（给业务服务端）
+# 管理接口
 
 管理接口**只在单独的管理端口上提供**（`IM_ADMIN_ADDR`，默认 `127.0.0.1:8081`，`off` 关闭）；对外端口（`IM_ADDR`）上请求 `/admin/*` 返回 404。生产环境管理地址不是回环地址时必须配置 TLS（`IM_ADMIN_TLS_CERT` / `IM_ADMIN_TLS_KEY`），可以用 `IM_ADMIN_ALLOWED_CIDRS` 限制来源网段（只看 TCP 对端地址，不解析 `X-Forwarded-For`），见 PRD-admin F-KEY-01。
 
@@ -54,6 +54,17 @@ HMAC：`HMAC-SHA256(secret, 待签名串)`；Ed25519：私钥对待签名串签�
 | `POST /admin/users/import` | `{users:[{userId, nickname?, avatar?}]}` | `{imported}` | 批量导入 / 更新，单次 ≤ 500；任何一项不合法整批不写入 |
 | `GET /admin/users/{userId}` | — | `{userId, nickname, avatar, createdAt, official, online}` | 不存在：404 / 4042。`online` 来自在线路由（单节点是本机），不缓存 |
 | `POST /admin/users/{userId}/force-logout` | `{}` | `{}` | 踢下线全部连接，此前签发的 token 全部作废；重新签发即可解封 |
+
+## 账号（PRD-chat 第 11.6 节，随 BE-421 实现）
+
+| 接口 | scope | 请求 | 成功响应 | 说明 |
+|---|---|---|---|---|
+| `POST /admin/invites` | `account.invite` | `{count, maxUses, expiresAt, note?}` | `{invites:[{inviteId, code, last4, maxUses, expiresAt}]}` | 明文只在这里出现一次；服务端只存哈希和后 4 位。`count` ≤ 100（4131），`maxUses` 1～1000（4000） |
+| `GET /admin/invites` | `account.invite` | — | `{invites:[…]}` | 没有明文；显示已用次数、是否停用、是否自动停用 |
+| `POST /admin/invites/{id}/disable` | `account.invite` | `{}` | `{}` | 立即生效，第一批不能重新启用，用新建恢复 |
+| `GET /admin/accounts/{userId}` | `user.read` | — | `{hasAccount, createdAt?, lastLoginAt?, sessionCount?}` | 没有任何哈希和令牌 |
+
+**没有 `account.reset`，没有任何改密码的管理接口**（PRD-chat F-ACC-05 规则 4）。
 
 ## 群
 

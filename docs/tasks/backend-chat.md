@@ -17,6 +17,7 @@
 
 | 任务 | 状态 | 说明 |
 |---|---|---|
+| BE-400 | ✅ 完成（服务端部分） | errors.json、ERRORS.md、kickReasons、`kicked.recoverBefore`、`securityNotice`、`recoveryCodeUnacked`、`http-client.schema.json` 账号部分、ADMIN.md、README.md。AC-CHAT-90-14 服务端一致性（TC-CHAT-90-12）通过；**三套 SDK 枚举未做（FE-600～602）**。ADMIN.md 的账号接口随 BE-421 实现 |
 | 全部 | ⬜ 未开始 | C1 结束后按实际用时校准工作量（CH-27），再由 Frank 决定 C3 起的部分 |
 
 ## 总览
