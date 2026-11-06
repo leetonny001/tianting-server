@@ -8,6 +8,8 @@ import (
 	"fmt"
 
 	"github.com/google/uuid"
+
+	"tianting/server/internal/auth"
 )
 
 var _ AccountStore = (*SQLite)(nil)
@@ -401,4 +403,15 @@ func (s *SQLite) MarkUserDeleted(ctx context.Context, userID string, now int64) 
 		return ErrNotFound
 	}
 	return tx.Commit()
+}
+
+// AccessSessionState 实现 auth.Checker：只读判定 access token 要用的列。
+func (s *SQLite) AccessSessionState(ctx context.Context, sid string) (auth.SessionState, error) {
+	st := auth.SessionState{Found: true}
+	err := s.db.QueryRowContext(ctx, `SELECT revoked_at, revoke_reason, current_gen FROM device_sessions WHERE sid = ?`, sid).
+		Scan(&st.RevokedAt, &st.RevokeReason, &st.CurrentGen)
+	if errors.Is(err, sql.ErrNoRows) {
+		return auth.SessionState{}, nil
+	}
+	return st, err
 }

@@ -1,13 +1,12 @@
 package gateway
 
 import (
-	"net"
 	"net/http"
 	"net/netip"
-	"strings"
 	"sync"
 	"time"
 
+	"tianting/server/internal/clientip"
 	"tianting/server/internal/clock"
 	"tianting/server/internal/ratelimit"
 )
@@ -81,42 +80,7 @@ func (g *guard) authFailed(ip string) (blocked bool) {
 	return true
 }
 
-// clientIP 返回请求的真实来源 IP。直连地址是可信代理时，从 X-Forwarded-For 里
-// 从右往左取第一个不可信的地址（最右边的是离我们最近的一跳，左边的值客户端可以随意伪造）。
+// clientIP 返回请求的真实来源 IP，逻辑在 clientip 包，和 /v1/* 共用（PRD-chat R-CS-35）。
 func (g *guard) clientIP(r *http.Request) string {
-	host, _, err := net.SplitHostPort(r.RemoteAddr)
-	if err != nil {
-		host = r.RemoteAddr
-	}
-	if !g.trusted(host) {
-		return host
-	}
-	hops := strings.Split(strings.Join(r.Header.Values("X-Forwarded-For"), ","), ",")
-	for i := len(hops) - 1; i >= 0; i-- {
-		hop := strings.TrimSpace(hops[i])
-		if hop == "" {
-			continue
-		}
-		if _, err := netip.ParseAddr(hop); err != nil {
-			break // 格式不对的值不可信，退回到直连地址
-		}
-		if !g.trusted(hop) {
-			return hop
-		}
-	}
-	return host
-}
-
-func (g *guard) trusted(ip string) bool {
-	addr, err := netip.ParseAddr(ip)
-	if err != nil {
-		return false
-	}
-	addr = addr.Unmap()
-	for _, p := range g.cfg.TrustedProxies {
-		if p.Contains(addr) {
-			return true
-		}
-	}
-	return false
+	return clientip.Resolver{TrustedProxies: g.cfg.TrustedProxies}.IP(r)
 }

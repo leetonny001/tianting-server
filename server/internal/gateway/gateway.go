@@ -5,7 +5,6 @@ package gateway
 import (
 	"context"
 	"encoding/json"
-	"errors"
 	"log/slog"
 	"net/http"
 	"slices"
@@ -35,13 +34,11 @@ type Handler interface {
 }
 
 // TokenVerifier 校验 token。
-type TokenVerifier interface {
-	Verify(token string) (auth.Claims, error)
-}
+type TokenVerifier = auth.TokenVerifier
 
 // RevocationChecker 返回用户当前的令牌版本号；token 里的版本号更小，说明是强制下线前签发的。
 type RevocationChecker interface {
-	TokenVersion(ctx context.Context, userID string) (int64, error)
+	auth.Checker
 	// ActiveBan 区分"被强制下线"和"被封禁"：两者都让旧 token 失效，给客户端的原因不同（F-ADM-13）。
 	ActiveBan(ctx context.Context, userID string, now int64) (banned bool, until *int64, err error)
 }
@@ -253,8 +250,13 @@ func (g *Gateway) authenticate(ctx context.Context, ws *websocket.Conn, ip, mask
 	var req protocol.AuthReq
 	_ = json.Unmarshal(in.Data, &req) // 解析失败时 token 为空，按无效凭证处理
 
-	claims, verr := g.verifier.Verify(req.Token)
-	if errors.Is(verr, auth.ErrInvalidToken) {
+	// 判定顺序和 /v1/* 的 Bearer 共用一个函数（PRD-chat 第 4.2 节第 3 条）。
+	res := auth.Check(ctx, g.verifier, g.revocation, req.Token)
+	claims = res.Claims
+	switch res.Verdict {
+	case auth.VerdictOK:
+		return claims, in.ID, true
+	case auth.VerdictInvalid:
 		// 只统计"凭证无效"：过期和被强制下线是正常用户也会遇到的情况，不算攻击。
 		if g.guard.authFailed(ip) {
 			g.log.Warn("ip blocked", "reason", "too many invalid tokens", "ip", maskedIP, "for", g.cfg.Guard.BlockFor)
@@ -262,30 +264,28 @@ func (g *Gateway) authenticate(ctx context.Context, ws *websocket.Conn, ip, mask
 		g.handshake(metrics.HandshakeTokenInvalid)
 		g.kick(ws, protocol.KickTokenInvalid)
 		reject(protocol.CloseTokenInvalid, protocol.KickTokenInvalid, "")
-		return auth.Claims{}, "", false
-	}
-	version, err := g.revocation.TokenVersion(ctx, claims.UserID)
-	if err != nil {
-		g.log.Error("check revocation", "err", err, "uid", claims.UserID)
+	case auth.VerdictError:
+		g.log.Error("check revocation", "err", res.Err, "uid", claims.UserID)
 		g.handshake(metrics.HandshakeError)
 		ws.Close(websocket.StatusInternalError, "internal error")
 		reject(protocol.CloseInternalError, "revocation check failed", claims.UserID)
-		return auth.Claims{}, "", false
-	}
-	if claims.Version < version {
+	case auth.VerdictRevoked:
 		g.handshake(metrics.HandshakeTokenRevoked)
 		ev := g.revokedEvent(ctx, claims.UserID)
 		g.kickEvent(ws, ev)
 		reject(protocol.CloseTokenRevoked, ev.Reason, claims.UserID)
-		return auth.Claims{}, "", false
-	}
-	if errors.Is(verr, auth.ErrExpiredToken) {
+	case auth.VerdictSessionRevoked:
+		// recoverBefore 随 BE-416（F-ACC-03 规则 6a）。
+		kick := protocol.SessionKickReason(res.RevokeReason)
+		g.handshake(metrics.HandshakeTokenRevoked)
+		g.kick(ws, kick)
+		reject(protocol.CloseTokenRevoked, kick, claims.UserID)
+	default: // 过期、被替换的代：都是 kicked/tokenExpired（F-ACC-03 规则 4）
 		g.handshake(metrics.HandshakeTokenExpired)
 		g.kick(ws, protocol.KickTokenExpired)
 		reject(protocol.CloseTokenExpired, protocol.KickTokenExpired, claims.UserID)
-		return auth.Claims{}, "", false
 	}
-	return claims, in.ID, true
+	return auth.Claims{}, "", false
 }
 
 // kick 下发 kicked 事件，**写完后**再用对应关闭码关闭连接（PRD F-AUTH-03 规则 3）。

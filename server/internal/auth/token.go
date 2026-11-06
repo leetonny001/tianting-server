@@ -25,12 +25,18 @@ type Claims struct {
 	Version   int64     // 签发时用户的令牌版本号；小于当前版本说明已被强制下线
 	IssuedAt  time.Time // 毫秒精度，仅供日志和排查
 	ExpiresAt time.Time
+	// SID、Gen 只有账号登录签发的 token 才有（PRD-chat F-ACC-03 规则 1）：设备会话和它的代号。
+	// 管理接口和演示登录的 token 没有 sid，连接和收发行为和以前一样。
+	SID string
+	Gen int64
 }
 
 type jwtClaims struct {
 	jwt.RegisteredClaims
-	IatMs   int64 `json:"iatMs"`
-	Version int64 `json:"tv"`
+	IatMs   int64  `json:"iatMs"`
+	Version int64  `json:"tv"`
+	SID     string `json:"sid,omitempty"`
+	Gen     int64  `json:"gen,omitempty"`
 }
 
 // MinSecretLen 是签名密钥的最小长度；生产环境另有更严格的要求（config 包，32 字节）。
@@ -83,8 +89,16 @@ func NewKeyringSigner(keys []Key, activeID string, clk clock.Clock) (*Signer, er
 
 // Issue 为用户签发 token，version 为用户当前的令牌版本号；返回 token 和过期时间。
 func (s *Signer) Issue(userID string, version int64, ttl time.Duration) (string, time.Time, error) {
+	return s.issue(userID, version, "", 0, s.clock.Now().Add(ttl))
+}
+
+// IssueSession 签发账号会话的 access token，带 sid 和代号（PRD-chat F-ACC-03 规则 1）。exp 由调用方算好，不超过绝对上限（规则 3）。
+func (s *Signer) IssueSession(userID string, version int64, sid string, gen int64, exp time.Time) (string, time.Time, error) {
+	return s.issue(userID, version, sid, gen, exp)
+}
+
+func (s *Signer) issue(userID string, version int64, sid string, gen int64, exp time.Time) (string, time.Time, error) {
 	now := s.clock.Now()
-	exp := now.Add(ttl)
 	claims := jwtClaims{
 		RegisteredClaims: jwt.RegisteredClaims{
 			Issuer:    issuer,
@@ -94,6 +108,8 @@ func (s *Signer) Issue(userID string, version int64, ttl time.Duration) (string,
 		},
 		IatMs:   now.UnixMilli(),
 		Version: version,
+		SID:     sid,
+		Gen:     gen,
 	}
 	t := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
 	t.Header["kid"] = s.active
@@ -124,6 +140,8 @@ func (s *Signer) Verify(token string) (Claims, error) {
 		Version:   c.Version,
 		IssuedAt:  time.UnixMilli(c.IatMs),
 		ExpiresAt: c.ExpiresAt.Time,
+		SID:       c.SID,
+		Gen:       c.Gen,
 	}
 	if expired {
 		return claims, ErrExpiredToken

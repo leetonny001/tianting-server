@@ -17,11 +17,13 @@ import (
 	"sync/atomic"
 	"time"
 
+	"tianting/server/internal/account"
 	"tianting/server/internal/admin"
 	"tianting/server/internal/adminauth"
 	"tianting/server/internal/api"
 	"tianting/server/internal/auth"
 	"tianting/server/internal/cache"
+	"tianting/server/internal/clientip"
 	"tianting/server/internal/clock"
 	"tianting/server/internal/delivery"
 	"tianting/server/internal/gateway"
@@ -74,12 +76,14 @@ type Config struct {
 	QuarantineKey  string
 	QuarantineDays int
 	// Account 是账号功能的配置（PRD-chat 第 4.1 节）。
-	Account   AccountConfig
-	TestMode  bool // 开启故障注入、时钟注入、短有效期 token（PRD 6.1 节），生产必须关闭
-	DemoLogin bool // 开启演示登录 /demo/login（PRD F-AUTH-04），生产必须关闭
-	SendRate  int  // 每个用户每秒可发消息数，0 表示默认值 20（PRD F-MSG-07）
-	Version   string
-	Logger    *slog.Logger
+	Account account.Config
+	// RequireHTTPS：生产环境 /v1/* 只接受 HTTPS（PRD-chat 第 4.2 节第 7 条）。
+	RequireHTTPS bool
+	TestMode     bool // 开启故障注入、时钟注入、短有效期 token（PRD 6.1 节），生产必须关闭
+	DemoLogin    bool // 开启演示登录 /demo/login（PRD F-AUTH-04），生产必须关闭
+	SendRate     int  // 每个用户每秒可发消息数，0 表示默认值 20（PRD F-MSG-07）
+	Version      string
+	Logger       *slog.Logger
 	// 节点运维接口（PRD-ops F-OPS-16）：OpsKeys 为空时不提供。ConfigSummary 生成脱敏的配置摘要（由 config 包提供）。
 	OpsKeys         []opsapi.Key
 	OpsAllowedCIDRs []netip.Prefix
@@ -87,12 +91,6 @@ type Config struct {
 }
 
 const defaultSendRate = 20
-
-// AccountConfig 是账号功能的配置。0 值表示默认值。
-type AccountConfig struct {
-	// TestDisableLock 对应 IM_TEST_DISABLE_AUTH_LOCK：关闭账号锁定、IP 限流和渐进延迟，只在测试模式生效（PRD-chat 第 4.5 节）。
-	TestDisableLock bool
-}
 
 // PushConfig 是系统推送的开关和参数（都未校准，PRD-live F-PUSH-09）。0 表示默认值。
 type PushConfig struct {
@@ -240,6 +238,10 @@ func New(cfg Config) (*App, error) {
 	}
 	gws := gateway.New(gw, signer, st, clk, h, svc, m, cfg.Logger)
 	mux.Handle("GET /ws", gws)
+	// /v1/*（PRD-chat 第 4.2 节）：只在对外端口。按 IP 的限制和 /ws 共用可信代理配置（R-CS-35）。
+	v1 := &api.V1{RequireHTTPS: cfg.RequireHTTPS, Proxies: clientip.Resolver{TrustedProxies: gw.Guard.TrustedProxies}, Verifier: signer, Checker: st, Log: cfg.Logger}
+	publicConfig := cfg.Account.PublicConfig(cfg.DemoLogin)
+	v1.Handle(mux, "GET /v1/config", func(w http.ResponseWriter, r *http.Request) { api.WriteJSON(w, publicConfig) })
 	m.RegisterNode(cfg.Version, runtime.Version(), gw.NodeID, func() bool {
 		ctx, cancel := context.WithTimeout(context.Background(), time.Second)
 		defer cancel()

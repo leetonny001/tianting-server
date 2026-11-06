@@ -22,6 +22,7 @@
 | BE-405 | 🟡 部分完成 | 本次提交：`testhook`（`-tags imhooks`，nm 断言生产构建没有符号）、`IM_TEST_DISABLE_AUTH_LOCK`、生产拒绝启动（四个开关和带钩子的二进制）。其余见后续提交。 |
 | BE-408 | ✅ 完成 | PRD-core v1.5、PRD-social v1.1、PRD-ui v1.3、PRD-admin v1.3、PRD-ops v1.4、ARCH 更新；作废 AC-UI-03-9，改写 AC-AUTH-02-4、AC-UI-15-3、AC-UI-16-6、AC-ADM-30-7；同步 TC 和 `trace.py`（PRDS；PRD-live 没有升版，它的 name 判断不变）。AC 总数 1463 → 1462。`docs/sdk/README.md` 按任务单由 FE-620 更新；前端代码（`nginx.conf`、`vite.config.ts`）随 FE-613 |
 | BE-410 | ✅ 完成 | `0015_accounts.sql`、`store.AccountStore`、`storetest` 11 个契约用例；AC-CHAT-90-6（TC-CHAT-90-06，存储层）通过。`users.deleted_at` 的入口都改了，注销流程随 BE-420。Postgres 随 B6 |
+| BE-411 | 🟡 基座完成 | `clientip` 共用、`auth.Check` 共用（WS 和 Bearer）、`/v1` 基座、`GET /v1/config`。AC-ACC-07-4（TC-ACC-07-04）通过，`features.files` 和 `IM_FILES_ENABLED` 随 C2。AC-CHAT-90-16 单测通过，e2e（真实接口、真实 10 秒）随 BE-414 的提交 |
 | 全部 | ⬜ 未开始 | C1 结束后按实际用时校准工作量（CH-27），再由 Frank 决定 C3 起的部分 |
 
 ## 总览

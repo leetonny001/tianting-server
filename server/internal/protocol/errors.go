@@ -186,6 +186,17 @@ var KickCloseCode = map[string]int{
 	KickAccountDeleted:  CloseTokenRevoked,
 }
 
+// SessionKickReason 把设备会话的吊销原因映射成踢线原因（PRD-chat F-ACC-03 规则 2）。
+func SessionKickReason(revokeReason string) string {
+	switch revokeReason {
+	case ReasonCredentialsChanged:
+		return KickPasswordChanged
+	case ReasonAccountDeleted:
+		return KickAccountDeleted
+	}
+	return KickSessionRevoked
+}
+
 // 错误的 reason（PRD-chat 第 11.5 节，C1 部分）。errors.json 的 reasons 是真相源，errors_test.go 保证一致。
 const (
 	ReasonPasswordWeak           = "passwordWeak"

@@ -1,6 +1,7 @@
 package config
 
 import (
+	"cmp"
 	"fmt"
 	"math"
 	"runtime"
@@ -8,6 +9,7 @@ import (
 	"slices"
 	"strings"
 
+	"tianting/server/internal/account"
 	"tianting/server/internal/quarantine"
 	"tianting/server/internal/testhook"
 )
@@ -95,6 +97,32 @@ func productionChecks(cfg Server) []Check {
 		}
 	}
 	add("quarantine_key", fmt.Sprintf("IM_QUARANTINE_KEY：%d 字节，与其他密钥逐把比较", len(a.QuarantineKey)), qk...)
+
+	// refresh 密钥（PRD-chat F-ACC-03 规则 3）：独立于其他密钥。没配时账号接口 503，其他功能不受影响，所以不拒绝启动。
+	var rk []string
+	for _, k := range a.Account.RefreshKeys {
+		rk = append(rk, secretProblems("IM_REFRESH_KEYS["+k.ID+"]", string(k.Secret), DevRefreshKey)...)
+		same := string(k.Secret) == a.JWTSecret || string(k.Secret) == a.AdminKey || string(k.Secret) == a.QuarantineKey
+		for _, j := range a.JWTKeys {
+			same = same || string(k.Secret) == string(j.Secret)
+		}
+		for _, c := range a.AdminCallers {
+			same = same || string(k.Secret) == string(c.Secret)
+		}
+		if same {
+			rk = append(rk, "IM_REFRESH_KEYS["+k.ID+"] must differ from the JWT keys, IM_ADMIN_KEY, IM_QUARANTINE_KEY and caller secrets")
+		}
+	}
+	add("refresh_keys", fmt.Sprintf("IM_REFRESH_KEYS：%d 把，未配置时账号接口不可用", len(a.Account.RefreshKeys)), rk...)
+	// 没配可信代理时 /v1/* 只接受本进程终止的 TLS，经代理的请求都被拒绝。不拒绝启动：不用账号功能的部署不受影响。
+	add("v1_https", fmt.Sprintf("/v1/* 只接受 HTTPS；可信代理 %d 个网段（0 个时经代理的请求都被拒绝）", len(a.Gateway.Guard.TrustedProxies)))
+
+	// 开放注册（PRD-chat F-ACC-01 规则 2，AC-ACC-01-19）：C6 上线前 IM_MOD_ENABLED 没有实现，所以一律拒绝。逐项报错随 C6。
+	flag0 := []string(nil)
+	if a.Account.RegisterMode == account.ModeOpen {
+		flag0 = append(flag0, "IM_REGISTER_MODE=open is refused in production: it requires content moderation (IM_MOD_ENABLED), which is not available yet")
+	}
+	add("register_mode", "IM_REGISTER_MODE："+cmp.Or(a.Account.RegisterMode, account.ModeInvite), flag0...)
 
 	var tls []string
 	// 管理端口只有绑定回环地址（同机部署的业务服务端）时允许明文（PRD-admin F-KEY-01 规则 2）。

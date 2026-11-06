@@ -12,10 +12,14 @@ import (
 	"fmt"
 	"net"
 	"net/netip"
+	"os"
+	"regexp"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
 
+	"tianting/server/internal/account"
 	"tianting/server/internal/adminauth"
 	"tianting/server/internal/app"
 	"tianting/server/internal/auth"
@@ -36,6 +40,8 @@ const (
 	// DevQuarantineKey 只用于开发环境，生产启动保护拒绝（AC-ADM-32-4）。
 	DevQuarantineKey = "dev-quarantine-key-change-me-0123456789"
 	DevAdminKey      = "dev-admin-key"
+	// DevRefreshKey 只用于开发环境，生产启动保护拒绝（PRD-chat F-ACC-03 规则 3）。
+	DevRefreshKey = "dev-refresh-key-change-me-0123456789"
 )
 
 // MinProductionSecretLen 是生产环境密钥的最小长度（32 字节 ≈ 256 位）。
@@ -222,6 +228,8 @@ func Load(getenv func(string) string) (cfg Server, warnings []string, err error)
 		bad("IM_C2C_BODY_ACCESS must be on or off, got %q", v)
 	}
 
+	loadAccount(getenv, a, bad)
+
 	if !prod {
 		if a.JWTSecret == "" && len(a.JWTKeys) == 0 {
 			a.JWTSecret = DevJWTSecret
@@ -234,6 +242,11 @@ func Load(getenv func(string) string) (cfg Server, warnings []string, err error)
 		if a.QuarantineKey == "" {
 			a.QuarantineKey = DevQuarantineKey
 			warnings = append(warnings, "IM_QUARANTINE_KEY not set, using the development default")
+		}
+		if len(a.Account.RefreshKeys) == 0 {
+			a.Account.RefreshKeys = []account.RefreshKey{{ID: "dev", Secret: []byte(DevRefreshKey)}}
+			a.Account.RefreshActive = "dev"
+			warnings = append(warnings, "IM_REFRESH_KEYS not set, using the development default")
 		}
 	}
 
@@ -317,6 +330,7 @@ func Load(getenv func(string) string) (cfg Server, warnings []string, err error)
 	}
 
 	if prod {
+		a.RequireHTTPS = true
 		problems = append(problems, productionProblems(cfg)...)
 	} else {
 		if a.TestMode {
@@ -335,6 +349,75 @@ func Load(getenv func(string) string) (cfg Server, warnings []string, err error)
 	snapshot := cfg
 	a.ConfigSummary = func(version, nodeID string) any { return Summary(snapshot, version, nodeID) }
 	return cfg, warnings, nil
+}
+
+// refreshKidRE：kid 是 refresh token 的第一段（kid.sid.gen.nonce.mac），不能含分隔符。
+var refreshKidRE = regexp.MustCompile(`^[A-Za-z0-9_-]{1,32}$`)
+
+// loadAccount 读取账号功能的配置（PRD-chat 第 4.1 节）。
+func loadAccount(getenv func(string) string, a *app.Config, bad func(string, ...any)) {
+	c := &a.Account
+	switch v := getenv("IM_REGISTER_MODE"); v {
+	case "", account.ModeClosed, account.ModeInvite, account.ModeOpen:
+		c.RegisterMode = cmp.Or(v, account.ModeInvite)
+	default:
+		bad("IM_REGISTER_MODE must be closed, invite or open, got %q", v)
+	}
+	if raw := getenv("IM_REFRESH_KEYS"); raw != "" {
+		keys, err := parseKeys(raw)
+		if err != nil {
+			bad("IM_REFRESH_KEYS: %v", err)
+		}
+		for _, k := range keys {
+			if !refreshKidRE.MatchString(k.ID) {
+				bad("IM_REFRESH_KEYS: key id must match %s", refreshKidRE)
+			}
+			c.RefreshKeys = append(c.RefreshKeys, account.RefreshKey{ID: k.ID, Secret: k.Secret})
+		}
+		c.RefreshActive = getenv("IM_REFRESH_ACTIVE_KID")
+		if c.RefreshActive == "" && len(keys) == 1 {
+			c.RefreshActive = keys[0].ID
+		}
+		if !slices.ContainsFunc(keys, func(k auth.Key) bool { return k.ID == c.RefreshActive }) && err == nil {
+			bad("IM_REFRESH_ACTIVE_KID must name a key in IM_REFRESH_KEYS")
+		}
+	}
+	for key, dst := range map[string]*time.Duration{
+		"IM_ACCESS_TTL": &c.AccessTTL, "IM_REFRESH_TTL": &c.RefreshTTL, "IM_REFRESH_TTL_WEB": &c.RefreshTTLWeb,
+		"IM_REFRESH_ABSOLUTE": &c.RefreshAbsolute, "IM_RECOVER_QUEUE": &c.RecoverQueue,
+	} {
+		if v := getenv(key); v != "" {
+			d, err := time.ParseDuration(v)
+			if err != nil || d <= 0 {
+				bad("%s: invalid duration %q", key, v)
+				continue
+			}
+			*dst = d
+		}
+	}
+	for key, dst := range map[string]*int{"IM_ARGON_SLOTS": &c.ArgonSlots, "IM_ARGON_RECOVER_SLOTS": &c.RecoverSlots} {
+		if v := getenv(key); v != "" {
+			n, err := strconv.Atoi(v)
+			if err != nil || n < 1 {
+				bad("%s: must be a positive integer, got %q", key, v)
+				continue
+			}
+			*dst = n
+		}
+	}
+	c.PrivacyVersion, c.PrivacyURL = getenv("IM_PRIVACY_NOTICE_VERSION"), getenv("IM_PRIVACY_NOTICE_URL")
+	// 保留名可以用配置文件增加（F-ACC-01 规则 4）：一行一个，# 开头是注释。
+	if path := getenv("IM_RESERVED_NAMES_FILE"); path != "" {
+		b, err := os.ReadFile(path) // #nosec G304,G703 -- 路径来自运维配置
+		if err != nil {
+			bad("IM_RESERVED_NAMES_FILE: %v", err)
+		}
+		for line := range strings.Lines(string(b)) {
+			if line = strings.TrimSpace(line); line != "" && !strings.HasPrefix(line, "#") {
+				c.ExtraReserved = append(c.ExtraReserved, line)
+			}
+		}
+	}
 }
 
 // addrEnv 读取监听地址：未设置用默认值，"off" 表示不开启（返回空串）。

@@ -63,8 +63,8 @@ func TestDevelopmentDefaults(t *testing.T) {
 	if cfg.Env != EnvDevelopment || cfg.App.JWTSecret != DevJWTSecret || cfg.App.AdminKey != DevAdminKey || !cfg.App.AutoMigrate {
 		t.Errorf("cfg = %+v", cfg)
 	}
-	if len(warnings) != 4 {
-		t.Errorf("warnings = %v, want 4 (default keys, ops API not listening)", warnings)
+	if len(warnings) != 5 {
+		t.Errorf("warnings = %v, want 5 (default keys, ops API not listening)", warnings)
 	}
 	if cfg.App.Gateway.MaxConnsPerUser != 10 || len(cfg.App.Gateway.AllowedOrigins) == 0 {
 		t.Errorf("gateway defaults = %+v", cfg.App.Gateway)
@@ -553,5 +553,74 @@ func TestDisableAuthLockNeedsTestMode(t *testing.T) {
 	cfg, _, err = Load(envOf(map[string]string{"IM_TEST_DISABLE_AUTH_LOCK": "1", "IM_TEST_MODE": "1"}))
 	if err != nil || !cfg.App.Account.TestDisableLock {
 		t.Errorf("test mode: lock disabled = %v, err = %v", cfg.App.Account.TestDisableLock, err)
+	}
+}
+
+// TC-ACC-01-19（AC-ACC-01-19）：生产环境 open 模式拒绝启动（C6 未上线），错误信息指出条件不满足；invite 通过这一项。
+func TestTC_ACC_01_19_ProductionOpenRefused(t *testing.T) {
+	base := map[string]string{
+		"IM_ENV": "production", "IM_JWT_SECRET": strongJWT, "IM_ADMIN_KEY": strongAdmin, "IM_ADMIN_LEGACY": "1",
+		"IM_QUARANTINE_KEY": "qua-0123456789abcdef0123456789abcdef",
+	}
+	env := maps.Clone(base)
+	env["IM_REGISTER_MODE"] = "open"
+	_, _, err := Load(envOf(env))
+	if err == nil || !strings.Contains(err.Error(), "IM_REGISTER_MODE=open") {
+		t.Fatalf("err = %v", err)
+	}
+	env["IM_REGISTER_MODE"] = "invite"
+	if _, _, err := Load(envOf(env)); err != nil {
+		t.Fatalf("invite: %v", err)
+	}
+	env["IM_REGISTER_MODE"] = "public"
+	if _, _, err := Load(envOf(env)); err == nil || !strings.Contains(err.Error(), "IM_REGISTER_MODE") {
+		t.Fatalf("bad mode: %v", err)
+	}
+}
+
+// 第 4.1 节的默认值；refresh 密钥在生产环境的检查。错误信息不打印密钥。
+func TestAccountConfig(t *testing.T) {
+	cfg, warnings, err := Load(envOf(nil))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.App.Account.RegisterMode != "invite" || len(cfg.App.Account.RefreshKeys) != 1 || cfg.App.RequireHTTPS {
+		t.Errorf("dev defaults: %+v", cfg.App.Account)
+	}
+	if !slices.ContainsFunc(warnings, func(w string) bool { return strings.Contains(w, "IM_REFRESH_KEYS") }) {
+		t.Errorf("warnings = %v", warnings)
+	}
+
+	base := map[string]string{
+		"IM_ENV": "production", "IM_JWT_SECRET": strongJWT, "IM_ADMIN_KEY": strongAdmin, "IM_ADMIN_LEGACY": "1",
+		"IM_QUARANTINE_KEY": "qua-0123456789abcdef0123456789abcdef",
+	}
+	cfg, _, err = Load(envOf(base))
+	if err != nil {
+		t.Fatalf("a production config without refresh keys must still start: %v", err)
+	}
+	if !cfg.App.RequireHTTPS || len(cfg.App.Account.RefreshKeys) != 0 {
+		t.Errorf("prod: https=%v keys=%d", cfg.App.RequireHTTPS, len(cfg.App.Account.RefreshKeys))
+	}
+	for name, keys := range map[string]string{
+		"太短":       "k1:short-secret",
+		"开发默认":     "k1:" + DevRefreshKey,
+		"和 JWT 相同": "k1:" + strongJWT,
+		"kid 带点":   "a.b:" + "ref-0123456789abcdef0123456789abcdef",
+	} {
+		env := maps.Clone(base)
+		env["IM_REFRESH_KEYS"] = keys
+		_, _, err := Load(envOf(env))
+		if err == nil {
+			t.Errorf("%s: must be refused", name)
+		} else if strings.Contains(err.Error(), "short-secret") || strings.Contains(err.Error(), strongJWT) {
+			t.Errorf("%s: secret in error: %v", name, err)
+		}
+	}
+	env := maps.Clone(base)
+	env["IM_REFRESH_KEYS"] = "k1:ref-0123456789abcdef0123456789abcdef"
+	cfg, _, err = Load(envOf(env))
+	if err != nil || cfg.App.Account.RefreshActive != "k1" {
+		t.Errorf("active=%q err=%v", cfg.App.Account.RefreshActive, err)
 	}
 }
