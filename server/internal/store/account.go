@@ -13,6 +13,10 @@ var (
 	ErrCredentialsChanged = errors.New("credentials changed")
 	// ErrRecoveryCodeStale：确认的不是最新一代恢复码（F-ACC-05 规则 1）。
 	ErrRecoveryCodeStale = errors.New("recovery code is not the latest")
+	// ErrRecoveryCodeInvalid：提交时这一行恢复码已用过、已作废或已过期（F-ACC-04 规则 8）。
+	ErrRecoveryCodeInvalid = errors.New("recovery code is not usable")
+	// ErrRecoverLimited：最新一代的成功次数用完（F-ACC-05 规则 2，RS7-02）。
+	ErrRecoverLimited = errors.New("recover limit reached")
 )
 
 // RevokeReasonRevoked 是自己退出、强制下线、封禁、sessions revoke-all 的吊销原因（F-ACC-03 规则 3 的 reason=revoked）。
@@ -110,6 +114,49 @@ type LoginCommit struct {
 	BeforeCommit func() error
 }
 
+// CredentialCommit 是用密码的提交事务（改密、退出其他设备、重新生成恢复码、申请注销，F-ACC-04 规则 8）。
+// 第一条语句按 Version 锁 accounts 行，持锁后校验版本、账号状态和 CallerSID 没有吊销，不匹配返回 ErrCredentialsChanged。
+type CredentialCommit struct {
+	UserID    string
+	Version   int64
+	CallerSID string // 调用方的会话；空表示不校验
+	Now       int64
+	// NewPasswordHash 非空时改密码、递增版本、写 credentials_changed_at（改密）。
+	NewPasswordHash string
+	// NewRecoveryHash 非空时换代（F-ACC-05 规则 5）：已确认的旧码写 RetireUntil（只写一次），没人确认的代作废。
+	NewRecoveryHash string
+	RetireUntil     int64
+	// RevokeReason 非空时吊销账号全部会话。
+	RevokeReason string
+	NewSession   *DeviceSession
+	// RequestDeletion：写 delete_requested_at（F-ACC-08）。
+	RequestDeletion bool
+	Event           AccountEvent
+	ThrottleKey     string
+	BeforeCommit    func() error
+}
+
+// CredentialResult 是提交的结果。RecoveryGen 是新的一代。
+type CredentialResult struct{ RecoveryGen int64 }
+
+// RecoveryCode 是一代恢复码的状态。LatestGen 是账号现在最新的代号。
+type RecoveryCode struct {
+	Gen, AckedAt, RetireUntil, UsedAt, RevokedAt, LatestGen int64
+}
+
+// RecoverCommit 是找回的提交事务（F-ACC-04 规则 8）。不带版本条件。
+type RecoverCommit struct {
+	UserID, CodeHash, PasswordHash, NewRecoveryHash, RevokeReason string
+	Gen, Now                                                      int64
+	Session                                                       DeviceSession
+	LimitKey                                                      string
+	LimitMax                                                      int
+	LimitWindowMs                                                 int64
+	ThrottleKey                                                   string
+	Event                                                         AccountEvent
+	BeforeCommit                                                  func() error
+}
+
 // LoginResult 是登录事务的结果。RecoveryGen > 0 表示写入了新的一代恢复码，响应要带上明文。
 type LoginResult struct{ RecoveryGen int64 }
 
@@ -139,6 +186,14 @@ type AccountStore interface {
 	CreateAccount(ctx context.Context, a NewAccount) error
 	// CommitLogin 是登录事务。第一条语句按版本锁 accounts 行，不匹配或账号状态变了返回 ErrCredentialsChanged。
 	CommitLogin(ctx context.Context, c LoginCommit) (LoginResult, error)
+	// CommitCredentials 见 CredentialCommit。
+	CommitCredentials(ctx context.Context, c CredentialCommit) (CredentialResult, error)
+	// CommitRecover 见 RecoverCommit。返回新的一代。码不可用返回 ErrRecoveryCodeInvalid，上限返回 ErrRecoverLimited，都不留任何写入。
+	CommitRecover(ctx context.Context, c RecoverCommit) (int64, error)
+	// FindRecoveryCode 按 (userId, 哈希) 查；没有返回 ErrNotFound。
+	FindRecoveryCode(ctx context.Context, userID, hash string) (RecoveryCode, error)
+	// CancelDeletion 撤销注销申请：版本或申请时间变了返回 ErrCredentialsChanged。
+	CancelDeletion(ctx context.Context, userID string, version, requestedAt, now int64, event AccountEvent) error
 	// UpdatePasswordHash 只在版本没变时重写哈希（参数升级，F-ACC-02 异常）。不改版本，不算改密。
 	UpdatePasswordHash(ctx context.Context, userID string, version int64, hash string) error
 	// RecoveryUnacked：最新一代恢复码没有确认。

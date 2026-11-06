@@ -62,7 +62,7 @@ func TestTC_ACC_05_17_RecoverSlotIndependent(t *testing.T) {
 	}
 	defer pw()
 	start := time.Now()
-	free, err := g.Acquire(context.Background(), GateRecover)
+	free, err := g.AcquireRecover(context.Background(), "u1", 1)
 	if err != nil {
 		t.Fatalf("recover slot: %v", err)
 	}
@@ -75,19 +75,25 @@ func TestTC_ACC_05_17_RecoverSlotIndependent(t *testing.T) {
 // 专用位各 1 个（第 4.1 节，同时最多 6 个）；recover 排队时限 5 秒可配，超时 ErrGateBusy。
 func TestGateDedicatedSlotsAreSingle(t *testing.T) {
 	g := NewGate(Config{GateQueue: 50 * time.Millisecond, RecoverQueue: 50 * time.Millisecond}, nil)
-	if cap(g.general) != 4 || cap(g.password) != 1 || cap(g.recover) != 1 {
-		t.Fatalf("slots %d %d %d", cap(g.general), cap(g.password), cap(g.recover))
+	if cap(g.general) != 4 || cap(g.password) != 1 || g.recover.slots != 1 {
+		t.Fatalf("slots %d %d %d", cap(g.general), cap(g.password), g.recover.slots)
 	}
-	for _, k := range []GateKind{GatePassword, GateRecover} {
-		free, err := g.Acquire(context.Background(), k)
-		if err != nil {
-			t.Fatal(err)
-		}
-		if _, err := g.Acquire(context.Background(), k); !errors.Is(err, ErrGateBusy) {
-			t.Errorf("kind %d: err = %v", k, err)
-		}
-		free()
+	free, err := g.Acquire(context.Background(), GatePassword)
+	if err != nil {
+		t.Fatal(err)
 	}
+	if _, err := g.Acquire(context.Background(), GatePassword); !errors.Is(err, ErrGateBusy) {
+		t.Errorf("password slot: err = %v", err)
+	}
+	free()
+	free, err = g.AcquireRecover(context.Background(), "u1", 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := g.AcquireRecover(context.Background(), "u2", 1); !errors.Is(err, ErrGateBusy) {
+		t.Errorf("recover slot: err = %v", err)
+	}
+	free()
 }
 
 func TestDefaultConfigMatchesPRD(t *testing.T) {

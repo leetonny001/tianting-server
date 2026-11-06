@@ -10,6 +10,7 @@ import (
 	"io"
 	"log/slog"
 	"net/http"
+	"slices"
 	"strconv"
 	"strings"
 	"testing"
@@ -165,11 +166,18 @@ func (e *acctEnv) bearerPost(path, bearer, ip string, body any) (int, []byte) {
 // waitKicked 等待已连接的客户端被踢，并返回事件（用来断言 recoverBefore）。
 func waitKicked(c *client, reason string, closeCode int) protocol.KickedEvent {
 	c.t.Helper()
-	f := c.waitCmdTimeout(protocol.CmdEvent, waitTimeout)
 	var ev protocol.KickedEvent
-	json.Unmarshal(f.Data, &ev)
-	if ev.Type != protocol.EventKicked || ev.Reason != reason {
-		c.t.Fatalf("%s: got event %s, want kicked/%s", c.uid, f.Data, reason)
+	for {
+		f := c.waitCmdTimeout(protocol.CmdEvent, waitTimeout)
+		ev = protocol.KickedEvent{}
+		json.Unmarshal(f.Data, &ev)
+		if ev.Type == protocol.EventSecurityNotice {
+			continue // 提醒和踢线的先后不固定，同一条会话也可能先收到提醒
+		}
+		if ev.Type != protocol.EventKicked || ev.Reason != reason {
+			c.t.Fatalf("%s: got event %s, want kicked/%s", c.uid, f.Data, reason)
+		}
+		break
 	}
 	if code := c.closeCode(waitTimeout); int(code) != closeCode {
 		c.t.Fatalf("%s: close code %d, want %d", c.uid, code, closeCode)
@@ -236,5 +244,32 @@ func (e *acctEnv) ban(uid string) {
 	e.t.Helper()
 	if err := e.st.BanUser(context.Background(), store.Ban{UserID: uid, Reason: "test", By: "t", At: time.Now().UnixMilli()}); err != nil {
 		e.t.Fatal(err)
+	}
+}
+
+// refreshErrAny 断言 4019，reason 不限。
+func (e *acctEnv) refreshErrAny(token string) apiErr {
+	e.t.Helper()
+	code, b := e.refresh(token)
+	if code != http.StatusUnauthorized {
+		e.t.Fatalf("refresh: %d %s", code, b)
+	}
+	return parseErr(e.t, b)
+}
+
+const timingTolerance = 0.05
+
+// assertMedianClose 比较两组耗时的中位数。
+func assertMedianClose(t *testing.T, a, b []time.Duration, tolerance float64) {
+	t.Helper()
+	median := func(v []time.Duration) time.Duration {
+		s := slices.Clone(v)
+		slices.Sort(s)
+		return s[len(s)/2]
+	}
+	x, y := median(a), median(b)
+	t.Logf("median: %v, %v", x, y)
+	if float64(max(x, y)-min(x, y)) > tolerance*float64(max(x, y)) {
+		t.Errorf("medians differ by more than %.0f%%: %v, %v", tolerance*100, x, y)
 	}
 }

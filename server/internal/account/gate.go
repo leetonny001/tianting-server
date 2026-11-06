@@ -17,17 +17,15 @@ const (
 	GateGeneral GateKind = iota
 	// GatePassword：已登录的改密专用位，匿名请求打满时仍能改密。1 个，在普通闸门之外。
 	GatePassword
-	// GateRecover：recover 专用位（IM_ARGON_RECOVER_SLOTS），恢复码命中才用；排队时限 IM_RECOVER_QUEUE。
-	// 按 (userId, gen) 公平调度随 BE-418。
-	GateRecover
 )
 
 // Gate 限制同时计算的 Argon2：每个 64 MiB，同时最多 slots + 2 个（第 4.1 节）。
 // 只管算哈希的路径；token/refresh、logout 不进。先过限流，再进闸门（Guard）。
 type Gate struct {
-	general, password, recover chan struct{}
-	queue, recoverQueue        time.Duration
-	faults                     *Faults
+	general, password   chan struct{}
+	recover             *recoverSched
+	queue, recoverQueue time.Duration
+	faults              *Faults
 }
 
 // NewGate 按配置创建闸门。
@@ -36,21 +34,23 @@ func NewGate(c Config, faults *Faults) *Gate {
 	return &Gate{
 		general:      make(chan struct{}, c.ArgonSlots),
 		password:     make(chan struct{}, 1),
-		recover:      make(chan struct{}, c.RecoverSlots),
+		recover:      newRecoverSched(c.RecoverSlots),
 		queue:        c.GateQueue,
 		recoverQueue: c.RecoverQueue,
 		faults:       faults,
 	}
 }
 
+// AcquireRecover 拿 recover 专用位（IM_ARGON_RECOVER_SLOTS），恢复码命中才用；排队时限 IM_RECOVER_QUEUE。按 (userId, gen) 公平调度（RS6-02）。
+func (g *Gate) AcquireRecover(ctx context.Context, userID string, gen int64) (func(), error) {
+	return g.recover.acquire(ctx, userID, gen, g.recoverQueue)
+}
+
 // Acquire 拿一个位，返回释放函数。排队用真实时间，不受测试时钟影响（第 4.4 节）。
 func (g *Gate) Acquire(ctx context.Context, kind GateKind) (func(), error) {
 	sem, wait := g.general, g.queue
-	switch kind {
-	case GatePassword:
+	if kind == GatePassword {
 		sem = g.password
-	case GateRecover:
-		sem, wait = g.recover, g.recoverQueue
 	}
 	t := time.NewTimer(wait)
 	defer t.Stop()

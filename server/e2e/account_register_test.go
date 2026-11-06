@@ -43,9 +43,7 @@ func TestTC_ACC_01_01_RegisterWithInvite(t *testing.T) {
 	if ack.UserID != "alice_1" || !ack.RecoveryCodeUnacked {
 		t.Errorf("auth ack %+v", ack)
 	}
-	if err := e.st.AckRecoveryCode(t.Context(), "alice_1", 1, 2); err != nil {
-		t.Fatal(err)
-	}
+	e.ack(r.AccessToken, r.RecoveryCodeGen)
 	c2 := e.dialRaw("alice_1", e.platformURL("android"), nil)
 	defer c2.ws.CloseNow()
 	if ack := mustAck[protocol.AuthAck](t, c2.call(protocol.CmdAuth, map[string]any{"token": r.AccessToken})); ack.RecoveryCodeUnacked {

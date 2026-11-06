@@ -16,6 +16,11 @@ type AccountService interface {
 	Events(ctx context.Context, userID, sid string) (*account.EventsResponse, *protocol.Error)
 	Refresh(ctx context.Context, in account.RefreshInput, ip string) (*account.AuthResponse, *protocol.Error)
 	Logout(ctx context.Context, in account.LogoutInput, bearer *auth.Result) *protocol.Error
+	Password(ctx context.Context, claims auth.Claims, in account.PasswordInput, ip string) (*account.AuthResponse, *protocol.Error)
+	LogoutOthers(ctx context.Context, claims auth.Claims, in account.PasswordOnlyInput, ip string) (*account.AuthResponse, *protocol.Error)
+	Recover(ctx context.Context, in account.RecoverInput, ip string) (*account.AuthResponse, *protocol.Error)
+	RegenerateRecovery(ctx context.Context, claims auth.Claims, in account.PasswordOnlyInput, ip string) (*account.RecoveryCodeResponse, *protocol.Error)
+	AckRecovery(ctx context.Context, userID string, in account.RecoveryAckInput) *protocol.Error
 }
 
 // RegisterAccount 注册 /v1/account/*（PRD-chat 第 11.2 节）。
@@ -72,6 +77,45 @@ func (v *V1) RegisterAccount(mux *http.ServeMux, svc AccountService) {
 		}
 		WriteJSON(w, struct{}{})
 	})
+	v.Handle(mux, "POST /v1/account/password", func(w http.ResponseWriter, r *http.Request) {
+		var in account.PasswordInput
+		claims, ok := v.accountBearer(w, r, &in)
+		if ok {
+			writeResult(w, firstOf(svc.Password(r.Context(), claims, in, v.Proxies.IP(r))))
+		}
+	})
+	v.Handle(mux, "POST /v1/account/logout-others", func(w http.ResponseWriter, r *http.Request) {
+		var in account.PasswordOnlyInput
+		claims, ok := v.accountBearer(w, r, &in)
+		if ok {
+			writeResult(w, firstOf(svc.LogoutOthers(r.Context(), claims, in, v.Proxies.IP(r))))
+		}
+	})
+	v.Handle(mux, "POST /v1/account/recover", func(w http.ResponseWriter, r *http.Request) {
+		var in account.RecoverInput
+		if v.ReadBody(w, r, &in) {
+			writeResult(w, firstOf(svc.Recover(r.Context(), in, v.Proxies.IP(r))))
+		}
+	})
+	v.Handle(mux, "POST /v1/account/recovery-code", func(w http.ResponseWriter, r *http.Request) {
+		var in account.PasswordOnlyInput
+		claims, ok := v.accountBearer(w, r, &in)
+		if ok {
+			writeResult(w, firstOf(svc.RegenerateRecovery(r.Context(), claims, in, v.Proxies.IP(r))))
+		}
+	})
+	v.Handle(mux, "POST /v1/account/recovery-code/ack", func(w http.ResponseWriter, r *http.Request) {
+		var in account.RecoveryAckInput
+		claims, ok := v.accountBearer(w, r, &in)
+		if !ok {
+			return
+		}
+		if e := svc.AckRecovery(r.Context(), claims.UserID, in); e != nil {
+			WriteError(w, e)
+			return
+		}
+		WriteJSON(w, struct{}{})
+	})
 	v.Handle(mux, "GET /v1/account/events", func(w http.ResponseWriter, r *http.Request) {
 		claims, ok := v.Bearer(w, r)
 		if !ok {
@@ -84,6 +128,19 @@ func (v *V1) RegisterAccount(mux *http.ServeMux, svc AccountService) {
 		}
 		writeResult(w, firstOf(svc.Events(r.Context(), claims.UserID, claims.SID)))
 	})
+}
+
+// accountBearer 是要 sid 的账号接口（F-ACC-03 规则 11）：先验 Bearer，没有 sid 的 403 / 4030，再读请求体。失败时已经写好响应。
+func (v *V1) accountBearer(w http.ResponseWriter, r *http.Request, in any) (auth.Claims, bool) {
+	claims, ok := v.Bearer(w, r)
+	if !ok {
+		return claims, false
+	}
+	if claims.SID == "" {
+		WriteError(w, protocol.WithReason(protocol.CodeForbidden, protocol.ReasonAccountSessionRequired, "account session required"))
+		return claims, false
+	}
+	return claims, in == nil || v.ReadBody(w, r, in)
 }
 
 type result struct {

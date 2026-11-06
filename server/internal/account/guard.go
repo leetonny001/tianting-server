@@ -105,7 +105,7 @@ func (g *Guard) LimitIP(ctx context.Context, scope, ip string, limit int, window
 // 不存在的用户名走同样的流程（R-CS-20）。返回错误时已经不用调用 Done。
 func (g *Guard) Begin(ctx context.Context, usernameLower, ip string) (*Attempt, *protocol.Error) {
 	hash := UsernameHash(usernameLower)
-	a := &Attempt{g: g, UsernameHash: hash, pairKey: "pw:" + hash + ":" + clientip.LimitKey(ip), userKey: "pwuser:" + hash}
+	a := &Attempt{g: g, UsernameHash: hash, pairKey: pairThrottleKey(usernameLower, ip), userKey: "pwuser:" + hash}
 	if g.disabled {
 		return a, nil
 	}
@@ -172,6 +172,35 @@ func (a *Attempt) Fail(ctx context.Context) error {
 	}
 	_, err := a.g.st.HitThrottle(ctx, a.userKey, now, windowMs, 0, 0)
 	return err
+}
+
+// pairThrottleKey 是"用户名 + IP"的计数键。
+func pairThrottleKey(usernameLower, ip string) string {
+	return "pw:" + UsernameHash(usernameLower) + ":" + clientip.LimitKey(ip)
+}
+
+// RecoverMiss 处理恢复码未命中（F-ACC-05 规则 2）：已锁定 429 / 4294；否则计入和密码共用的失败次数。不算渐进延迟，也不占单哈希：
+// 未命中不算 Argon2，要快速返回。返回 nil 时调用方回 401 / 4018。
+func (g *Guard) RecoverMiss(ctx context.Context, usernameLower, ip string) *protocol.Error {
+	if g.disabled {
+		return nil
+	}
+	now := g.clk.Now().UnixMilli()
+	key := pairThrottleKey(usernameLower, ip)
+	pair, err := g.st.PeekThrottle(ctx, key, now, loginFailWindow.Milliseconds())
+	if err != nil {
+		return unavailable()
+	}
+	if pair.LockedUntil > now {
+		return lockedErr(ceilSeconds(pair.LockedUntil - now))
+	}
+	if _, err := g.st.HitThrottle(ctx, key, now, loginFailWindow.Milliseconds(), g.limit, loginFailLock.Milliseconds()); err != nil {
+		return unavailable()
+	}
+	if _, err := g.st.HitThrottle(ctx, "pwuser:"+UsernameHash(usernameLower), now, loginFailWindow.Milliseconds(), 0, 0); err != nil {
+		return unavailable()
+	}
+	return nil
 }
 
 // PairKey 是用户名 + IP 的计数键：登录成功时在同一事务里清零。

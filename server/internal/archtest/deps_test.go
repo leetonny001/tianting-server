@@ -62,7 +62,7 @@ func TestHookedSuitePasses(t *testing.T) {
 		t.Fatalf("go test -tags imhooks: %v\n%s", err, out)
 	}
 	// 用例改名或被删掉时 go test 仍然成功（no tests to run），所以逐个确认跑过。
-	for _, name := range []string{"TestHookLoginAfterCredentialsChange", "TestHookLoginWithoutChange", "TestHookConnStaleGen"} {
+	for _, name := range []string{"TestHookLoginAfterCredentialsChange", "TestHookLoginWithoutChange", "TestHookConnStaleGen", "TestHookLoginVsRecover", "TestHookPasswordVsRecover", "TestHookLockedAndHashingRecover", "TestHookLogoutOthersVsRecover"} {
 		if !strings.Contains(string(out), "--- PASS: "+name) {
 			t.Errorf("%s did not run:\n%s", name, out)
 		}
