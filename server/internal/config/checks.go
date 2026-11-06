@@ -9,6 +9,7 @@ import (
 	"strings"
 
 	"tianting/server/internal/quarantine"
+	"tianting/server/internal/testhook"
 )
 
 // Check 是一项生产启动保护（PRD-ops F-OPS-10、S-OPS-16）。ID 稳定；Detail 是"实际检查了什么"，不含任何密钥的值或哈希。
@@ -107,6 +108,15 @@ func productionChecks(cfg Server) []Check {
 		flag = append(flag, "IM_TEST_MODE must not be enabled in production")
 	}
 	add("test_mode_off", "IM_TEST_MODE："+enabledText(a.TestMode), flag...)
+	// 测试设施的开关不跟 IM_TEST_MODE 走：生产配置里出现就拒绝启动（PRD-chat R-CQ-01，AC-CHAT-90-18）。只报名字，不报值。
+	flag = nil
+	for _, name := range cfg.TestOverrides {
+		flag = append(flag, name+" must not be set in production")
+	}
+	if testhook.Compiled {
+		flag = append(flag, "this binary was built with -tags imhooks and must not run in production")
+	}
+	add("test_overrides_off", fmt.Sprintf("测试设施开关：%d 项；账号并发钩子：%s", len(cfg.TestOverrides), cmpText(testhook.Compiled, "已编入", "未编入")), flag...)
 	flag = nil
 	if a.DemoLogin {
 		flag = append(flag, "IM_DEMO_LOGIN must not be enabled in production")

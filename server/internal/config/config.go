@@ -63,8 +63,14 @@ type Server struct {
 	PlannedConns int    // IM_PLANNED_CONNS：规划连接数，只用于配置检查的内存风险提示
 	GOGC         string // 原样显示
 	DrainDelay   string // 原样显示
-	App          app.Config
+	// TestOverrides 是配置里出现了的测试设施开关的名字（testOverrideEnvs），生产环境拒绝启动。
+	TestOverrides []string
+	App           app.Config
 }
+
+// testOverrideEnvs 是第 4.5 节测试设施的开关（PRD-chat R-CQ-01）：只在测试模式生效，生产配置里出现就拒绝启动。
+// IM_APNS_ENDPOINT、IM_FCM_ENDPOINT、IM_TEST_DISABLE_IDLE 的功能随 BE-406，这里先拦住。
+var testOverrideEnvs = []string{"IM_TEST_DISABLE_AUTH_LOCK", "IM_APNS_ENDPOINT", "IM_FCM_ENDPOINT", "IM_TEST_DISABLE_IDLE"}
 
 // Load 读取并校验配置。getenv 通常是 os.Getenv，测试时可以传入假实现。
 // warnings 是不影响启动、但需要人注意的问题（例如开发环境使用了默认密钥）。
@@ -126,6 +132,19 @@ func Load(getenv func(string) string) (cfg Server, warnings []string, err error)
 	a.DBPath = cmp.Or(getenv("IM_DB"), "im.db")
 	a.AutoMigrate = boolEnv(getenv, "IM_AUTO_MIGRATE", !prod, bad) // 生产默认由发布流程执行 migrate up
 	a.TestMode = boolEnv(getenv, "IM_TEST_MODE", false, bad)
+	for _, name := range testOverrideEnvs {
+		if getenv(name) != "" {
+			cfg.TestOverrides = append(cfg.TestOverrides, name)
+		}
+	}
+	// 只在测试模式生效（AC-ACC-02-3、05-11）。生产配置里出现时上面已经记下，productionChecks 拒绝启动。
+	if boolEnv(getenv, "IM_TEST_DISABLE_AUTH_LOCK", false, bad) {
+		if a.TestMode {
+			a.Account.TestDisableLock = true
+		} else if !prod {
+			warnings = append(warnings, "IM_TEST_DISABLE_AUTH_LOCK is ignored without IM_TEST_MODE=1")
+		}
+	}
 	if raw := getenv("IM_TEST_PEERS"); raw != "" { // 双节点测试环境（PRD-social 5.6 节），只在测试模式生效
 		for _, p := range strings.Split(raw, ",") {
 			if p = strings.TrimSpace(p); p != "" {

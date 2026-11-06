@@ -73,11 +73,13 @@ type Config struct {
 	// QuarantineKey / QuarantineDays：被删原文的加密隔离（IM_QUARANTINE_KEY、IM_QUARANTINE_DAYS，BE-224）。
 	QuarantineKey  string
 	QuarantineDays int
-	TestMode       bool // 开启故障注入、时钟注入、短有效期 token（PRD 6.1 节），生产必须关闭
-	DemoLogin      bool // 开启演示登录 /demo/login（PRD F-AUTH-04），生产必须关闭
-	SendRate       int  // 每个用户每秒可发消息数，0 表示默认值 20（PRD F-MSG-07）
-	Version        string
-	Logger         *slog.Logger
+	// Account 是账号功能的配置（PRD-chat 第 4.1 节）。
+	Account   AccountConfig
+	TestMode  bool // 开启故障注入、时钟注入、短有效期 token（PRD 6.1 节），生产必须关闭
+	DemoLogin bool // 开启演示登录 /demo/login（PRD F-AUTH-04），生产必须关闭
+	SendRate  int  // 每个用户每秒可发消息数，0 表示默认值 20（PRD F-MSG-07）
+	Version   string
+	Logger    *slog.Logger
 	// 节点运维接口（PRD-ops F-OPS-16）：OpsKeys 为空时不提供。ConfigSummary 生成脱敏的配置摘要（由 config 包提供）。
 	OpsKeys         []opsapi.Key
 	OpsAllowedCIDRs []netip.Prefix
@@ -85,6 +87,12 @@ type Config struct {
 }
 
 const defaultSendRate = 20
+
+// AccountConfig 是账号功能的配置。0 值表示默认值。
+type AccountConfig struct {
+	// TestDisableLock 对应 IM_TEST_DISABLE_AUTH_LOCK：关闭账号锁定、IP 限流和渐进延迟，只在测试模式生效（PRD-chat 第 4.5 节）。
+	TestDisableLock bool
+}
 
 // PushConfig 是系统推送的开关和参数（都未校准，PRD-live F-PUSH-09）。0 表示默认值。
 type PushConfig struct {

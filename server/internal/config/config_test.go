@@ -6,6 +6,7 @@ import (
 	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
+	"maps"
 	"os"
 	"path/filepath"
 	"slices"
@@ -508,5 +509,49 @@ func TestPushConfig(t *testing.T) {
 	}
 	if _, _, err := Load(envOf(map[string]string{"IM_PUSH_ENABLED": "yes"})); err == nil {
 		t.Error("IM_PUSH_ENABLED=yes accepted")
+	}
+}
+
+// TC-CHAT-90-17（AC-CHAT-90-18）、BE-405 第 4 条（R-CQ-01）：测试设施的开关逐项拒绝启动，错误信息指出是哪一项。
+func TestProductionRejectsTestOverrides(t *testing.T) {
+	base := map[string]string{
+		"IM_ENV": "production", "IM_JWT_SECRET": strongJWT, "IM_ADMIN_KEY": strongAdmin, "IM_ADMIN_LEGACY": "1",
+		"IM_QUARANTINE_KEY": "qua-0123456789abcdef0123456789abcdef",
+	}
+	if _, _, err := Load(envOf(base)); err != nil {
+		t.Fatalf("baseline production config must start: %v", err)
+	}
+	for _, name := range append([]string{"IM_TEST_MODE"}, testOverrideEnvs...) {
+		env := maps.Clone(base)
+		env[name] = "1"
+		_, _, err := Load(envOf(env))
+		if err == nil || !strings.Contains(err.Error(), name) {
+			t.Errorf("%s: err = %v, want a refusal naming it", name, err)
+		}
+	}
+	// 设成 0 也算出现：生产配置里不应该有这些项。值不进错误信息。
+	env := maps.Clone(base)
+	env["IM_APNS_ENDPOINT"] = "https://secret-endpoint.invalid/"
+	_, _, err := Load(envOf(env))
+	if err == nil || strings.Contains(err.Error(), "secret-endpoint") {
+		t.Errorf("err = %v, want a refusal without the value", err)
+	}
+}
+
+// IM_TEST_DISABLE_AUTH_LOCK 只在测试模式生效（PRD-chat 第 4.5 节）。
+func TestDisableAuthLockNeedsTestMode(t *testing.T) {
+	cfg, warnings, err := Load(envOf(map[string]string{"IM_TEST_DISABLE_AUTH_LOCK": "1"}))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.App.Account.TestDisableLock {
+		t.Error("the lock must stay on without IM_TEST_MODE=1")
+	}
+	if !slices.ContainsFunc(warnings, func(w string) bool { return strings.Contains(w, "IM_TEST_DISABLE_AUTH_LOCK") }) {
+		t.Errorf("warnings = %v", warnings)
+	}
+	cfg, _, err = Load(envOf(map[string]string{"IM_TEST_DISABLE_AUTH_LOCK": "1", "IM_TEST_MODE": "1"}))
+	if err != nil || !cfg.App.Account.TestDisableLock {
+		t.Errorf("test mode: lock disabled = %v, err = %v", cfg.App.Account.TestDisableLock, err)
 	}
 }

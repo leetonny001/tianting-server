@@ -3,6 +3,7 @@ package archtest
 
 import (
 	"os/exec"
+	"path/filepath"
 	"strings"
 	"testing"
 )
@@ -21,5 +22,31 @@ func TestBusinessCodeDoesNotDependOnHub(t *testing.T) {
 				t.Errorf("%s depends on %s; use delivery.Router instead", pkg, hub)
 			}
 		}
+	}
+}
+
+// TC-CHAT-90-17（AC-CHAT-90-18）：账号并发钩子用构建标签隔离。不带标签的生产构建没有它的任何符号；
+// 带标签的构建有，证明这个断言能发现钩子（PRD-chat 第 4.5 节，BE-405）。
+func TestProductionBuildHasNoTestHook(t *testing.T) {
+	const pkg = "tianting/server/internal/testhook."
+	symbols := func(tags string) string {
+		bin := filepath.Join(t.TempDir(), "im-server")
+		out, err := exec.Command("go", "build", "-tags", tags, "-o", bin, "tianting/server/cmd/im-server").CombinedOutput()
+		if err != nil {
+			t.Fatalf("go build -tags %q: %v\n%s", tags, err, out)
+		}
+		nm, err := exec.Command("go", "tool", "nm", bin).CombinedOutput()
+		if err != nil {
+			t.Fatalf("go tool nm: %v\n%s", err, nm)
+		}
+		return string(nm)
+	}
+	for line := range strings.Lines(symbols("")) {
+		if strings.Contains(line, pkg) {
+			t.Errorf("production build contains a test hook symbol: %s", line)
+		}
+	}
+	if !strings.Contains(symbols("imhooks"), pkg) {
+		t.Error("the imhooks build has no hook symbol: this check cannot detect a hook")
 	}
 }

@@ -19,6 +19,7 @@
 |---|---|---|
 | BE-400 | ✅ 完成（服务端部分） | errors.json、ERRORS.md、kickReasons、`kicked.recoverBefore`、`securityNotice`、`recoveryCodeUnacked`、`http-client.schema.json` 账号部分、ADMIN.md、README.md。AC-CHAT-90-14 服务端一致性（TC-CHAT-90-12）通过；**三套 SDK 枚举未做（FE-600～602）**。ADMIN.md 的账号接口随 BE-421 实现 |
 | BE-402 | 🟡 部分完成 | 已做：`frames.json` 的 `kicked.recoverBefore`、`securityNotice` 用例；`account-session.json` 和 Go 参考客户端（`server/e2e/accountmodel`）覆盖规则 5 单飞、规则 6 和 6a 失败分类、规则 7 的 4011。**留到后续**：规则 4 的判定表和转正（随 BE-415，服务端有了判定才能校验）；三套 SDK 跑向量（FE-600～602），所以 AC-CHAT-90-10、90-15 未完成 |
+| BE-405 | 🟡 部分完成 | 本次提交：`testhook`（`-tags imhooks`，nm 断言生产构建没有符号）、`IM_TEST_DISABLE_AUTH_LOCK`、生产拒绝启动（四个开关和带钩子的二进制）。其余见后续提交。 |
 | 全部 | ⬜ 未开始 | C1 结束后按实际用时校准工作量（CH-27），再由 Frank 决定 C3 起的部分 |
 
 ## 总览
