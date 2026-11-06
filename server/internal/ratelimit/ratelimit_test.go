@@ -151,3 +151,27 @@ func TestTakeIsAtomicUnderConcurrency(t *testing.T) {
 		t.Fatalf("granted %d, want 100", ok.Load())
 	}
 }
+
+// 时钟回拨（NTP、/admin/test/clock）之后桶不能卡到真实时间追上：回拨不补令牌，之后从新时刻起正常补充。
+func TestClockRollbackDoesNotStickBucket(t *testing.T) {
+	clk := clock.New()
+	t0 := time.UnixMilli(1_700_000_000_000)
+	clk.Freeze(t0.Add(6 * 24 * time.Hour))
+	l := New(1, 2, clk)
+	if !l.Allow("u") || !l.Allow("u") || l.Allow("u") {
+		t.Fatal("burst of 2, third request must be refused")
+	}
+
+	clk.Freeze(t0)
+	if l.Allow("u") {
+		t.Fatal("rollback itself must not add tokens")
+	}
+
+	clk.Freeze(t0.Add(time.Second))
+	if !l.Allow("u") {
+		t.Fatal("one second after the rollback the bucket must have refilled one token")
+	}
+	if l.Allow("u") {
+		t.Fatal("only one token was refilled")
+	}
+}

@@ -259,6 +259,17 @@ func (e *acctEnv) refreshErrAny(token string) apiErr {
 
 const timingTolerance = 0.05
 
+// medianClose 判断两组耗时的中位数之差是否在容差内。
+func medianClose(a, b []time.Duration, tolerance float64) bool {
+	median := func(v []time.Duration) time.Duration {
+		s := slices.Clone(v)
+		slices.Sort(s)
+		return s[len(s)/2]
+	}
+	x, y := median(a), median(b)
+	return float64(max(x, y)-min(x, y)) <= tolerance*float64(max(x, y))
+}
+
 // assertMedianClose 比较两组耗时的中位数。
 func assertMedianClose(t *testing.T, a, b []time.Duration, tolerance float64) {
 	t.Helper()

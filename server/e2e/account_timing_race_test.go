@@ -9,3 +9,6 @@ import "tianting/server/internal/account"
 func timingArgon() account.ArgonParams {
 	return account.ArgonParams{MemoryKiB: 8 * 1024, Time: 1, Threads: 1}
 }
+
+// raceEnabled：竞态检测的开销会盖过时序用例要测的差异。
+const raceEnabled = true

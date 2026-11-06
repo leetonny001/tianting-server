@@ -120,7 +120,7 @@ func TestTC_CHAT_90_04_NoSecretsInLogs(t *testing.T) {
 	}
 	args := []string{"-I", "../../deploy/ops/scan-logs"}
 	for _, m := range markers {
-		args = append(args, "--marker", m)
+		args = append(args, "--marker="+m) // sid 可能以 - 开头，不能分成两个参数
 	}
 	out, err := exec.Command("python3", append(args, path)...).CombinedOutput()
 	if err != nil {

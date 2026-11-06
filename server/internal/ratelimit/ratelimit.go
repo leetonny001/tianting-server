@@ -89,12 +89,12 @@ func NewHourly(n int, clk clock.Clock) *TokenBucket {
 	return NewPer(time.Hour/time.Duration(max(n, 1)), max(n, 1), clk)
 }
 
-// refill 把桶补到 now（调用方持锁）。
+// refill 把桶补到 now（调用方持锁）。时钟回拨时不补令牌，但 last 跟到 now，否则要等真实时间追上才会再补充。
 func (l *TokenBucket) refill(b *bucket, now time.Time) {
 	if elapsed := now.Sub(b.last).Seconds(); elapsed > 0 {
 		b.tokens = min(l.burst, b.tokens+elapsed*l.rate)
-		b.last = now
 	}
+	b.last = now
 }
 
 // Reconfigure 修改速率与容量，对已有的桶立即生效（PRD-social 5.2 节规则 3）：先按旧速率补到当前时刻，
