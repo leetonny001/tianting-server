@@ -415,6 +415,14 @@ func (a *Admin) RegisterDemoLogin(mux *http.ServeMux) {
 			writeErr(w, protocol.Errorf(protocol.CodeInvalidID, "invalid username"))
 			return
 		}
+		// 已注销的用户先拒绝，不改昵称（F-ACC-08 规则 4）。
+		if deleted, err := a.store.UserDeleted(r.Context(), uid); err != nil {
+			a.internal(w, "check deleted", err)
+			return
+		} else if deleted {
+			writeErr(w, protocol.Errorf(protocol.CodeUserNotFound, "user not found"))
+			return
+		}
 		// 有账号的用户不能演示登录（PRD-chat F-ACC-07 规则 2，R-CB-18）：否则输入用户名就能接管账号。先于昵称判断，昵称不变。
 		switch _, err := a.store.GetAccount(r.Context(), uid); {
 		case err == nil:
@@ -422,14 +430,6 @@ func (a *Admin) RegisterDemoLogin(mux *http.ServeMux) {
 			return
 		case !errors.Is(err, store.ErrNotFound):
 			a.internal(w, "check account", err)
-			return
-		}
-		// 已注销的用户同样先拒绝，不改昵称（F-ACC-08 规则 4）。
-		if deleted, err := a.store.UserDeleted(r.Context(), uid); err != nil {
-			a.internal(w, "check deleted", err)
-			return
-		} else if deleted {
-			writeErr(w, protocol.Errorf(protocol.CodeUserNotFound, "user not found"))
 			return
 		}
 		// 被封禁的用户：先拒绝，不能先改了昵称再报错（封禁不改变资料，F-ADM-13 规则 5）。

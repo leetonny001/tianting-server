@@ -245,7 +245,7 @@ var allowedLabelValues = map[string]map[string]bool{
 		AccountError, AccountBadRequest, AccountClosed, AccountInviteInvalid, AccountTaken,
 		HandshakeOK, HandshakeRateLimited, HandshakeBadPlatform, HandshakeAuthRequired, HandshakeTokenInvalid,
 		HandshakeTokenRevoked, HandshakeTokenExpired, HandshakeError, HandshakeOriginDenied, OpsOK, OpsUnauthorized, OpsForbidden, OpsThrottled, OpsError, "unknown"),
-	"reason": set("tokenInvalid", "tokenExpired", "banned", "suspended", "replaced", "tooManyConnections", "serverShutdown",
+	"reason": set("tokenInvalid", "tokenExpired", "banned", "suspended", "replaced", "tooManyConnections", "serverShutdown", "passwordChanged", "sessionRevoked", "accountDeleted",
 		"missing", "caller", "signature", "window", "nonce", "node", "unknown"),
 	"endpoint": set("node", "connections", "disconnects", "config", "db", "unknown"),
 	"target":   set("user", "all", "room"),

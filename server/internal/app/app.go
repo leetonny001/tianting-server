@@ -258,6 +258,7 @@ func New(cfg Config) (*App, error) {
 	v1 := &api.V1{RequireHTTPS: cfg.RequireHTTPS, Proxies: clientip.Resolver{TrustedProxies: gw.Guard.TrustedProxies}, Verifier: signer, Checker: st, Log: cfg.Logger}
 	publicConfig := cfg.Account.PublicConfig(cfg.DemoLogin)
 	v1.Handle(mux, "GET /v1/config", func(w http.ResponseWriter, r *http.Request) { api.WriteJSON(w, publicConfig) })
+	v1.RegisterAccount(mux, accounts)
 	m.RegisterNode(cfg.Version, runtime.Version(), gw.NodeID, func() bool {
 		ctx, cancel := context.WithTimeout(context.Background(), time.Second)
 		defer cancel()

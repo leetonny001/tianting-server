@@ -39,6 +39,7 @@ type TokenVerifier = auth.TokenVerifier
 // RevocationChecker 返回用户当前的令牌版本号；token 里的版本号更小，说明是强制下线前签发的。
 type RevocationChecker interface {
 	auth.Checker
+	RecoveryUnacked(ctx context.Context, userID string) (bool, error)
 	// ActiveBan 区分"被强制下线"和"被封禁"：两者都让旧 token 失效，给客户端的原因不同（F-ADM-13）。
 	ActiveBan(ctx context.Context, userID string, now int64) (banned bool, until *int64, err error)
 }
@@ -154,7 +155,16 @@ func (g *Gateway) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		gw:   g,
 	}
 	// auth 的 ack 先入队、再登记到在线表：保证客户端先收到 ack，再收到任何推送。
-	c.write(protocol.AckOK(authID, protocol.AuthAck{UserID: uid, ServerTime: g.clock.Now().UnixMilli(), MutedUntil: g.handler.AuthMutedUntil(r.Context(), uid)}))
+	ack := protocol.AuthAck{UserID: uid, ServerTime: g.clock.Now().UnixMilli(), MutedUntil: g.handler.AuthMutedUntil(r.Context(), uid)}
+	if claims.SID != "" {
+		// PRD-chat F-ACC-05 规则 1：App 据此强制进保存页。查询失败不影响登录，下次连接再带。
+		if unacked, err := g.revocation.RecoveryUnacked(r.Context(), uid); err != nil {
+			g.log.Warn("recovery code state", "err", err, "uid", uid)
+		} else {
+			ack.RecoveryCodeUnacked = unacked
+		}
+	}
+	c.write(protocol.AckOK(authID, ack))
 	for _, old := range g.hub.Register(c, g.cfg.MaxConnsPerUser) {
 		old.Kick(protocol.KickTooManyConns)
 		g.log.Info("conn evicted", "conn", old.ConnID(), "uid", uid, "reason", protocol.KickTooManyConns)

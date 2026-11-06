@@ -24,6 +24,7 @@
 | BE-410 | ✅ 完成 | `0015_accounts.sql`、`store.AccountStore`、`storetest` 11 个契约用例；AC-CHAT-90-6（TC-CHAT-90-06，存储层）通过。`users.deleted_at` 的入口都改了，注销流程随 BE-420。Postgres 随 B6 |
 | BE-411 | 🟡 基座完成 | `clientip` 共用、`auth.Check` 共用（WS 和 Bearer）、`/v1` 基座、`GET /v1/config`。AC-ACC-07-4（TC-ACC-07-04）通过，`features.files` 和 `IM_FILES_ENABLED` 随 C2。AC-CHAT-90-16 单测通过，e2e（真实接口、真实 10 秒）随 BE-414 的提交 |
 | BE-412 | 🟡 闸门和计数完成 | `x/crypto/argon2`（v0.58.0，和 console-server 同版本）、闸门（普通 4 + 改密 1 + recover 1）、`Guard`（`auth_throttle`、IP 限流、渐进延迟、单哈希）。见后续提交的接口用例；AC-ACC-01-16、04-22、04-24、05-3、05-18 要 refresh、logout、改密、recover 接口，**这些 AC 的接口部分随 BE-415、417、418 才能验**，这里只验闸门和计数 |
+| BE-413 | ✅ 完成（本任务 AC 都有用例） | AC-ACC-01-1～8、10、11、14、15、17、19、21、AC-ACC-10-2 通过（TC-ACC-01-*、TC-ACC-10-02，本地 e2e）。**AC-ACC-01-5 的例子 `bob` 只有 3 位，走不到 4095**，用例改成 `bobby`，PRD 问题待处理。TC-ACC-01-01 第 3 步 `recovery-code/ack` 随 BE-418，用存储层代替。AC-ACC-01-6 的已注销前置用 `MarkUserDeleted`，`account_cleanup` 随 BE-420 |
 | 全部 | ⬜ 未开始 | C1 结束后按实际用时校准工作量（CH-27），再由 Frank 决定 C3 起的部分 |
 
 ## 总览
