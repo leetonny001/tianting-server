@@ -285,6 +285,10 @@ func New(cfg Config) (*App, error) {
 	}
 	access := accounts.Access()
 	gws := gateway.New(gw, signer, access, clk, h, svc, m, cfg.Logger)
+	if f, ok := accounts.ConnFaults(); ok {
+		gws.WithFaults(f)
+	}
+	go gws.StartRecheck(a.stop)
 	mux.Handle("GET /ws", gws)
 	// /v1/*（PRD-chat 第 4.2 节）：只在对外端口。按 IP 的限制和 /ws 共用可信代理配置（R-CS-35）。
 	v1 := &api.V1{RequireHTTPS: cfg.RequireHTTPS, Proxies: clientip.Resolver{TrustedProxies: gw.Guard.TrustedProxies}, Verifier: signer, Checker: access, Log: cfg.Logger}
@@ -335,7 +339,7 @@ func New(cfg Config) (*App, error) {
 	adm.WithSessions(h)
 	adm.WithTestFaults(a)
 	if cfg.TestMode {
-		adm.WithAccountTest(accounts)
+		adm.WithAccountTest(accounts, h.SetDropKicks)
 	}
 	adm.WithJobs(jobs)
 	if cfg.V13AdminFeatures {

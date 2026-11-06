@@ -5,6 +5,8 @@ import (
 	"errors"
 	"sync"
 	"sync/atomic"
+
+	"tianting/server/internal/auth"
 )
 
 // errInjected 是故障注入产生的错误。
@@ -13,13 +15,16 @@ var errInjected = errors.New("injected failure")
 // Faults 是账号功能的故障注入（PRD-chat 第 4.5 节，BE-405）。生产环境不创建（nil），所有方法都是空操作。
 // 由 POST /admin/test/faults 打开，那个路由只在测试模式注册。
 //
-// 本批接上了会用到它们的代码的只有 Argon2 阻塞和注册事务失败。第 4.5 节的其他项（吊销写失败、入表前吊销、入表后和周期复查失败、
-// 丢弃吊销事件、入表前暂停）随 BE-416、BE-417 和用到它们的代码一起加，不提供没有接上的开关。
+// 入表前暂停是构建标签隔离的 testhook，丢弃吊销事件在 hub（SetDropKicks）。
 type Faults struct {
 	mu           sync.Mutex
 	argonGate    chan struct{} // 非 nil 时普通闸门拿到位之后停住，close 放行
 	argonBlocked atomic.Int64
-	registerTx   int // 还要失败几次注册事务
+	registerTx   int             // 还要失败几次注册事务
+	revokeWrite  int             // 还要失败几次吊销写
+	revokeBefore map[string]bool // 这些用户的下一条连接入表前吊销它的 sid
+	entryRecheck int             // 还要失败几次入表后复查
+	periodic     map[string]int  // 用户 → 还要失败几次周期复查
 }
 
 // NewFaults 创建测试模式的故障注入。
@@ -90,4 +95,102 @@ func (f *Faults) takeRegisterTx() error {
 	}
 	f.registerTx--
 	return errInjected
+}
+
+// FailRevokeWrite 让接下来 n 次吊销写在提交前失败，整个事务回滚（AC-ACC-04-7）。
+func (f *Faults) FailRevokeWrite(n int) {
+	if f == nil {
+		return
+	}
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.revokeWrite = n
+}
+
+func (f *Faults) takeRevokeWrite() error {
+	if f == nil {
+		return nil
+	}
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if f.revokeWrite <= 0 {
+		return nil
+	}
+	f.revokeWrite--
+	return errInjected
+}
+
+// RevokeBeforeRegister 让这个用户的下一条连接在入表前被吊销（AC-ACC-03-17）。
+func (f *Faults) RevokeBeforeRegister(userID string) {
+	if f == nil {
+		return
+	}
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if f.revokeBefore == nil {
+		f.revokeBefore = map[string]bool{}
+	}
+	f.revokeBefore[userID] = true
+}
+
+// FailEntryRechecks 让接下来 n 次入表后复查报错（AC-ACC-03-36）。
+func (f *Faults) FailEntryRechecks(n int) {
+	if f == nil {
+		return
+	}
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.entryRecheck = n
+}
+
+// FailPeriodicRechecks 让这个用户接下来 n 次周期复查报错（AC-ACC-03-47）。
+func (f *Faults) FailPeriodicRechecks(userID string, n int) {
+	if f == nil {
+		return
+	}
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if f.periodic == nil {
+		f.periodic = map[string]int{}
+	}
+	f.periodic[userID] = n
+}
+
+// ConnFaults 实现 gateway.Faults。
+type ConnFaults struct {
+	f      *Faults
+	revoke func(ctx context.Context, sid string)
+}
+
+// BeforeRegister 吊销这条连接的 sid（入表前吊销）。
+func (c ConnFaults) BeforeRegister(ctx context.Context, claims auth.Claims) {
+	c.f.mu.Lock()
+	armed := c.f.revokeBefore[claims.UserID]
+	delete(c.f.revokeBefore, claims.UserID)
+	c.f.mu.Unlock()
+	if armed {
+		c.revoke(ctx, claims.SID)
+	}
+}
+
+// FailEntryRecheck 实现 gateway.Faults。
+func (c ConnFaults) FailEntryRecheck() bool {
+	c.f.mu.Lock()
+	defer c.f.mu.Unlock()
+	if c.f.entryRecheck <= 0 {
+		return false
+	}
+	c.f.entryRecheck--
+	return true
+}
+
+// FailPeriodicRecheck 实现 gateway.Faults。
+func (c ConnFaults) FailPeriodicRecheck(userID string) bool {
+	c.f.mu.Lock()
+	defer c.f.mu.Unlock()
+	if c.f.periodic[userID] <= 0 {
+		return false
+	}
+	c.f.periodic[userID]--
+	return true
 }

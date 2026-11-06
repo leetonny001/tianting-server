@@ -44,3 +44,9 @@ func AfterArgon(key string) {
 		<-p.release
 	}
 }
+
+// ArmConn 让这个用户的下一条连接停在 BeforeRegister。
+func ArmConn(userID string) *Pause { return Arm("conn:" + userID) }
+
+// BeforeRegister 在连接校验之后、入表之前调用。命中一次后自动清除。
+func BeforeRegister(userID string) { AfterArgon("conn:" + userID) }

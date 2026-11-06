@@ -230,3 +230,11 @@ func execLedger(path string, at int64) error {
 	_, err = db.Exec(`UPDATE refresh_key_ledger SET retired_at = ? WHERE kid = 'k1'`, at)
 	return err
 }
+
+// ban 用存储层封禁（封禁接口要签名调用方，这里只关心吊销）。
+func (e *acctEnv) ban(uid string) {
+	e.t.Helper()
+	if err := e.st.BanUser(context.Background(), store.Ban{UserID: uid, Reason: "test", By: "t", At: time.Now().UnixMilli()}); err != nil {
+		e.t.Fatal(err)
+	}
+}

@@ -78,6 +78,24 @@ func (s *Service) SetArgonBlock(on bool) { s.Faults.SetArgonBlock(on) }
 func (s *Service) ArgonBlocked() int     { return s.Faults.ArgonBlocked() }
 func (s *Service) FailRegisterTx(n int)  { s.Faults.FailRegisterTx(n) }
 
+// 第 4.5 节其余的账号故障注入（admin.AccountTest）。
+func (s *Service) FailRevokeWrite(n int)                  { s.Faults.FailRevokeWrite(n) }
+func (s *Service) RevokeBeforeRegister(userID string)     { s.Faults.RevokeBeforeRegister(userID) }
+func (s *Service) FailEntryRechecks(n int)                { s.Faults.FailEntryRechecks(n) }
+func (s *Service) FailPeriodicRechecks(uid string, n int) { s.Faults.FailPeriodicRechecks(uid, n) }
+
+// ConnFaults 是连接路径的故障注入：Faults 为 nil（生产）时返回 false。
+func (s *Service) ConnFaults() (ConnFaults, bool) {
+	if s.Faults == nil {
+		return ConnFaults{}, false
+	}
+	return ConnFaults{f: s.Faults, revoke: func(ctx context.Context, sid string) {
+		if _, err := s.Store.RevokeDeviceSession(ctx, sid, store.RevokeReasonRevoked, s.Clock.Now().UnixMilli(), 0); err != nil {
+			s.Log.Error("injected revoke", "err", err)
+		}
+	}}, true
+}
+
 // ResetLimits 清"用户名 + IP"、IP、邀请码失败计数（/admin/test/limits/reset scope=auth）。
 func (s *Service) ResetLimits(ctx context.Context) error { return s.Store.ResetThrottle(ctx) }
 

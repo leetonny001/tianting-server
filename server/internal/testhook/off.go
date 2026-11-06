@@ -10,3 +10,6 @@ const Compiled = false
 
 // AfterArgon 在 Argon2 计算之后、提交事务之前调用。key 是用户名的哈希。
 func AfterArgon(string) {}
+
+// BeforeRegister 在连接校验之后、入表之前调用。key 是 userId。
+func BeforeRegister(string) {}

@@ -399,6 +399,14 @@ func loadAccount(getenv func(string) string, a *app.Config, bad func(string, ...
 			*dst = d
 		}
 	}
+	if v := getenv("IM_SESSION_RECHECK"); v != "" {
+		d, err := time.ParseDuration(v)
+		if err != nil || d <= 0 {
+			bad("IM_SESSION_RECHECK: invalid duration %q", v)
+		} else {
+			a.Gateway.RecheckInterval = d
+		}
+	}
 	// 重叠窗口必须大于 SDK 请求超时 30 秒 + 网关超时（第 4.1 节）：否则超时重试的旧值落在窗口外，被当成重放。
 	if c.RefreshOverlap != 0 && c.RefreshOverlap <= minRefreshOverlap {
 		bad("IM_REFRESH_OVERLAP must be greater than %s (SDK request timeout 30s + gateway timeout 30s), got %s", minRefreshOverlap, c.RefreshOverlap)

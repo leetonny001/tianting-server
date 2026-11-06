@@ -5,6 +5,7 @@ package gateway
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"log/slog"
 	"net/http"
 	"slices"
@@ -24,6 +25,7 @@ import (
 	"tianting/server/internal/metrics"
 	"tianting/server/internal/protocol"
 	"tianting/server/internal/sessions"
+	"tianting/server/internal/testhook"
 )
 
 // Handler 处理一条已解析的上行帧（ping 除外），返回要回给客户端的 ack；nil 表示不回复。
@@ -42,6 +44,18 @@ type RevocationChecker interface {
 	RecoveryUnacked(ctx context.Context, userID string) (bool, error)
 	// ActiveBan 区分"被强制下线"和"被封禁"：两者都让旧 token 失效，给客户端的原因不同（F-ADM-13）。
 	ActiveBan(ctx context.Context, userID string, now int64) (banned bool, until *int64, err error)
+	// RecoverBefore 是 kicked 帧的找回截止日期（PRD-chat F-ACC-03 规则 6a），没有时返回 nil。
+	RecoverBefore(ctx context.Context, userID string) *int64
+}
+
+// Faults 是连接路径的故障注入（PRD-chat 第 4.5 节）。生产环境是 nil。
+type Faults interface {
+	// BeforeRegister 在连接校验之后、入表之前调用（入表前吊销，AC-ACC-03-17）。
+	BeforeRegister(ctx context.Context, claims auth.Claims)
+	// FailEntryRecheck 让这次入表后复查按数据库报错处理（AC-ACC-03-36）。
+	FailEntryRecheck() bool
+	// FailPeriodicRecheck 让这个用户这一轮周期复查按数据库报错处理（AC-ACC-03-47）。
+	FailPeriodicRecheck(userID string) bool
 }
 
 // Config 是网关参数。
@@ -57,6 +71,10 @@ type Config struct {
 	// 包含 "*" 时不校验（仅限开发）。没有 Origin 头的原生端、与服务端同 host 的页面总是允许。
 	AllowedOrigins []string
 	Guard          GuardConfig // 按 IP 的握手限流与鉴权失败封禁（ARCH S7）
+	// RecheckInterval 是在线连接的周期复查（IM_SESSION_RECHECK，PRD-chat F-ACC-03 规则 2）：按注入的时钟算，默认 10 分钟。
+	RecheckInterval time.Duration
+	// RecheckTick 是检查"谁到期了"的真实时间间隔，只有测试才改。
+	RecheckTick time.Duration
 }
 
 // LocalOrigins 是未配置白名单时的默认值：只允许本机页面（本地开发 H5）。
@@ -73,8 +91,16 @@ func DefaultConfig() Config {
 		MaxConnsPerUser: 10,
 		AllowedOrigins:  LocalOrigins,
 		Guard:           DefaultGuardConfig(),
+		RecheckInterval: defaultRecheckInterval,
+		RecheckTick:     defaultRecheckTick,
 	}
 }
+
+const (
+	defaultRecheckInterval = 10 * time.Minute
+	defaultRecheckTick     = time.Second
+	recheckMaxFailures     = 3 // 周期复查连续失败 3 次才用 1011 断开（RS5-09）
+)
 
 var platforms = map[string]bool{"android": true, "ios": true, "web": true, "pc": true}
 
@@ -91,7 +117,104 @@ type Gateway struct {
 	metrics     *metrics.Metrics
 	guard       *guard
 	nextID      atomic.Uint64
+	faults      Faults
 }
+
+// WithFaults 接上测试模式的故障注入。
+func (g *Gateway) WithFaults(f Faults) { g.faults = f }
+
+// StartRecheck 运行周期复查，直到 stop 关闭（规则 2，RS4-09）：防止一次踢线丢失后连接活到 access 到期。
+// 用一个协程扫全部连接，到期的才查库；连接是陆续建立的，查询自然分散。
+func (g *Gateway) StartRecheck(stop <-chan struct{}) {
+	tick := g.cfg.RecheckTick
+	if tick <= 0 {
+		tick = defaultRecheckTick
+	}
+	t := time.NewTicker(tick)
+	defer t.Stop()
+	for {
+		select {
+		case <-stop:
+			return
+		case <-t.C:
+			g.recheckDue()
+		}
+	}
+}
+
+// RecheckAll 立刻复查全部连接（规则 2：总线重连后）。第一批只有单节点，没有总线，集群随 B6 接上。
+func (g *Gateway) RecheckAll() {
+	for _, cl := range g.hub.Clients() {
+		if c, ok := cl.(*conn); ok {
+			g.recheck(c)
+		}
+	}
+}
+
+func (g *Gateway) recheckDue() {
+	interval := g.cfg.RecheckInterval
+	if interval <= 0 {
+		interval = defaultRecheckInterval
+	}
+	now := g.clock.Now().UnixMilli()
+	for _, cl := range g.hub.Clients() {
+		c, ok := cl.(*conn)
+		if !ok || now-c.lastRecheck.Load() < interval.Milliseconds() {
+			continue
+		}
+		c.lastRecheck.Store(now)
+		g.recheck(c)
+	}
+}
+
+func (g *Gateway) recheck(c *conn) {
+	ctx, cancel := context.WithTimeout(context.Background(), g.cfg.WriteTimeout)
+	defer cancel()
+	var res auth.Result
+	if g.faults != nil && g.faults.FailPeriodicRecheck(c.uid) {
+		res = auth.Result{Claims: c.claims, Verdict: auth.VerdictError, Err: errInjectedRecheck}
+	} else {
+		res = auth.Recheck(ctx, g.revocation, c.claims)
+	}
+	if res.Verdict == auth.VerdictError {
+		if n := c.recheckFails.Add(1); n >= recheckMaxFailures {
+			g.log.Error("periodic recheck failed", "err", res.Err, "uid", c.uid, "failures", n)
+			c.closeWith(protocol.CloseInternalError, "recheck failed")
+		} else {
+			g.log.Warn("periodic recheck failed", "err", res.Err, "uid", c.uid, "failures", n)
+		}
+		return
+	}
+	c.recheckFails.Store(0)
+	g.applyRecheck(ctx, c, res)
+}
+
+// applyRecheck 把不通过的复查结果变成踢线，原因和 auth 时相同。
+func (g *Gateway) applyRecheck(ctx context.Context, c *conn, res auth.Result) {
+	switch res.Verdict {
+	case auth.VerdictOK:
+	case auth.VerdictRevoked:
+		g.kickRevoked(ctx, c, c.uid)
+	case auth.VerdictSuperseded:
+		c.Kick(protocol.KickTokenExpired)
+	default:
+		reason := kickReasonOf(res)
+		c.KickWith(reason, g.revocation.RecoverBefore(ctx, c.uid))
+	}
+}
+
+// kickReasonOf 是凭证变化类判定对应的踢线原因（规则 2）。
+func kickReasonOf(res auth.Result) string {
+	switch res.Verdict {
+	case auth.VerdictAccountDeleted:
+		return protocol.KickAccountDeleted
+	case auth.VerdictCredentialsOld:
+		return protocol.KickPasswordChanged
+	}
+	return protocol.SessionKickReason(res.RevokeReason)
+}
+
+var errInjectedRecheck = errors.New("injected recheck failure")
 
 func New(cfg Config, verifier TokenVerifier, revocation RevocationChecker, clk clock.Clock, h *hub.Hub, handler Handler, m *metrics.Metrics, log *slog.Logger) *Gateway {
 	return &Gateway{cfg: cfg, verifier: verifier, revocation: revocation, clock: clk, hub: h, handler: handler, metrics: m, log: log, guard: newGuard(cfg.Guard, clk), disconnects: disconnects.New()}
@@ -165,14 +288,28 @@ func (g *Gateway) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			ack.RecoveryCodeUnacked = unacked
 		}
 	}
+	c.lastRecheck.Store(c.connectedAt)
 	c.write(protocol.AckOK(authID, ack))
+	if g.faults != nil {
+		g.faults.BeforeRegister(r.Context(), claims)
+	}
+	testhook.BeforeRegister(uid) // 账号并发钩子：连接校验之后、入表之前（AC-ACC-03-41）
 	for _, old := range g.hub.Register(c, g.cfg.MaxConnsPerUser) {
 		old.Kick(protocol.KickTooManyConns)
 		g.log.Info("conn evicted", "conn", old.ConnID(), "uid", uid, "reason", protocol.KickTooManyConns)
 	}
-	// 校验版本号和进入在线表之间可能刚好发生封禁或强制下线：那次踢人踢不到这个连接，这里再查一次，不留漏网的连接。
-	if v, err := g.revocation.TokenVersion(r.Context(), uid); err == nil && claims.Version < v {
-		g.kickRevoked(r.Context(), c, uid)
+	// 校验和进入在线表之间可能刚好发生吊销、转正、封禁或强制下线：那次踢人踢不到这个连接，这里再查一次，不留漏网的连接。
+	// 同时覆盖 sid、代号、版本号和 credentials_changed_at（规则 2，RS5-08）。查库出错就断开（失败关闭）：1011 可以重连，
+	// 不用 4012，否则数据库抖动会把用户踢回登录页（RS5-09）。
+	res := auth.Recheck(r.Context(), g.revocation, claims)
+	if g.faults != nil && g.faults.FailEntryRecheck() {
+		res = auth.Result{Claims: claims, Verdict: auth.VerdictError, Err: errInjectedRecheck}
+	}
+	if res.Verdict == auth.VerdictError {
+		g.log.Error("recheck after register", "err", res.Err, "uid", uid)
+		c.closeWith(protocol.CloseInternalError, "recheck failed")
+	} else {
+		g.applyRecheck(r.Context(), c, res)
 	}
 	g.handshake(metrics.HandshakeOK)
 	g.metrics.Connections.WithLabelValues(platform).Inc()
@@ -285,19 +422,11 @@ func (g *Gateway) authenticate(ctx context.Context, ws *websocket.Conn, ip, mask
 		ev := g.revokedEvent(ctx, claims.UserID)
 		g.kickEvent(ws, ev)
 		reject(protocol.CloseTokenRevoked, ev.Reason, claims.UserID)
-	case auth.VerdictSessionRevoked:
-		// recoverBefore 随 BE-416（F-ACC-03 规则 6a）。
-		kick := protocol.SessionKickReason(res.RevokeReason)
+	case auth.VerdictSessionRevoked, auth.VerdictAccountDeleted, auth.VerdictCredentialsOld:
+		// 都带 recoverBefore，每次按账号状态算（F-ACC-03 规则 2、6a）。
+		reason := kickReasonOf(res)
 		g.handshake(metrics.HandshakeTokenRevoked)
-		g.kick(ws, kick)
-		reject(protocol.CloseTokenRevoked, kick, claims.UserID)
-	case auth.VerdictAccountDeleted, auth.VerdictCredentialsOld:
-		reason := protocol.KickAccountDeleted
-		if res.Verdict == auth.VerdictCredentialsOld {
-			reason = protocol.KickPasswordChanged
-		}
-		g.handshake(metrics.HandshakeTokenRevoked)
-		g.kick(ws, reason)
+		g.kickEvent(ws, protocol.KickedEvent{Type: protocol.EventKicked, Reason: reason, RecoverBefore: g.revocation.RecoverBefore(ctx, claims.UserID)})
 		reject(protocol.CloseTokenRevoked, reason, claims.UserID)
 	default: // 过期、被替换的代：都是 kicked/tokenExpired（F-ACC-03 规则 4）
 		g.handshake(metrics.HandshakeTokenExpired)
@@ -366,7 +495,10 @@ type conn struct {
 	writing  bool // 是否有写协程在运行；同一时刻最多一个，保证帧的顺序
 	kickOnce sync.Once
 	closed   atomic.Pointer[closeReason] // 服务端主动关闭的原因；为空表示是客户端关的
-	gw       *Gateway
+	// 周期复查：上一次的时间（注入的时钟）和连续失败次数。
+	lastRecheck  atomic.Int64
+	recheckFails atomic.Int32
+	gw           *Gateway
 }
 
 // SessionInfo 实现 hub.Client。

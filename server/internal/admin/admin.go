@@ -52,6 +52,7 @@ type Admin struct {
 	jobs     JobRunner
 	// accountTest 只在测试模式设置（PRD-chat 第 4.5 节）。
 	accountTest AccountTest
+	dropKicks   func(bool)
 	mod         *ModerationConfig // 第二批开启时非 nil（IM_V13_ADMIN_FEATURES）
 	pusher      PushService       // 系统推送开启时非 nil（IM_PUSH_ENABLED）
 	clock       clock.Clock
@@ -72,6 +73,10 @@ type AccountTest interface {
 	SetArgonBlock(on bool)
 	ArgonBlocked() int
 	FailRegisterTx(n int)
+	FailRevokeWrite(n int)
+	RevokeBeforeRegister(userID string)
+	FailEntryRechecks(n int)
+	FailPeriodicRechecks(userID string, n int)
 	ResetLimits(ctx context.Context) error
 }
 
@@ -83,8 +88,11 @@ type JobRunner interface {
 // WithJobs 接上定时任务。
 func (a *Admin) WithJobs(j JobRunner) { a.jobs = j }
 
-// WithAccountTest 接上账号功能的测试设施。
-func (a *Admin) WithAccountTest(t AccountTest) { a.accountTest = t }
+// WithAccountTest 接上账号功能的测试设施。dropKicks 打开或关闭"丢弃吊销事件"（hub.SetDropKicks）。
+func (a *Admin) WithAccountTest(t AccountTest, dropKicks func(bool)) {
+	a.accountTest = t
+	a.dropKicks = dropKicks
+}
 
 // WithTestFaults 接上节点级故障注入。
 func (a *Admin) WithTestFaults(f TestFaults) { a.faults = f }
@@ -158,8 +166,16 @@ func (a *Admin) RegisterTestRoutes(mux *http.ServeMux, faults *logic.Faults, clk
 			OpsDelayMs      *int64 `json:"opsDelayMs"`      // 运维接口人为延迟（PRD-ops S-OPS-24）
 			StorePing       string `json:"storePing"`       // "fail" 让就绪检查失败，"" 恢复
 			// 账号（PRD-chat 第 4.5 节）。不传不改：查询 argonBlocked 时不影响已经打开的钩子。
-			ArgonBlock     *bool `json:"argonBlock"`     // 闸门拿到位之后停住，让闸门占满
-			RegisterTxFail int   `json:"registerTxFail"` // 接下来几次注册事务失败
+			ArgonBlock           *bool  `json:"argonBlock"`           // 闸门拿到位之后停住，让闸门占满
+			RegisterTxFail       int    `json:"registerTxFail"`       // 接下来几次注册事务失败
+			RevokeWriteFail      int    `json:"revokeWriteFail"`      // 接下来几次吊销写失败（改密整体回滚，AC-ACC-04-7）
+			RevokeBeforeRegister string `json:"revokeBeforeRegister"` // 这个用户的下一条连接入表前吊销（AC-ACC-03-17）
+			EntryRecheckFail     int    `json:"entryRecheckFail"`     // 接下来几次入表后复查报错（AC-ACC-03-36）
+			PeriodicRecheckFail  *struct {
+				UserID string `json:"userId"`
+				Count  int    `json:"count"`
+			} `json:"periodicRecheckFail"` // 这个用户接下来几次周期复查报错（AC-ACC-03-47）
+			DropRevokeEvents *bool `json:"dropRevokeEvents"` // 丢弃吊销事件（踢线），靠周期复查补上（AC-ACC-03-47）
 		}
 		if readJSON(w, r, &req) {
 			a.auditFail.Store(req.AdminAuditWrite == "fail")
@@ -176,6 +192,21 @@ func (a *Admin) RegisterTestRoutes(mux *http.ServeMux, faults *logic.Faults, clk
 				}
 				if req.RegisterTxFail > 0 {
 					a.accountTest.FailRegisterTx(req.RegisterTxFail)
+				}
+				if req.RevokeWriteFail > 0 {
+					a.accountTest.FailRevokeWrite(req.RevokeWriteFail)
+				}
+				if req.RevokeBeforeRegister != "" {
+					a.accountTest.RevokeBeforeRegister(req.RevokeBeforeRegister)
+				}
+				if req.EntryRecheckFail > 0 {
+					a.accountTest.FailEntryRechecks(req.EntryRecheckFail)
+				}
+				if req.PeriodicRecheckFail != nil {
+					a.accountTest.FailPeriodicRechecks(req.PeriodicRecheckFail.UserID, req.PeriodicRecheckFail.Count)
+				}
+				if req.DropRevokeEvents != nil && a.dropKicks != nil {
+					a.dropKicks(*req.DropRevokeEvents)
 				}
 				blocked = a.accountTest.ArgonBlocked()
 			}
