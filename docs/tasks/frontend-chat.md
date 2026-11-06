@@ -18,6 +18,8 @@
 |---|---|---|
 | FE-600 | ✅ 完成（sdk-ts 部分） | 假 HTTP、`client` scope 错误码（TC-CHAT-90-12）、`frames.json` 的 Schema 校验（TC-CHAT-90-09，不新增依赖）、`account-session.json` 执行器（TC-CHAT-90-13，随 FE-610 提交）。AC-CHAT-90-10、90-14、90-15 是三套 SDK 的 AC，这里只是 sdk-ts；`chat-sync.json` 和附件状态机随 FE-630。结果都是本地结果：Node 26、macOS，tianting-sdk-ts@a5dbdef，CI 不运行 |
 | FE-610 | 🟡 SDK 部分完成 | `AccountClient` 14 个接口、`tokenProvider`、单飞、串行队列、踢线缓存、4011 比代号都做了，单测 + 真实 im-server（本地，SQLite，tianting-sdk-ts@b7b45ec，CI 不运行）通过，变异确认 57 项全部被测试发现。**没有验收的部分**：AC 里的弹窗、页面、"我"页显示属于 FE-613～618，这里只验证 SDK 给出的事件和数据；AC-ACC-03-42 的 `/v1/files/urls` 随 C2 才有，现在用 `/v1/account/events` 代替，FE-630 要补；AC-ACC-03-37 的"100 天到期"和 AC-ACC-04-25 的四条序列在服务端 e2e（BE-422），SDK 只验证 4290 退避和同样显示日期；向量里 `source=kicked` 直接调入口，经过 FakeTransport 的路径在 TC 用例里 |
+| FE-601 | ✅ 完成（sdk-kotlin 部分） | 假 HTTP（`sdk-core` 的 `FakeHttp`）、`Clock` 注入点（`AccountClientOptions.clock`，主代码只有默认时钟读系统时间）、`client` scope 错误码（TC-CHAT-90-12）、C1 帧的 Schema 校验（TC-CHAT-90-09）、`account-session.json` 执行器（TC-CHAT-90-13，随 FE-611 提交）。协议副本同步到 1aa4365。`chat-sync.json` 随 FE-631。结果都是本地结果：JDK 21、macOS，tianting-sdk-kotlin@11f1a51、@9495872，CI 不运行 |
+| FE-611 | 🟡 SDK 部分完成 | `AccountClient` 14 个接口、`tokenProvider`、单飞、串行队列、踢线缓存、4011 比代号、先落盘再使用、恢复码确认前只放内存、老 Session 按 demo、"待退出"持久化和补发、系统令牌注销的调用点（`SystemTokenRevoker`）、OkHttp 不隐式重发都做了。单测 728 个、真实 im-server 集成 65 个（其中账号 19 个；本地，SQLite，CI 不运行）通过，变异确认 128 项全部被测试发现（首轮 122 项，5 项存活、1 项写错，补测试后重跑；只加了测试，实现没有再改），tianting-sdk-kotlin@b1edf51。**没有验收的部分**：AC-ACC-03-7、03-11、03-13、03-18、03-20、04-6 的层级是原生 UI 测试（模拟器），这里没有运行，只验证了 SDK 这一层，页面和杀进程属于 FE-615、FE-616；Keystore 存储的实现在 App；系统令牌注销只验证调用点存在于替身，FCM 随 C3；AC-ACC-03-42 的 `/v1/files/urls` 随 C2，现在用 `/v1/account/events` 代替，FE-631 要补；AC-ACC-03-37、04-25 只验证到 SDK 部分（同 FE-610）；AC-ACC-03-20 的 5 分钟只推进了 SDK 钟和假服务端，真实服务端上没有推进时钟，时间部分看 TC-ACC-03-19；集成测试开了 `IM_TEST_DISABLE_AUTH_LOCK=1`，真实限流没有经过 SDK；`sdk-android` 只编译和跑了 Robolectric 单测，仪器测试没有跑 |
 | 其余 | ⬜ 未开始 | Kotlin、Swift 照 [SDK 设计说明第 6 节](../sdk/README.md) 做 |
 
 ## 总览
@@ -368,3 +370,10 @@ PRD 冻结，没有改，都按最保守的理解实现，等 Frank 决定。第
 | 11 | F-ACC-03 规则 5 | 过期判断用哪个钟没写。`serverTime` 只在 `auth` ack 才有，启动判断时没有 | 用本地时钟。偏快：提前刷新，刷新回来不再检查，不会循环；偏慢：服务端回 4011，走规则 7 |
 | 12 | FE-600 第 2 条 | "`kickReasons` 忽略不认识的值"和现有用例（`moderation.test.ts`：不认识的 reason + 4012 时 `fatal` 带原 reason）在字面上冲突 | 关闭码可以重连就忽略这个值；否则按关闭码结束，`fatal` 带原值，账号模式按关闭码清 token。没有改现有用例 |
 | 13 | AC-ACC-03-42 | `/v1/files/urls` 和 `getFileUrls` 随 C2，C1 测不了原文 | 用 `listEvents` 验证同样的语义，FE-630 要用原接口再跑一次 |
+| K1 | F-ACC-04 规则 1、F-ACC-05 规则 1（FE-611） | 恢复码没确认时断网退出：确认前 token 只放内存（RS5-13），"待退出"又要持久化 refresh，两条冲突 | 退出请求成功时不写盘。断网才写"待退出"：这时已经退出，不算登录状态，不写的话这条会话只能等到期 |
+| K2 | F-ACC-04 规则 1（FE-611） | "本地立即退出"和"先调 logout 再断开"：网络挂起（不是立刻失败）时 logout 要等 30 秒 | SDK 保持先发请求，最长等 30 秒；待退出先写、登录态先清，所以等待期间杀 App 也不会回到登录状态。界面不等 `logout()` 的返回，先回登录页（FE-616 要照做） |
+| K3 | F-ACC-04 规则 1（FE-611） | "待退出"只说存 `sid` 和 refresh，"下次联网时补发"：一台设备有几条、补发失败怎么办、服务端明确拒绝怎么办都没写 | 列表，最多 8 条；启动、回前台、联网时补发，失败按退避重试 5 次后等下一次事件；网络错误、4290、5xx 留着，其他错误码（如 refresh 的 mac 不对）删除 |
+| K4 | 第 21 节 16（OkHttp，FE-611） | 已核实：默认配置下，复用的连接断在半路时 POST 会被重发；**只关 `retryOnConnectionFailure` 不够**，`503 + Retry-After: 0` 还是会重发 | 关 `retryOnConnectionFailure` 和重定向，请求体标记 one-shot，`OkHttpRetryTest` 用裸 socket 数到达的请求数（含默认配置的对照组）。网关的隐式重试还没有核实 |
+| K5 | F-ACC-04 规则 3（FE-611，sdk-swift 也要看） | sdk-ts 只有一条事件循环，"响应先到踢线后到"时旧连接的回调已失效。Kotlin 的连接和账号在两条线程上，踢线可能在缓存已经释放之后才到账号这边，会把刚换好的会话结束掉。第一次跑真实服务端就遇到了 | `KickInfo` 带这条连接的 `sid`，和本地 `sid` 不同就忽略这个踢线，用新 token 重连。sdk-ts 不需要；sdk-swift 用 actor 或多条队列的话同样有这个问题 |
+| K6 | FE-611 第 4 条 | 任务单写 `IMClient.kt` 第 916～932 行是重连和 4011 分支，实际这几行是 `recheckDeleted`，重连和 4011 在 `Connection.kt` 的 `onClosed` | 改的是 `Connection.kt`，任务单没有改 |
+| K7 | F-ACC-03 规则 5（SDK 接口） | 会话已经结束时调 `connect(tokenProvider)`（比如 `start()` 的刷新收到 4019 之后 App 才连接）：`IMClient` 还没绑定，收不到结束事件，状态停在连接中。sdk-ts 相同 | 没有改，和 sdk-ts 一致。App 要先看 `session` 不为空再连接，并且从 `AccountClient` 的 `ended` 收结束事件。建议三套 SDK 一起决定要不要在这种情况下发 `fatal` |
