@@ -192,6 +192,7 @@ func TestTC_ACC_05_11_Regenerate(t *testing.T) {
 		if c != http.StatusOK {
 			t.Fatalf("%d %s", c, b)
 		}
+		validateHTTP(t, "RecoveryCodeResponse", b)
 		var r authResp
 		mustJSON(t, b, &r)
 		if r.RecoveryCodeGen != 2 {

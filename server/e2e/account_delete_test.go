@@ -3,6 +3,7 @@ package e2e
 // F-ACC-08 注销账号（BE-420）和 AC-ACC-04-22 的共用计数。
 
 import (
+	"errors"
 	"fmt"
 	"net/http"
 	"strings"
@@ -10,6 +11,7 @@ import (
 	"time"
 
 	"tianting/server/internal/protocol"
+	"tianting/server/internal/store"
 )
 
 func (e *acctEnv) cleanup() {
@@ -280,4 +282,26 @@ func TestFinishDeletionRespectsCancel(t *testing.T) {
 		t.Fatalf("%v %v", ok, err)
 	}
 	e.mustLogin("alice_1", goodPassword, "ios")
+}
+
+// F-ACC-04 规则 8：持锁后校验版本和调用方 sid，两道都要在。接口上一道挡住了另一道的情况（recover 同时递增版本和吊销），所以这里直接测存储层。
+func TestCommitCredentialsChecks(t *testing.T) {
+	e := openEnv(t, nil)
+	r := e.register("alice_1", nil)
+	sid := sidOf(r.RefreshToken)
+	event := store.AccountEvent{UserID: "alice_1", Kind: "test", At: 1}
+	_, err := e.st.CommitCredentials(t.Context(), store.CredentialCommit{UserID: "alice_1", Version: 99, CallerSID: sid, Now: 1, Event: event})
+	if !errors.Is(err, store.ErrCredentialsChanged) {
+		t.Errorf("stale version: %v", err)
+	}
+	if _, err := e.st.RevokeDeviceSession(t.Context(), sid, "revoked", 1, 0); err != nil {
+		t.Fatal(err)
+	}
+	_, err = e.st.CommitCredentials(t.Context(), store.CredentialCommit{UserID: "alice_1", Version: 1, CallerSID: sid, Now: 1, Event: event})
+	if !errors.Is(err, store.ErrCredentialsChanged) {
+		t.Errorf("revoked caller: %v", err)
+	}
+	if _, err = e.st.CommitCredentials(t.Context(), store.CredentialCommit{UserID: "alice_1", Version: 1, Now: 1, Event: event}); err != nil {
+		t.Errorf("no caller: %v", err)
+	}
 }

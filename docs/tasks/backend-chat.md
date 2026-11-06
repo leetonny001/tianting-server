@@ -35,6 +35,7 @@
 | BE-421 | ✅ 完成（本任务 AC 都有用例） | AC-ACC-05-9（服务端路由和 scope；console 路由随 CS-200）、09-1（后端部分）、09-2、09-5、09-7、09-9、09-10、09-12、09-13、09-14 通过；AC-ACC-03-33 的后台响应部分通过。配置检查项 `invite_total` 查库现算。AC-ACC-09-6 的 console 角色随 CS-200，这里验了 scope 和旧密钥拒绝 |
 | BE-424 | ✅ 完成（文档） | `docs/reports/privacy-notice-checklist-draft.md`：规则 3 的告知项、C1 和 C2 相关的事实和法务问题。**只是清单草稿，不代替法律文本** |
 | BE-423 | ✅ 完成 | `deploy/ACCOUNT-RUNBOOK.md`：配置、`GOMEMLIMIT`、配置检查和指标、密钥台账和泄露应急、数据库恢复、NAT。`IM_TRUSTED_EGRESS_CIDRS`、`IM_TRUSTED_EGRESS_FACTOR`（PRD 没有定义名字，任务单要求实现时加）。AC-CHAT-90-17（TC-CHAT-90-15）的用例在 BE-422 的提交里 |
+| BE-422 | 🟡 后端用例完成，AC-ACC-04-29 未执行，性能未判定 | 报告 `docs/reports/account-c1-acceptance-2026-11-06.md`。攻击序列对应表 `e2e/account_acceptance_test.go`；变异确认 `tools/account-mutation/run.py`，{len(rows)} 条全部被发现。AC-CHAT-90-5（im-server 部分）、90-17 通过；AC-CHAT-90-2 现有 e2e 全过，TC-PERF 等 P-12。**AC-ACC-04-29 未执行不算通过；AC-CHAT-90-1、90-11 开发机只记录；CS-200 还没做，依赖它的部分没验** |
 | 全部 | ⬜ 未开始 | C1 结束后按实际用时校准工作量（CH-27），再由 Frank 决定 C3 起的部分 |
 
 ## 总览
@@ -548,4 +549,17 @@
 
 ## PRD 问题的处理
 
-分发时发现的矛盾和缺口已在 [PRD-chat v1.1](../prd/PRD-chat-v1.1.md) 第 22 节修正，这里不再单独记录。
+分发时发现的矛盾和缺口已在 [PRD-chat v1.1](../prd/PRD-chat-v1.1.md) 第 22 节修正。实现 C1 时发现的（PRD 冻结，没有改，都按最保守的理解实现，等 Frank 决定）：
+
+| # | 位置 | 问题 | 现在的实现 |
+|---|---|---|---|
+| 1 | AC-ACC-01-5 | 例子 `bob` 只有 3 位，走不到 4095 | 用例改用 `bobby` |
+| 2 | F-ACC-03 规则 4 第 ② 步 | `mac` 正确但会话行不存在（`session_purge` 或注销清理删了）没有写 reason | `reason=expired`，不带 `recoverBefore` |
+| 3 | F-ACC-03 规则 4 | `pending` 的 access 未过期，但 refresh 到期时间已过（H5 24 小时），写的是"转正"，转正又会滑动到期时间，等于用 access 复活过期会话 | 不转正，按过期 4011 |
+| 4 | F-ACC-04 规则 3、6，F-ACC-08 规则 2 | 会话已被吊销后再次吊销，原因是否覆盖没写。`logout-others` 后改密、注销后找回时，旧 refresh 的 `reason` 是第一次的（规则 6a 的日期不受影响） | 保留第一次的原因 |
+| 5 | F-ACC-05 规则 2 | "每 IP 每分钟 20 次"和登录的是否同一个计数没写 | 分开计数，登录失败压不到找回 |
+| 6 | F-ACC-08 规则 2 | `delete/cancel` 密码正确但没有注销申请时的响应没写 | 200，只有知道密码的人走得到 |
+| 7 | F-ACC-03 规则 4 | `securityNotice` 写"其他在线设备"，同一 `sid` 被踢的连接可能先收到一条 | 没有排除，客户端忽略不了也无害 |
+| 8 | 第 11.2 节 | `recovery-code` 响应、`PATCH profile` 响应没有定义 | `{{recoveryCode, recoveryCodeGen}}`（Schema 补 `RecoveryCodeResponse`）、`{{}}` |
+| 9 | 第 11.5 节 | 4048 排在 C2 的协议任务，但 AC 要求 C1 的 `avatarFileId` 返回它 | 提前加进 `errors.json` |
+| 10 | F-ACC-03 规则 2 | "最近活跃时间"只说显示，没说什么算活跃 | 登录、刷新、转正时更新，连接和收发不更新 |
