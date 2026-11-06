@@ -183,9 +183,16 @@ im.disconnect();                            // 退出登录
 - **落盘期间会话结束**：登录、改密等响应写存储之后比一次 `epoch`，会话已经结束就清存储并抛 `SessionEndedError`，不把结束的会话救回来（S3）。退出开始时 `epoch` 就加一，等 logout 响应时回来的响应也不采用。
 - **会话已结束时连接（K7）**：`connect(tokenProvider)` 时会话已经结束（没登录过，或者 `start()` 的刷新收到 4019 之后 App 才连接），发 `fatal`（session 类），状态回到断开，不开连接，不再停在连接中。`SessionEndedError` 多了可选的 `end`，`accessToken()` 抛出时带上最近一次结束的原因，`fatal` 带同样的 `dialog`、`reason`、`code`，但没有 `origin`（这个 `fatal` 不是连接上的踢线发的）；没登录过时只有 `action: login`，退出之后是 `action: logout`。等 token 时会话才结束的，走原来的 `onEnded`，只有一次 `fatal`。App 之后再登录，再调一次 `connect` 就能连上。
 - **退出**：先发 logout（Bearer 和 refresh 都带），再 1000 断开；连不上也本地退出。进行中的刷新作废，等响应的改密回来时不再采用（否则退出后会话又活了）。H5 没有"待退出"，原生要有（FE-611）。
+- **退出进行中登录（问题表 A1、I6）**：logout 的收尾只作用于它开始时的那个会话，三套 SDK 相同，用例在 `account-unified.test.ts`、`AccountUnifiedTest`、`AccountUnifiedTests` 的 A1 组。
+  - 登录、注册、找回、`restore` 算新会话，序号 `sessionSeq` 加一（**在写存储之前**）。logout 开始时记下序号，收尾时序号变了就不结束会话，也不发 `ended`，所以旧响应晚到（成功或失败）都不影响新会话和存储，App 不用等它。
+  - logout 只在序号没变时清存储：写待退出期间登录成功，存储里的就是新 token（sdk-ts 没有待退出，logout 开始时也不清存储）。
+  - 旧 sid 的待退出不受影响：确认了就删，网络错误、4290、5xx 留着。这时**不撤销系统推送令牌**（新会话正在用），改成立刻开始补发，旧 sid 靠补发解绑，所以这段时间旧 sid 的推送还可能到这台设备。
+  - 新会话建立时放掉所有 logout 占的踢线缓存：旧连接已随"token 换了"断开，缓存的踢线作废；新会话的踢线立即生效，不等旧 logout。
+  - logout **之前**发出、之后才回来的登录响应不采用（`SessionEndedError`），退出优先。服务端已经建的这条设备会话留到过期，界面走不到这条路（退出前没有登录页）。
+  - App 不再等退出结束才能登录。旧 `IMClient` 要在新会话开始前关掉：它还绑着 `tokenProvider`，会用新 token 重连；它的 `disconnect` 清的本地库和新会话共用。H5 每次退出换一个 `AccountClient` 实例，本来就不等。
 - **踢线的会话结束**：关闭码 4010、4012 的踢线清掉本地 token；`tooManyConnections` 不清（账号本身没问题）。`serverShutdown` 按退避重连。
 - **不认识的踢线原因**：关闭码说可以重连就忽略；否则按关闭码结束，原因原样告诉界面（`moderation.test.ts` 已有用例）。
-- **securityNotice**：不认识的 `kind` 不发给 App。
+- **securityNotice**：放行服务端实际发的四种（`server/internal/account` 的 `notify` 调用）：`newDeviceLogin`、`recoveryCodeRegenerated`、`refreshReplay`、`refreshRateLimited`。不认识的 `kind` 不发给 App。`passwordChanged`、`passwordRecovered`、`loggedOutOthers`、`newIpPrefix` 等只写 `account_events`，不发这个帧：改密、找回时其他设备收到的是 `kicked`。真实服务端的集成测试验证了 `recoveryCodeRegenerated`（三套都有）。
 - **日志**：只有方法、路径、状态码、错误码、动作。token、refresh、恢复码、密码不进 URL、日志、事件和错误信息；传输层的原始错误不带进异常（错误信息可能有 URL）。
 
 ### HTTP 客户端不能隐式重发（S2、K4，第 21 节 16）
