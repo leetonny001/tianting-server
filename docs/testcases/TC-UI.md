@@ -1,6 +1,6 @@
 # 测试用例：客户端 UI（UI，M3）
 
-> 依据：[PRD-ui v1.0](../prd/PRD-ui-v1.0.md)（冻结），本文件覆盖【M3】AC；数据与规则见 [PRD-core v1.3](../prd/PRD-core-v1.3.md)、[PRD-social v1.0](../prd/PRD-social-v1.0.md)、[PRD-admin v1.0](../prd/PRD-admin-v1.0.md)（第一批解散群）；SDK 行为见 [SDK 设计说明](../sdk/README.md)；任务见 [frontend-ui.md](../tasks/frontend-ui.md)。
+> 依据：[PRD-ui v1.0](../prd/PRD-ui-v1.0.md)（冻结），本文件覆盖【M3】AC；数据与规则见 [PRD-core v1.3](../prd/PRD-core-v1.3.md)、[PRD-social v1.0](../prd/PRD-social-v1.1.md)、[PRD-admin v1.0](../prd/PRD-admin-v1.0.md)（第一批解散群）；SDK 行为见 [SDK 设计说明](../sdk/README.md)；任务见 [frontend-ui.md](../tasks/frontend-ui.md)。
 >
 > 通用约定：
 > - 测试用户同 PRD-ui 2.1 节：alice、bob、carol、dave、eve 已导入，昵称与 userId 相同（另有说明除外）；`zhangsan` 昵称"张三"；`nobody` 不存在；frank 已导入但与 alice 没有任何关系。"开放模式 / 好友制"同 PRD-social 第 6 节，默认开放模式。
@@ -30,7 +30,6 @@
 | TC-UI-03-06 | 登录页输入框计算字号 ≥ 16px | AC-UI-03-6 | Playwright | P1 |
 | TC-UI-03-07 | 以昵称"张三"登录后各处显示张三 | AC-UI-03-7 | 端到端 | P0 |
 | TC-UI-03-08 | 昵称超过 32 个字时提示并禁用 | AC-UI-03-8 | 前端单测 | P0 |
-| TC-UI-03-09 | 生产构建关闭演示登录 | AC-UI-03-9 | Playwright | P0 |
 | TC-UI-03-10 | 登录页标题与品牌名 | AC-UI-03-10 | Playwright | P0 |
 | TC-UI-04-01 | 群聊摘要带发送者前缀，自己发的不带 | AC-UI-04-1 | 前端单测 | P0 |
 | TC-UI-04-02 | 单聊摘要不带发送者前缀 | AC-UI-04-2 | 前端单测 | P0 |
@@ -109,13 +108,13 @@
 | TC-UI-14-12 | 从群聊进入发申请带 source=group | AC-UI-14-11 | Playwright | P0 |
 | TC-UI-15-01 | "我"页账号与复制 | AC-UI-15-1 | Playwright | P0 |
 | TC-UI-15-02 | "我"页显示名来自演示登录昵称 | AC-UI-15-2 | 端到端 | P0 |
-| TC-UI-15-03 | "我"页没有编辑入口 | AC-UI-15-3 | 前端单测 | P0 |
+| TC-UI-15-03 | 演示会话"我"页没有编辑入口，账号会话有 | AC-UI-15-3 | 前端单测 | P0 |
 | TC-UI-16-01 | 退出确认框点取消不断开 | AC-UI-16-1 | Playwright | P0 |
 | TC-UI-16-02 | 有失败消息时退出提示条数 | AC-UI-16-2 | Playwright | P0 |
 | TC-UI-16-03 | pendingCount 统计与事件 | AC-UI-16-2 | 前端单测 | P0 |
 | TC-UI-16-04 | 确认退出后 sessionStorage 无 token | AC-UI-16-3 | Playwright | P0 |
 | TC-UI-16-05 | 关于天听版本号与 package.json 一致 | AC-UI-16-4 | Playwright | P1 |
-| TC-UI-16-06 | M3 设置页顺序 | AC-UI-16-6 | 前端单测 | P0 |
+| TC-UI-16-06 | 设置页顺序：演示会话没有"账号安全"，账号会话有 | AC-UI-16-6 | 前端单测 | P0 |
 | TC-UI-17-01 | 离线时状态条显示且不遮挡消息 | AC-UI-17-1 | Playwright | P0 |
 | TC-UI-18-01 | 被踢弹窗不能用 Esc、遮罩、后退关闭 | AC-UI-18-1 | Playwright | P0 |
 | TC-UI-18-02 | tooManyConnections 文案 | AC-UI-18-2 | 前端单测 | P0 |
@@ -442,18 +441,6 @@
 - 预期结果：
   1. 33 个时显示"昵称最多 32 个字"，"登录"禁用
   2. 32 个时提示消失、按钮可点
-
-### TC-UI-03-09 生产构建关闭演示登录
-- 关联 AC：AC-UI-03-9
-- 优先级：P0
-- 层级：Playwright
-- 前置条件：以 `VITE_DEMO_LOGIN=false` 构建并用 `vite preview` 启动。
-- 步骤：
-  1. 打开 `/login`
-  2. 打开 `/chats`
-- 预期结果：
-  1. 只显示 Logo 和"请从业务方入口进入天听"，页面中没有 `input` 元素
-  2. `/chats` 跳转到 `/login`
 
 ### TC-UI-03-10 登录页标题与品牌名
 - 关联 AC：AC-UI-03-10
@@ -1286,13 +1273,13 @@
   1. 显示名为"张三"
   2. 显示名为"alice"
 
-### TC-UI-15-03 "我"页没有编辑入口
+### TC-UI-15-03 演示会话"我"页没有编辑入口，账号会话有
 - 关联 AC：AC-UI-15-3
 - 优先级：P0
 - 层级：前端单测
-- 前置条件："我"页组件。
-- 步骤：渲染 `/me`
-- 预期结果：卡片没有"编辑"箭头，页面中没有昵称或头像的编辑控件
+- 前置条件："我"页组件；分别用 `mode=demo`、`mode=account` 的会话。
+- 步骤：分别渲染 `/me`
+- 预期结果：演示会话卡片没有"编辑"箭头，页面中没有昵称或头像的编辑控件；账号会话有编辑入口
 
 ---
 
@@ -1346,13 +1333,13 @@
 - 步骤：打开"关于天听"
 - 预期结果：显示的版本号等于 tianting-web `package.json` 的 `version`；有构建号和开源许可入口
 
-### TC-UI-16-06 M3 设置页顺序
+### TC-UI-16-06 设置页顺序：演示会话没有"账号安全"，账号会话有
 - 关联 AC：AC-UI-16-6
 - 优先级：P0
 - 层级：前端单测
-- 前置条件：M3 构建。
-- 步骤：渲染 `/me/settings`
-- 预期结果：依次为"隐私""黑名单""关于天听""退出登录"，没有"外观"；"退出登录"为 `color.danger`
+- 前置条件：M3 构建；分别用 `mode=demo`、`mode=account` 的会话。
+- 步骤：分别渲染 `/me/settings`
+- 预期结果：演示会话依次为"隐私""黑名单""关于天听""退出登录"，没有"外观"和"账号安全"；账号会话在"黑名单"之后多一项"账号安全"；"退出登录"为 `color.danger`。"通知"这一项随 C3
 
 ---
 
@@ -2381,7 +2368,7 @@
 - 关联 AC：AC-UI-90-13
 - 优先级：P0
 - 层级：Playwright
-- 前置条件：生产构建（`vite preview` 加部署 CSP 配置）。
+- 前置条件：生产构建（`vite preview` 加部署 CSP 配置）。**PRD-ui v1.3：CSP 配置按 NF-UI-14：`connect-src` 含账号接口，C2 起加具体存储域名；`img-src` C2 起加 `blob:`。**
 - 步骤：
   1. 打开 `/login` 读取响应头
   2. 登录并完成收发消息，监听 `securitypolicyviolation`
@@ -2433,7 +2420,6 @@
 | AC-UI-03-6 | TC-UI-03-06 |
 | AC-UI-03-7 | TC-UI-03-07 |
 | AC-UI-03-8 | TC-UI-03-08 |
-| AC-UI-03-9 | TC-UI-03-09 |
 | AC-UI-03-10 | TC-UI-03-10 |
 | AC-UI-04-1 | TC-UI-04-01 |
 | AC-UI-04-2 | TC-UI-04-02 |

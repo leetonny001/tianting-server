@@ -2,7 +2,7 @@
 
 | 项 | 内容 |
 |---|---|
-| 依据 | [PRD-ui v1.0](../prd/PRD-ui-v1.0.md)（冻结，280 条 AC）；背景：[PRD-core v1.3](../prd/PRD-core-v1.3.md)、[PRD-social v1.0](../prd/PRD-social-v1.0.md)（社交页面的数据和规则）、[PRD-admin v1.0](../prd/PRD-admin-v1.0.md)（第二批客户端提示）、[SDK 设计说明](../sdk/README.md)、[PLAN](../PLAN.md) 第 4 节（多仓库） |
+| 依据 | [PRD-ui v1.0](../prd/PRD-ui-v1.0.md)（冻结，280 条 AC）；背景：[PRD-core v1.3](../prd/PRD-core-v1.3.md)、[PRD-social v1.0](../prd/PRD-social-v1.1.md)（社交页面的数据和规则）、[PRD-admin v1.0](../prd/PRD-admin-v1.0.md)（第二批客户端提示）、[SDK 设计说明](../sdk/README.md)、[PLAN](../PLAN.md) 第 4 节（多仓库） |
 | 负责 | 前端（AI） |
 | 技术栈 | tianting-web：React + Vite + TypeScript，测试 Vitest + Testing Library（组件）、Playwright ≥ 1.48（Chromium + WebKit，`page.routeWebSocket`）、axe-core；tianting-sdk-ts：TypeScript，Vitest + `FakeTransport` / `FakeClock`；tianting-desktop：Tauri 2（macOS WKWebView、Windows WebView2）；原生端：Kotlin + Compose（Compose UI Test）、Swift + SwiftUI（XCUITest） |
 | 在已有任务之上 | H5 基础 FE-010～FE-020（[frontend.md](frontend.md)，Q13）不重复；本单的任务在其上补充。PRD-social 的 sdk-ts 社交协议层（好友、申请、黑名单、搜索、`users`、`myGroups`、M4 群命令、`tip`、`convRemoved.reason`）在 [frontend-social.md](frontend-social.md) 的 FE-100～FE-149，本单只做 PRD-ui 第 7 节的 SDK 缺口 G-UI-xx 和界面 |
@@ -233,7 +233,7 @@ FE-001（`web/`）→ FE-220 → FE-221 → FE-222 → FE-224 → 页面任务�
 - 里程碑：M3
 - 仓库：tianting-web
 - 依赖：FE-010、FE-222；演示登录 `nickname`（G-UI-23，PRD-ui 8.2 节，后端任务）
-- AC：AC-UI-03-1、AC-UI-03-2、AC-UI-03-3、AC-UI-03-4、AC-UI-03-5、AC-UI-03-6、AC-UI-03-7、AC-UI-03-8、AC-UI-03-9、AC-UI-03-10
+- AC：AC-UI-03-1、AC-UI-03-2、AC-UI-03-3、AC-UI-03-4、AC-UI-03-5、AC-UI-03-6、AC-UI-03-7、AC-UI-03-8、AC-UI-03-10
 - 内容：Logo 与"天听"、`document.title = 天听`；用户名去空白为空禁用、回车提交、加载态防重；昵称 0～32 码点（`countCodePoints`），超出提示"昵称最多 32 个字"；404 →"登录服务未开启"、网络错误 / 10 秒超时 →"网络异常，请稍后重试"；`VITE_DEMO_LOGIN=false` 只显示"请从业务方入口进入天听"；输入框字号 16px。测试：Playwright（`page.route` 拦截 `/demo/login`）、组件测试（昵称计数）；端到端 AC-UI-03-7 在真实 im-server 上跑。
 
 ### FE-224 通用组件：头像、显示名、轻提示、确认框、骨架屏、官方标识
