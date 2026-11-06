@@ -215,3 +215,14 @@ func (s *SQLite) CancelDeletion(ctx context.Context, userID string, version, req
 	}
 	return tx.Commit()
 }
+
+func (s *SQLite) UpdateNickname(ctx context.Context, userID, nickname string) error {
+	res, err := s.db.ExecContext(ctx, `UPDATE users SET nickname = ? WHERE user_id = ? AND deleted_at = 0`, nickname, userID)
+	if err != nil {
+		return err
+	}
+	if n, _ := res.RowsAffected(); n == 0 {
+		return ErrNotFound
+	}
+	return nil
+}

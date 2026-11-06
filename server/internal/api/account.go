@@ -21,6 +21,7 @@ type AccountService interface {
 	Recover(ctx context.Context, in account.RecoverInput, ip string) (*account.AuthResponse, *protocol.Error)
 	RegenerateRecovery(ctx context.Context, claims auth.Claims, in account.PasswordOnlyInput, ip string) (*account.RecoveryCodeResponse, *protocol.Error)
 	AckRecovery(ctx context.Context, userID string, in account.RecoveryAckInput) *protocol.Error
+	UpdateProfile(ctx context.Context, userID string, in account.ProfileInput) *protocol.Error
 }
 
 // RegisterAccount 注册 /v1/account/*（PRD-chat 第 11.2 节）。
@@ -111,6 +112,18 @@ func (v *V1) RegisterAccount(mux *http.ServeMux, svc AccountService) {
 			return
 		}
 		if e := svc.AckRecovery(r.Context(), claims.UserID, in); e != nil {
+			WriteError(w, e)
+			return
+		}
+		WriteJSON(w, struct{}{})
+	})
+	v.Handle(mux, "PATCH /v1/account/profile", func(w http.ResponseWriter, r *http.Request) {
+		var in account.ProfileInput
+		claims, ok := v.accountBearer(w, r, &in)
+		if !ok {
+			return
+		}
+		if e := svc.UpdateProfile(r.Context(), claims.UserID, in); e != nil {
 			WriteError(w, e)
 			return
 		}

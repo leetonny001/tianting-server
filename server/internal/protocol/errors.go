@@ -22,6 +22,7 @@ const (
 	CodeAdminSignatureInvalid    = 4017
 	CodeAccountCredentials       = 4018 // 用户名、密码或恢复码错误，不区分（PRD-chat F-ACC-02 规则 2）
 	CodeRefreshTokenInvalid      = 4019 // PRD-chat F-ACC-03
+	CodeFileNotFound             = 4048 // PRD-chat F-FILE-04，C1 只有头像字段用到
 	CodeUserBanned               = 4034
 	CodeMessageNotFound          = 4044
 	CodeMsgReadGrantRequired     = 4039
@@ -79,6 +80,7 @@ var codes = map[int]codeInfo{
 	CodeAdminSignatureInvalid:    {"ADMIN_SIGNATURE_INVALID", 401},
 	CodeAccountCredentials:       {"ACCOUNT_CREDENTIALS_INVALID", 401},
 	CodeRefreshTokenInvalid:      {"REFRESH_TOKEN_INVALID", 401},
+	CodeFileNotFound:             {"FILE_NOT_FOUND", 404},
 	CodeUserBanned:               {"USER_BANNED", 403},
 	CodeMessageNotFound:          {"MESSAGE_NOT_FOUND", 404},
 	CodeMsgReadGrantRequired:     {"MSG_READ_GRANT_REQUIRED", 403},

@@ -111,9 +111,9 @@ func TestProductionRequiresKeys(t *testing.T) {
 func TestProductionValid(t *testing.T) {
 	cfg, warnings, err := Load(envOf(map[string]string{
 		"IM_ENV": "production", "IM_QUARANTINE_KEY": strongQuarantine,
-		"IM_JWT_KEYS":        "k1:" + strongJWT + ",k2:" + strongJWT + "x",
-		"IM_JWT_ACTIVE_KID":  "k2",
-		"IM_ADMIN_CALLERS":   callersFile(t, `[{"id":"biz1","alg":"hmac-sha256","secret":"`+bizSecret+`","scopes":["token.issue"]}]`),
+		"IM_JWT_KEYS":          "k1:" + strongJWT + ",k2:" + strongJWT + "x",
+		"IM_JWT_ACTIVE_KID":    "k2",
+		"IM_ALLOW_TOKEN_ISSUE": "1", "IM_ADMIN_CALLERS": callersFile(t, `[{"id":"biz1","alg":"hmac-sha256","secret":"`+bizSecret+`","scopes":["token.issue"]}]`),
 		"IM_ALLOWED_ORIGINS": "https://im.example.com, *.example.com",
 	}))
 	if err != nil {
@@ -259,7 +259,7 @@ func TestAddrConflicts(t *testing.T) {
 // PRD-admin F-KEY-05 规则 3：生产环境只有 IM_ADMIN_LEGACY=1 才接受旧密钥，并告警；/readyz 带 legacyAdminKey。
 func TestProductionLegacyAdminKey(t *testing.T) {
 	base := map[string]string{"IM_ENV": "production", "IM_QUARANTINE_KEY": strongQuarantine, "IM_JWT_SECRET": strongJWT, "IM_ADMIN_KEY": strongAdmin,
-		"IM_ADMIN_CALLERS": callersFile(t, `[{"id":"biz1","alg":"hmac-sha256","secret":"`+bizSecret+`","scopes":["token.issue"]}]`)}
+		"IM_ALLOW_TOKEN_ISSUE": "1", "IM_ADMIN_CALLERS": callersFile(t, `[{"id":"biz1","alg":"hmac-sha256","secret":"`+bizSecret+`","scopes":["token.issue"]}]`)}
 	cfg, warnings, err := Load(envOf(base))
 	if err != nil || !cfg.App.AdminLegacyDisabled || cfg.App.ReportLegacyAdmin || len(warnings) != 0 {
 		t.Fatalf("without IM_ADMIN_LEGACY: cfg=%+v warnings=%v err=%v", cfg.App, warnings, err)
@@ -280,8 +280,8 @@ func TestCallerSecretMustDifferFromJWT(t *testing.T) {
 	jwt := "shared-secret-0123456789abcdef0123"
 	shared := base64.StdEncoding.EncodeToString([]byte(jwt))
 	_, _, err := Load(envOf(map[string]string{
-		"IM_JWT_SECRET":    jwt,
-		"IM_ADMIN_CALLERS": callersFile(t, `[{"id":"biz1","alg":"hmac-sha256","secret":"`+shared+`","scopes":["token.issue"]}]`),
+		"IM_JWT_SECRET":        jwt,
+		"IM_ALLOW_TOKEN_ISSUE": "1", "IM_ADMIN_CALLERS": callersFile(t, `[{"id":"biz1","alg":"hmac-sha256","secret":"`+shared+`","scopes":["token.issue"]}]`),
 	}))
 	if err == nil || !strings.Contains(err.Error(), "must differ from IM_JWT_SECRET") || strings.Contains(err.Error(), jwt) {
 		t.Fatalf("err = %v", err)
@@ -310,8 +310,8 @@ func prodOps(t *testing.T, extra map[string]string) (Server, error) {
 	t.Helper()
 	m := map[string]string{
 		"IM_ENV": "production", "IM_QUARANTINE_KEY": strongQuarantine, "IM_JWT_SECRET": strongJWT, "IM_ALLOWED_ORIGINS": "https://im.example.com",
-		"IM_ADMIN_CALLERS": callersFile(t, `[{"id":"biz1","alg":"hmac-sha256","secret":"`+bizSecret+`","scopes":["token.issue"]}]`),
-		"IM_OPS_PUBKEYS":   "k1:" + opsKeyB64,
+		"IM_ALLOW_TOKEN_ISSUE": "1", "IM_ADMIN_CALLERS": callersFile(t, `[{"id":"biz1","alg":"hmac-sha256","secret":"`+bizSecret+`","scopes":["token.issue"]}]`),
+		"IM_OPS_PUBKEYS": "k1:" + opsKeyB64,
 	}
 	for k, v := range extra {
 		m[k] = v
@@ -402,7 +402,8 @@ func TestChecksShared(t *testing.T) {
 			t.Errorf("check %d = %+v", i, c)
 		}
 		seen[c.ID] = true
-		if !c.Passed || !c.Applicable {
+		// token_issue_caller 显式放行时是告警：不通过，但不拒绝启动（AC-ACC-07-3）。
+		if (!c.Passed && c.ID != "token_issue_caller") || !c.Applicable {
 			t.Errorf("production check %s = %+v", c.ID, c)
 		}
 	}
@@ -448,7 +449,7 @@ func TestProductionQuarantineKey(t *testing.T) {
 	secret := base64.StdEncoding.EncodeToString([]byte(strongQuarantine))
 	base := func() map[string]string {
 		return map[string]string{"IM_ENV": "production", "IM_JWT_SECRET": strongJWT, "IM_ALLOWED_ORIGINS": "https://im.example.com", "IM_NODE_ID": "n1", "IM_OPS_ADDR": "off",
-			"IM_ADMIN_CALLERS": callersFile(t, `[{"id":"biz1","alg":"hmac-sha256","secret":"`+secret+`","scopes":["token.issue"]}]`)}
+			"IM_ALLOW_TOKEN_ISSUE": "1", "IM_ADMIN_CALLERS": callersFile(t, `[{"id":"biz1","alg":"hmac-sha256","secret":"`+secret+`","scopes":["token.issue"]}]`)}
 	}
 	for name, key := range map[string]string{"missing": "", "short": strings.Repeat("k", 31), "dev default": DevQuarantineKey, "same as jwt": strongJWT, "same as caller": strongQuarantine} {
 		m := base()
@@ -622,5 +623,28 @@ func TestAccountConfig(t *testing.T) {
 	cfg, _, err = Load(envOf(env))
 	if err != nil || cfg.App.Account.RefreshActive != "k1" {
 		t.Errorf("active=%q err=%v", cfg.App.Account.RefreshActive, err)
+	}
+}
+
+// TC-ACC-07-03（AC-ACC-07-3）：生产环境带 token.issue：不确认拒绝启动；IM_ALLOW_TOKEN_ISSUE=1 启动成功，配置检查告警（不算通过，也不拒绝）。
+func TestTC_ACC_07_03_TokenIssueCaller(t *testing.T) {
+	allowed, err := prodOps(t, nil)
+	if err != nil {
+		t.Fatalf("with IM_ALLOW_TOKEN_ISSUE=1: %v", err)
+	}
+	found := false
+	for _, c := range Summary(allowed, "v", "n").Checks {
+		if c.ID == "token_issue_caller" {
+			found = true
+			if c.Passed {
+				t.Errorf("must warn: %+v", c)
+			}
+		}
+	}
+	if !found {
+		t.Error("no token_issue_caller check")
+	}
+	if _, err := prodOps(t, map[string]string{"IM_ALLOW_TOKEN_ISSUE": ""}); err == nil || !strings.Contains(err.Error(), "token.issue") {
+		t.Fatalf("must refuse: %v", err)
 	}
 }

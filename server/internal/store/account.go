@@ -194,6 +194,8 @@ type AccountStore interface {
 	FindRecoveryCode(ctx context.Context, userID, hash string) (RecoveryCode, error)
 	// CancelDeletion 撤销注销申请：版本或申请时间变了返回 ErrCredentialsChanged。
 	CancelDeletion(ctx context.Context, userID string, version, requestedAt, now int64, event AccountEvent) error
+	// UpdateNickname 改昵称（F-ACC-06）。用户不存在或已注销返回 ErrNotFound。
+	UpdateNickname(ctx context.Context, userID, nickname string) error
 	// UpdatePasswordHash 只在版本没变时重写哈希（参数升级，F-ACC-02 异常）。不改版本，不算改密。
 	UpdatePasswordHash(ctx context.Context, userID string, version int64, hash string) error
 	// RecoveryUnacked：最新一代恢复码没有确认。

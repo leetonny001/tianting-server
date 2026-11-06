@@ -10,6 +10,7 @@ import (
 	"strings"
 
 	"tianting/server/internal/account"
+	"tianting/server/internal/adminauth"
 	"tianting/server/internal/quarantine"
 	"tianting/server/internal/testhook"
 )
@@ -123,6 +124,22 @@ func productionChecks(cfg Server) []Check {
 		flag0 = append(flag0, "IM_REGISTER_MODE=open is refused in production: it requires content moderation (IM_MOD_ENABLED), which is not available yet")
 	}
 	add("register_mode", "IM_REGISTER_MODE："+cmp.Or(a.Account.RegisterMode, account.ModeInvite), flag0...)
+
+	// 不再有业务方后，token.issue 是能以任何用户身份登录的最高权限（F-ACC-07 规则 3，R-CS-26）：默认拒绝，显式放行时告警。
+	issuers := 0
+	for _, c := range a.AdminCallers {
+		if c.Has(adminauth.ScopeTokenIssue) {
+			issuers++
+		}
+	}
+	switch {
+	case issuers > 0 && !cfg.AllowTokenIssue:
+		add("token_issue_caller", fmt.Sprintf("%d 个调用方带 token.issue", issuers), "a caller has token.issue: this can sign in as any user; remove it, or set IM_ALLOW_TOKEN_ISSUE=1 to accept the risk")
+	case issuers > 0:
+		out = append(out, Check{ID: "token_issue_caller", Passed: false, Applicable: true, Detail: fmt.Sprintf("告警：IM_ALLOW_TOKEN_ISSUE=1，%d 个调用方带 token.issue", issuers)})
+	default:
+		add("token_issue_caller", "没有调用方带 token.issue")
+	}
 
 	var tls []string
 	// 管理端口只有绑定回环地址（同机部署的业务服务端）时允许明文（PRD-admin F-KEY-01 规则 2）。

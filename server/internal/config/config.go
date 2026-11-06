@@ -56,9 +56,11 @@ type Server struct {
 	MetricsAddr string
 	// AdminAddr 是管理接口 /admin/* 的监听地址（PRD-admin F-KEY-01），默认 127.0.0.1:8081；为空表示不开启。
 	// 对外端口上不注册任何管理路由。非回环地址在生产环境必须配置 TLS（AdminTLSCert / AdminTLSKey）。
-	AdminAddr    string
-	AdminTLSCert string
-	AdminTLSKey  string
+	AdminAddr string
+	// AllowTokenIssue 是 IM_ALLOW_TOKEN_ISSUE=1：生产环境显式放行带 token.issue 的调用方（PRD-chat F-ACC-07 规则 3）。
+	AllowTokenIssue bool
+	AdminTLSCert    string
+	AdminTLSKey     string
 	// OpsAddr 是节点运维接口的监听地址（PRD-ops F-OPS-16），默认 127.0.0.1:9091；为空表示不开启。
 	// 没有配置 IM_OPS_PUBKEYS 时不监听（生产环境拒绝启动）。非回环地址在生产环境必须有 TLS 和来源网段。
 	OpsAddr    string
@@ -231,6 +233,7 @@ func Load(getenv func(string) string) (cfg Server, warnings []string, err error)
 	loadAccount(getenv, a, bad)
 
 	a.Account.EnforceKeyLedger = prod
+	cfg.AllowTokenIssue = getenv("IM_ALLOW_TOKEN_ISSUE") == "1"
 
 	if !prod {
 		if a.JWTSecret == "" && len(a.JWTKeys) == 0 {

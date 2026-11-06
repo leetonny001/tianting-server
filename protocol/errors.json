@@ -22,6 +22,7 @@
     { "code": 4017, "name": "ADMIN_SIGNATURE_INVALID",     "http": 401, "scope": ["admin"],        "retryable": false, "message": "管理接口签名无效",     "action": "业务服务端检查时钟、调用方密钥和签名（缺签名头、调用方不存在或停用、签名错误、时间戳超出 5 分钟、nonce 重复、目标节点不符）" },
     { "code": 4018, "name": "ACCOUNT_CREDENTIALS_INVALID", "http": 401, "scope": ["client"], "retryable": false, "message": "用户名、密码或恢复码错误（不区分）", "action": "提示「用户名或密码错误」" },
     { "code": 4019, "name": "REFRESH_TOKEN_INVALID", "http": 401, "scope": ["client"], "retryable": false, "message": "refresh token 无效、过期、吊销或被重放", "action": "按 reason：superseded 留在当前页按 retryAfterSeconds 重试，其他回登录页（PRD-chat F-ACC-03 规则 6）" },
+    { "code": 4048, "name": "FILE_NOT_FOUND", "http": 404, "scope": ["client", "ws", "admin"], "retryable": false, "message": "文件不存在、无权访问、已过期或已撤回（不区分）", "action": "提示「文件不存在或已过期」" },
     { "code": 4030, "name": "FORBIDDEN",                   "http": 403, "scope": ["ws", "admin", "console", "client"], "retryable": false, "message": "无权限",               "action": "提示「无权限」" },
     { "code": 4031, "name": "MUTED",                       "http": null, "scope": ["ws"],          "retryable": false, "message": "被禁言，不能发言",             "action": "提示禁言及解除时间（details.mutedUntil）；ack 的 error 带 details: {scope, groupId?, mutedUntil}" },
     { "code": 4032, "name": "NOT_CONV_PARTICIPANT",        "http": null, "scope": ["ws"],          "retryable": false, "message": "不是该会话的参与者",   "action": "开发期缺陷，记录日志" },

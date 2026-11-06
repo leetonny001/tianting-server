@@ -81,6 +81,7 @@
 | 4017 | ADMIN_SIGNATURE_INVALID | 401 | admin | 否 | 管理接口签名无效：缺签名头、调用方不存在或停用、签名错误、时间戳超出 5 分钟、nonce 重复、目标节点不符（PRD-admin F-KEY-03） | 业务服务端检查时钟、调用方密钥和签名 |
 | 4018 | ACCOUNT_CREDENTIALS_INVALID | 401 | client | 否 | 用户名、密码或恢复码错误（不区分） | 提示「用户名或密码错误」 |
 | 4019 | REFRESH_TOKEN_INVALID | 401 | client | 否 | refresh token 无效、过期、吊销或被重放 | 按 `reason`：`superseded` 留在当前页重试，其他回登录页（PRD-chat F-ACC-03 规则 6） |
+| 4048 | FILE_NOT_FOUND | 404 | client、ws、admin | 否 | 文件不存在、无权访问、已过期或已撤回（不区分） | 提示「文件不存在或已过期」 |
 | 4030 | FORBIDDEN | 403 | ws / admin / console / client | 否 | 无权限（通用） | 提示「无权限」 |
 | 4031 | MUTED | — | ws | 否 | 被禁言，不能发言 | 提示禁言及解除时间（details.mutedUntil）；ack 的 error 带 details: {scope, groupId?, mutedUntil}；scope 是 user / group / groupAll（全群禁言，此时 mutedUntil 为 null，提示"群主已开启全员禁言"） |
 | 4032 | NOT_CONV_PARTICIPANT | — | ws | 否 | 不是该单聊的参与者 | 记录日志 |
