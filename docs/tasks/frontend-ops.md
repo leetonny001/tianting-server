@@ -18,8 +18,8 @@
 |---|---|---|
 | FE-500 ～ FE-506 第一批 | ✅ 2026-11-04 | tianting-ops `69e9f04`。14 个 Playwright 用例对真实 console-server + 两个 im-server + Postgres（运维严格 CSP），17 个单元测试、lint、`npm audit`（没有 high）、产物扫描全过。**Prometheus、Alertmanager、备份桶、Grafana 在开发机上是假服务**，真实联调等 BE-320。登录、账号、审计、通知、设置页面从 tianting-admin 复制（任务单说共用组件，目前没有抽成共享包，两边改动要同步）。CI 只跑 lint、单元测试、构建和扫描，端到端要等 P-9。**没有页面端到端覆盖的**：版本不一致和下线中（接口层测过）、AC-OPS-04-2、04-3、04-8（要真实 Prometheus）、09-5、09-6（im-server 行为） |
 | FE-507 安全与兼容收尾 | 🟡 自查完成，渗透测试和其他浏览器未做 | [pentest-ops-2026-11-04.md](../reports/pentest-ops-2026-11-04.md)：3 个中危、11 个低危，没有发现高危；中危全部修复，低危 8 个修复、3 个有结论。这是开发方自查，不是 AC-OPS-90-6 的渗透测试。XSS lint 已有；Chromium 桌面和 375px 通过。**未做**：独立渗透测试，Firefox、WebKit、Edge、真机回归。 |
-| FE-520 第二批 | ⏸ 第一批之后 | 告警静默 |
-| FE-521 第二批 / P1 | ⏸ 第一批之后 | 双人批准、审计导出入口 |
+| FE-520 第二批 | ✅ 2026-11-06 | tianting-ops `c2b6668`，本机 Chrome；CI 未执行（P-21） |
+| FE-521 第二批 / P1 | ✅ 2026-11-06 | tianting-ops `c2b6668` |
 
 ## 总览
 

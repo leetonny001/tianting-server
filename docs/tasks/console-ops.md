@@ -18,7 +18,7 @@
 | CS-100 ～ CS-103 运维空间与基座增量 | ✅ 2026-11-04（只在本地） | console-server `1c6f6d6`。CS-102 的基座行为由基座用例在运维空间上参数化覆盖了一部分，没有逐条补 AC-OPS-01-x 的运维专用用例 |
 | CS-110 ～ CS-117 运维业务模块 | ✅ 2026-11-04（只在本地） | 接口清单 YAML 启动时比对；节点真实（两个 im-server，含 kill、SIGSTOP、TLS 身份校验）；Prometheus、Alertmanager、备份桶、Grafana 是假服务（Go 里假桶校验签名和权限）。排查按基座两阶段写审计：一次查询一条 intent + 一条 result，条数、partial、节点在 result 上（`deploy/ops/reconcile` 的导出要取 result）。私钥轮换：节点先配两把公钥，再换 keyFile 重启 console-server，没有做同一节点两把私钥热切换。**未验证**：真实 Grafana / Prometheus / MinIO 策略（BE-310、311、313）、AC-OPS-90-x 性能（CS-120）。备份清单对象键约定 `manifests/{source}/{finishedAt 补零 13 位}.json`，BE-313 要按这个写 |
 | CS-120 性能与对账验收 | 🟡 联调和对账完成；AC-OPS-90-2 只完成开发机部分；AC-OPS-04-2 待决定（P-11） | `tools/ops-accept`，由 tianting-server 的 `deploy/testenv/verify.sh --console` 调用（testenv run 41835233061，全部真实容器）。AC-OPS-90-3：双节点用户 300 次排查 P50 9ms、P99 261ms、最大 374ms；AC-OPS-14-6：审计 321 条、节点请求 321 个、差异 0 条；AC-OPS-08-11（接口）：1.6 秒返回部分结果，不判为不在线。同一轮读真实组件也通过：Prometheus（04-5，消息速率 10.0/秒）、Alertmanager（07-5）、MinIO（12-3）、Grafana（票据、认证代理、14 个面板、数据查询、写接口被拒）、版本不一致超过 30 分钟（04-6）。**未过**：AC-OPS-04-2 的今日累计 1237.2（v1.1 要求 1200 ±3%），`increase()` 的外推造成，见 P-11，testenv 因此仍是失败。AC-OPS-90-2 开发机部分通过（总览 P99 8ms，单节点排查 P99 19ms，见 perf-ops-2026-11-04.md），但总览没有真实 Prometheus 查询，偏乐观；Grafana 24 小时面板首次加载没有实现（P-12）。页面文案只在 tianting-ops 的 Playwright 里验过，后端用假服务。联调查出并修复：`Node.Call` 名额满时立刻返回 ErrBusy，几个工程师同时排查就把正常节点报成未响应，改为最多排队 500ms。 |
-| CS-130 ～ CS-132 第二批 / P1 | ⏸ 第一批之后 | |
+| CS-130 ～ CS-132 第二批 / P1 | 🟡 2026-11-06 | tianting-console-server `fdc59f3`；Alertmanager 用假服务验证，真实 Alertmanager 和 AC-OPS-18-3 的 kill -9 未验证（`tools/ops-accept` 的 silence 步骤只编译过）；CI 未执行（P-21） |
 | CS-140 ～ CS-142 B6 | ⏸ 随 B6 | |
 
 ## 总览

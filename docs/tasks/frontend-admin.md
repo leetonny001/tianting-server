@@ -22,7 +22,7 @@
 | FE-431 ～ FE-433 | ✅ 2026-11-05 | tianting-sdk-ts `38ed458`、tianting-web `191094f`，CI 通过（含真实服务端的集成和 Playwright）。重连后复查已加载范围，断线期间被删的原文也会清掉。未验证：真机；断线期间被删、时钟偏差只有单元测试；页面走真实后台的全链路（测试直接调签名接口） |
 | FE-434 | ✅ 2026-11-05 | tianting-web `edb54df`；演示页按 `/me/notices` 理解，`?demo=1` 的 DemoPanel 没改 |
 | FE-435、FE-436 | ✅ 2026-11-05 | tianting-sdk-kotlin `4fe4934`、tianting-sdk-swift `4815019`，各自的集成测试本机通过；CI 里的集成测试等 P-15 |
-| FE-440 | ⬜ 未开始 | P1 / P2 |
+| FE-440 | ✅ 2026-11-06 | tianting-admin `b6fbd20`；在线连接数标注“当前节点”，B6 前不是集群总数；CI 未执行（P-21） |
 
 **规格冲突的处理**：AC-ADM-05-3 要求客服的菜单里没有"社交配置"、直接访问显示无权限，而 5.2 节矩阵和 AC-ADM-16-4 让客服能读配置。处理：页面按 `social.settings` 守卫，`GET /console/api/settings/social` 仍然对 `social.read` 开放。
 

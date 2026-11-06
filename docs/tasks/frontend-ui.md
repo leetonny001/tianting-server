@@ -26,7 +26,7 @@
 | FE-312、FE-313 Tauri | ⏸ 等 Rust 授权（P-14） | |
 | FE-350～FE-352 | ✅ 2026-11-05 | 随 FE-431～433 实现，AC-UI-41、42、43 已核对有用例 |
 | FE-353 | ✅ 2026-11-05 | tianting-web `edb54df`（系统通知页 `/me/notices`、横幅、未查看数），CI 通过。真实多标签页竞态只有组件测试 |
-| FE-354 | ⬜ 未开始 | P1，全群禁言 |
+| FE-354 | ✅ 2026-11-06 | tianting-web `d3dcfdb`、sdk-ts `2ca3dfe`、`da58578`；原生 sdk-kotlin `c64724e`、Android `0594b17`、sdk-swift `e039ec8`、iOS `0f77714`。SDK 按 `myRole` 放行群主和管理员，和 F-UI-41 规则 2 字面不同（P-22）；CI 未执行（P-21） |
 | FE-380～FE-382、FE-386 Android | 🟡 2026-11-05 首版 | tianting-sdk-kotlin `4fe4934`、tianting-android `95b963b`。本机：JVM 21 个、Compose UI 120 个、真实服务端端到端 7 个（3 轮里 1 轮有 1 个失败，判断是测试框架竞态，未证实）。**未验证**：CI 的 android job（等 P-15）、真机、Pixel 7 API 34、输入法组字（AC-UI-10-2、10-7）、多端红点（23-4）、关闭可被搜索（30-1）、600 群（32-2）、断网状态条 **2026-11-05 系统通知**：tianting-android `95b963b`、`06c470d`、`31dd1d6`；Compose 138 个、真实服务端端到端 9 个、R8 logcat 检查通过。 |
 | FE-383～FE-385、FE-387 iOS | 🟡 2026-11-05 首版 | tianting-sdk-swift `4815019`、tianting-ios `fba33c7`。适用 AC 223 条，173 条有编号引用（grep 统计，不等于逐条复核）；约 37 条已实现但没有自动化（要改写 ack 或造数据，见 tianting-ios 提交记录）。**未验证**：CI 的 build-and-test（等 P-15）、真机、iOS 17、输入法组字（AC-UI-10-2、10-7）、多端红点（23-4）、Release 真实收发 **2026-11-06 系统通知与修复**：tianting-ios `c5ae142`、`df6efe7`；单测 77 个，XCUITest 47 个在 iOS 27.0、iOS 18.5 模拟器各跑 1 轮全过。修复了真实 Bug：群里第一条和发送失败的单聊第一条，发出后要滚动才显示（iOS 27 上复现；根因只定位到 `LazyVStack` + `defaultScrollAnchor` 的表现，修复是实验得出）。 |
 | FE-200～FE-202 SDK 缺口 | ✅ 完成 | tianting-sdk-ts `572312a`、`3eb87f7`：`parseConvIdStrict`（`protocol/vectors/convid.json`）、`peerId`、`totalUnread` / `pendingCount` 事件、`sendFailed` |
