@@ -13,6 +13,7 @@
 | `IM_TRUSTED_EGRESS_CIDRS`、`IM_TRUSTED_EGRESS_FACTOR` | 见第 5 节 |
 | `IM_INVITE_WARN_TOTAL` | 默认 500，有效邀请码剩余次数合计超过它时配置检查告警 `invite_total` |
 | `IM_SESSION_RECHECK` | 在线连接的周期复查，默认 10 分钟 |
+| 调用方配置 | **已部署环境要手动给 `console` 调用方加 scope `account.invite`**（示例见 `deploy/im-admin-callers.example.json`），否则运营生成邀请码时 403 / 4030 |
 
 **`GOMEMLIMIT` 要把 Argon2 算进去**：每次计算 64 MiB。`IM_ARGON_SLOTS` 默认 4 个，加改密、`recover` 各 1 个专用位，同时最多 6 个，约 384 MiB。
 
