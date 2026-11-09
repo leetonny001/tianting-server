@@ -120,11 +120,11 @@
 | AC-ACC-03-5 | C1 | 后端 | 03-05 | 通过 | Go e2e / 单测（`go test -race`，SQLite，本地） |
 | AC-ACC-03-6 | C1 | 后端 | 03-06 | 通过 | Go e2e / 单测（`go test -race`，SQLite，本地） |
 | AC-ACC-03-7 | C1 | 前端 | 03-07 | 通过 | Android、iOS 真实服务端冷启动（access 在服务端过期）进会话列表；"先刷新再 auth"的帧顺序在假服务端用例和 SDK 用例（模拟器，本地） |
-| AC-ACC-03-8 | C1 | 前端 | 03-08 | 部分通过 | Android 改本地到期后冷启动显示 AC 的文案（真实服务端，模拟器，本地）。**iOS 真实服务端显示"账号已被下线"**：本地钟认为 access 没过期，先发 `auth`，服务端回 `kicked`，和 I3 是同一回事。iOS 的这条新用例失败，没有改期望，待决定 |
+| AC-ACC-03-8 | C1 | 前端 | 03-08 | 通过 | PRD-chat v1.2 两种文案都认（I3）。Android 改本地到期后冷启动：先刷新得 4019，显示"登录已失效，请重新登录"（真实服务端，模拟器，本地）。iOS 真实服务端（tianting-ios@54caa87）：用例经代理记下实际路径，本次是先连上、服务端以 `kicked/banned` 下线（admin 强制下线），断言对应的"账号已被下线"；若走刷新 4019 则断言另一句。4019 那条路径 iOS 由假服务端用例覆盖（模拟器，本地） |
 | AC-ACC-03-9 | C1 | 前端 | 03-09 | 通过 | Chrome，本地，真实 im-server。CH-26 的差异见 H1 |
 | AC-ACC-03-10 | C1 | 前端 | 03-10 | 通过 | H5 page.clock + 真实服务端；Android 真实定时器（改存储里的到期）；iOS 真实定时器（`IM_ACCESS_TTL=6h20s`）。（Chrome，本地；模拟器，本地） |
 | AC-ACC-03-11 | C1 | 前端 | 03-11 | 部分通过 | Android 真实飞行模式通过（模拟器，本地）；iOS 只能用调试开关 `TT_TEST_OFFLINE`，模拟器共用 Mac 的网络 |
-| AC-ACC-03-12 | C1 | 前端 | 03-12 | 部分通过 | 503 只有假响应（三端、三套 SDK）。`tokenExpired` 后刷新成功：假服务端三端和 SDK 通过；真实服务端只验了"冷启动 4011 → 刷新"（Android 03-07、iOS 03-20）。**在线时服务端踢 `tokenExpired` 的真实路径没补成**：iOS 新用例 60 秒内服务端没有踢，用例失败，待决定 |
+| AC-ACC-03-12 | C1 | 前端 | 03-12 | 通过 | 503：假响应（三端、三套 SDK；真实服务端造不出 503）。在线时 `kicked/tokenExpired` 且刷新成功：假服务端三端和 SDK 通过；**真实服务端在线路径已补上**（iOS，`IM_ACCESS_TTL=30s`，服务端真实到期计时器踢 `tokenExpired` → 刷新 200 → 新连接 101，不弹窗，连跑 3 次过，模拟器，本地）。Android、H5 的在线踢线仍是假服务端 + 冷启动 4011 的真实路径 |
 | AC-ACC-03-13 | C1 | 前端 | 03-13 | 通过 | Android、iOS 真实杀进程 + 真实服务端（模拟器，本地） |
 | AC-ACC-03-14 | C1 | 前端 | 03-14 | 通过 | Chrome，本地，真实 im-server，真实"复制标签页" |
 | AC-ACC-03-15 | C1 | 后端 | 03-15 | 通过 | Go e2e / 单测（`go test -race`，SQLite，本地） |
@@ -159,7 +159,7 @@
 | AC-ACC-03-40 | C1 | 后端 | 03-42 | 通过 | Go e2e / 单测（`go test -race`，SQLite，本地） |
 | AC-ACC-03-41 | C1 | 后端 | 03-43 | 通过 | Go e2e / 单测（`go test -race`，SQLite，本地） |
 | AC-ACC-03-42 | C1 | 前端 | 03-44 | 部分通过 | `/v1/files/urls` 随 C2，用 `/v1/account/events` 代替：SDK 三套、H5 Vitest、Android 假服务端；**iOS App 层没有跑** |
-| AC-ACC-03-43 | C1 | 前端 | 03-45 | 部分通过 | **真实服务端不满足"不再刷新，不重连"**：最后不足 1 秒还会多刷新、重连 2 次，之后才回登录页（问题 F2，用例因此只断言"到上限之前没有刷新"）。[SDK 钟] 的假接口用例通过。三端真实服务端（`IM_REFRESH_ABSOLUTE` 几十秒，真实钟）+ 假接口用例（Chrome，本地；模拟器，本地）。最后不足 1 秒多余的刷新见问题 F2；Android 模拟器的钟比 Mac 慢约 4.4 秒，用例留了 8 秒 |
+| AC-ACC-03-43 | C1 | 前端 | 03-45 | 部分通过 | [SDK 钟] 假接口用例三端通过。真实服务端（F2 已修，im-mvp@ce4ee6b；H5 `IM_REFRESH_ABSOLUTE=25s`，原生 40s）：上限前没有刷新、没有重连；**到期后没有成功的刷新、没有重连**，回登录页。**缺口**：服务端在上限那一秒（JWT 的 `exp` 只到秒）踢 `tokenExpired`，三端 SDK 收到后都会发 1 次刷新，服务端按到期回 401 / 4019（三端实测都是 `401/4019` 一次）。用例断言"最多这 1 次且被拒绝"，不是"请求数为 0"；要不要让 SDK 在 access 到期等于上限时收到 `tokenExpired` 直接回登录页，待 Frank 决定（见第 10 节）。Chrome，本地；模拟器，本地 |
 | AC-ACC-03-44 | C1 | 后端 | 03-46 | 通过 | Go e2e / 单测（`go test -race`，SQLite，本地） |
 | AC-ACC-03-45 | C1 | 后端 | 03-47 | 通过 | Go e2e / 单测（`go test -race`，SQLite，本地） |
 | AC-ACC-03-46 | C1 | 后端 | 03-48 | 通过 | Go e2e / 单测（`go test -race`，SQLite，本地） |
@@ -262,12 +262,12 @@
 
 | 状态 | 数量 |
 |---|---|
-| 通过 | 153 |
-| 部分通过 | 20 |
+| 通过 | 155 |
+| 部分通过 | 18 |
 | 未执行 | 4 |
 | 合计 | 177 |
 
-"部分通过"都写了缺什么；"未执行"都写了原因。没有"基本通过"。
+"部分通过"都写了缺什么；"未执行"都写了原因。没有"基本通过"。第 10 节复测后：AC-ACC-03-8、AC-ACC-03-12 由部分通过改为通过；AC-ACC-03-43 仍是部分通过（原因换成第 10 节写的那 1 次被拒绝的刷新）。
 
 ## 9. 工作量校准（CH-27，协调方写）
 
@@ -293,3 +293,44 @@
   2. 待决定项越积越多，C1 结束时有 20 条部分通过。
   3. CI 不运行，只有本地结果，WebKit 和真机没有验证。
 - **对 C2 的建议：** C2 估算 67.5 人日，按 C1 的经验，AI 钟面时间大约在 1～2 天这个量级（低置信）。真正的前提是三件事：开工前把 C1 的待决定项定掉；AC-FILE-90-1 要临时搭 MinIO，需要 Frank 再次同意；每段结束后跑清理脚本。
+
+## 10. v1.2 决定后的复测（2026-11-09）
+
+Frank 2026-11-09 对 C1 待决定项回复"都按建议"（PRD-chat v1.2）。按决定改了三端用例和产品代码，逐端顺序复测，没有并行。**所有结果都是本地结果**：H5 是"Chrome，本地"，原生是"模拟器，本地"（iOS：iPhone 16 Pro；Android：AVD Pixel_10_Pro_XL，emulator-5556，`-read-only`）。CI 没有运行，WebKit 和真机没有验证。
+
+### 10.1 运行结果
+
+| 端 | 提交 | 命令 | 结果 |
+|---|---|---|---|
+| iOS | tianting-ios@54caa87 | Kit：`xcodebuild test -scheme TiantingAppKit`（在 `Kit/` 下）；全量 `scripts/run-e2e.sh --device 46E6F7B9-…`；`IM_ACCESS_TTL=30s` 单独跑 03-12；`IM_REFRESH_ABSOLUTE=40s` 单独跑 03-45；`check_sources.py` | Kit 112（4 个跳过，是真实 Keychain 用例）；全量 132 个：129 过、0 失败、3 跳过（就是要配服务端单独跑的 03-10、03-12、03-45）；`check_e2e_leftovers` 通过；03-12 单独连跑 3 次全过；03-45 单独跑 2 次全过 |
+| Android | tianting-android@d50c230 | `:app:testDebugUnitTest :app:checkTianting`；`scripts/run-tests.sh ui`、`e2e`、`e2e com.tianting.app.AccountE2eTest`；`IM_REFRESH_ABSOLUTE=40s` 单独跑 03-45；`class com.tianting.app.ChatTest` 连跑 10 次；`class com.tianting.app.ConvListTest` 连跑 6 次 | 单测 36；`checkTianting` 通过；UI 227 全过（第一次 226 过、1 失败，原因见 10.2 的"发送按钮"，修了以后整套重跑全过）；`ServerE2eTest` 10 全过；`AccountE2eTest` 26 过（03-45 按设计跳过）；03-45 单独跑 2 次全过；ChatTest（33 个）连跑 10 次全过；ConvListTest（12 个）连跑 6 次全过 |
+| H5 | tianting-web@f0c5b6f | `npm run check`、`check-assets.mjs`、`check-brand.mjs`；`npx vitest run`；`npx playwright test e2e/account-real.spec.ts`；`IM_REFRESH_ABSOLUTE=25s` 单独跑 TC-ACC-03-45 | 检查全过；Vitest 260；account-real 9 过、1 跳过（03-45）；03-45 单独跑 1 过 |
+| 管理后台、运维后台 | tianting-admin@f8a2d94、tianting-ops@cb6731f | `npm run build`、`npm run check:dist` | 都通过（只改了 README） |
+
+### 10.2 各项处理
+
+- **I3 / AC-ACC-03-8**：iOS 真实服务端用例经测试代理记下实际路径（刷新的 4019，或者服务端的 `kicked`），再断言这条路径的文案；不是"出现任意一个就行"。本次实际路径：冷启动先连上，服务端以 `kicked/banned` 下线（admin 强制下线走用户级吊销），文案"账号已被下线"。
+- **AC-ACC-03-12 在线时 `tokenExpired`**：原来的触发方式（调 IM 钟）不成立：服务端的到期计时器在 `auth` 时按剩余时间设好，走真实时间，调 IM 钟不会触发。改成 `IM_ACCESS_TTL=30s`：注册后 SDK 先刷新一次（不足 6 小时），新 token 到手就不足 6 小时（`shortOnArrival`），之后只有服务端踢线才刷新。用例断言代理看到的顺序：`kicked/tokenExpired` → 刷新 200 → 新的 WebSocket 101，存储的保存次数增加，不弹窗，会话还在。默认服务端上跳过。
+- **I10**：iOS 踢线弹窗出现时，提醒由弹窗自己画在遮罩和卡片之上、屏幕上方，不接收点击；根视图的提醒层这时不显示（屏幕上只有一个提醒）。用例断言提醒还在、文字是"你的账号密码已被修改"、和卡片不重叠、"确定"可点；浅色、深色各截一张，两张都能看清提醒和弹窗（截图在弹窗展开动画中途，卡片还没到中间）。
+- **F2 / 03-45（三端）**：改回检查到期之后。三端实测一致：上限前 0 次刷新、不重连；服务端在上限那一秒踢 `tokenExpired` 后，SDK 发 1 次刷新，服务端回 **401 / 4019**；到期后没有成功的刷新、没有重连，回登录页。用例断言"最多这 1 次且是 401/4019、没有成功的刷新、不重连"，**不是"请求数为 0"**。原因：PRD 第 5 条规定收到 `kicked/tokenExpired` 就刷新，SDK 照做；要做到 0 次，要改三套 SDK（access 到期等于上限时收到 `tokenExpired` 直接回登录页），这不在本次决定里，列为待决定。Android 用 Mac 钟算检查点的问题：上限前的检查点仍提前 8 秒（模拟器慢约 4.4 秒），到期后的检查看服务端的实际回答，不依赖模拟器的钟。
+- **A16，`at_bottom_follows_new_message` 的崩溃（根因已查明，已修）**：抓到的现场是 `CalledFromWrongThreadException ... Calling: tianting-sdk`，栈从 `IMClient.emitMessages`（SDK 线程设置 `messagesFlow`）经 `StateFlow.setValue` → Compose 测试的调度器 → `Snapshot.sendApplyNotifications` → 重组 → `LazyListMeasure` 一路到 `place`，随后主线程报 "performMeasureAndLayout called during measure layout"。也就是聊天页在组合的上下文里收集 SDK 线程更新的流；Compose 测试环境的调度器不切线程，收集协程在 SDK 线程上恢复，重组和消息列表的测量跑在 SDK 线程上，和主线程同时进行，区间列表被并发改动，就会出现"区间列表为空却取第 0 项"。**改法**：`messagesFlow` 用 `collectAsState(context = Dispatchers.Main)`；聊天页里组合内协程调用的 SDK 挂起接口（快照、翻页、禁言）都经 `onMain` 回到主线程再写状态。新用例 `ChatTest.sdk_thread_updates_reach_ui_on_main_thread` 用快照应用通知的线程做判据：修之前 30 条推送有 34～35 次通知发生在 `tianting-sdk` 上（单独跑 2 次都失败），修之后通过。**对真实用户的影响**：正式运行时组合的调度器是 `AndroidUiDispatcher`，会切回主线程，按代码判断真实用户碰不到这个崩溃；修改让界面不再依赖这一点。
+- **A16，`menu_copy_retry_delete`**：按代码判断是测试的等待条件：点"重发"后，重发的帧发出时消息已是"发送中"，界面上的失败图标可能还没换，`waitTag("failed-icon")` 被旧图标满足；这时点删除，`removeFailed` 按规则不动发送中的消息，随后失败回来，消息就留下了。改成等 SDK 里这条消息真的又失败了再删。这一轮修改前后它都没有再失败，所以这个根因**没有被现场证实**。
+- **A16 调查中发现的"发送按钮"**：这台 AVD 显示软键盘（FE-620 用的那台不显示），输入后键盘弹出、输入栏上移，`waitForIdle` 不等键盘动画，动画中点"发送"会落在按钮外，消息没有发出（ChatTest、ModerationUiTest 里"首次发送后 5 秒内没有反应"的几次失败）。改成等按钮位置连续约 0.4 秒不变再点（`clickSendWhenSettled`），只改等待条件。
+- **A17（顺手修）**：发起单聊的弹窗里 `relationOf` 在 SDK 线程上恢复后直接导航，和 A16 同一个原因；改成经 `onMain`（`rememberRelation` 也一样）。ConvListTest 连跑 6 次全过（之前约 1/3 失败）。连跑 6 次不足以证明，只能说没有再出现。
+- **A18**：不再 `logcat -b all -c`。新的 `scanOwnLogcat` 读 `logcat -d -b all --pid=<本进程> -T <用例开始时间>`（App 和测试在同一个进程），逐行读，在最近 8～16 KiB 里查，不把整段读进内存；断言不变（token、通知内容、密码、恢复码、refresh 都不能出现），另加"确实读到了日志"。`ServerE2eTest`、`AccountE2eTest.secrets_never_reach_logcat` 都过，没有 OOM。范围仍是"本用例本进程"，Frank 已接受。
+- **README 产品名**：tianting-android、tianting-admin、tianting-ops、tianting-sdk-swift 的 README 和 tianting-web 的 `package.json` 改成"独立 IM 产品"；tianting-desktop 的 README 有同样的字样，一起改了（tianting-desktop@06128ff）。
+
+### 10.3 这一轮删除或改弱的地方
+
+| 位置 | 改了什么 | 说明 |
+|---|---|---|
+| 三端 TC-ACC-03-45 真实服务端用例 | 到期后的检查是"最多 1 次刷新、且被 401/4019 拒绝、没有成功的刷新、不重连"，不是"刷新请求数为 0" | 比上一轮（到期后不检查）严，但没有达到"请求数为 0"；见 10.2 和待决定项 |
+| tianting-android `ServerE2eTest`、`AccountE2eTest.secrets_never_reach_logcat` | 只看本进程从用例开始以来的日志 | Frank 决定接受（A18）；不再清空缓冲区，断言不变 |
+| tianting-ios 03-08 | 两种文案都认，按实际路径断言 | PRD v1.2 明确改了（I3） |
+
+没有删除或跳过安全相关的断言。调查时临时加在产品代码和测试里的诊断日志（`TTDIAG`）都已删除，没有提交。
+
+### 10.4 还要 Frank 决定的
+
+1. **03-45 那 1 次被拒绝的刷新**：要不要改三套 SDK，在 access 到期等于 `absoluteExpiresAt` 时收到 `kicked/tokenExpired` 直接回登录页（不再发刷新），让 AC-ACC-03-43 在真实服务端上也是"请求数为 0"。不改的话，建议 AC 写明"上限那一秒服务端踢线后的 1 次刷新被 4019 拒绝"可以接受。
+2. **组合内协程的其他 SDK 调用**：这次只改了聊天页、发起单聊、`rememberRelation`。其他页面（群资料、通讯录等约 30 处）是同一种写法，正式运行没有问题，只在测试调度器下会在 SDK 线程上恢复。要不要统一改，由 Frank 定。
