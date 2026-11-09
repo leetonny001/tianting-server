@@ -2,7 +2,7 @@
 
 | 项 | 内容 |
 |---|---|
-| 依据 | [PRD-chat v1.2](../prd/PRD-chat-v1.2.md)（冻结）第 4～6、11、12、14、15、16、18 节；[ARCH-v1](../arch/ARCH-v1.md)；[协议](../../protocol/README.md)、[错误码](../../protocol/ERRORS.md)、[管理接口](../../protocol/ADMIN.md) |
+| 依据 | [PRD-chat v1.3](../prd/PRD-chat-v1.3.md)（冻结）第 4～6、11、12、14、15、16、18 节；[ARCH-v1](../arch/ARCH-v1.md)；[协议](../../protocol/README.md)、[错误码](../../protocol/ERRORS.md)、[管理接口](../../protocol/ADMIN.md) |
 | 范围 | **只有 C1、C2 和公共部分**（PRD 决定 CH-27）。C3～C6 的 AC 不进任务；【全部】的 AC 只验证到 C2 为止的部分（PRD 第 15 节的累计表） |
 | 负责 | 后端（AI） |
 | 仓库 | im-server（GitHub 仓库 `tianting-server`，本地 `im-mvp/server/`）；协议在同仓库 `protocol/`，部署在 `deploy/`，工具在 `tools/` |
@@ -574,7 +574,7 @@
 | 9 | 第 11.5 节 | 4048 排在 C2 的协议任务，但 AC 要求 C1 的 `avatarFileId` 返回它 | 提前加进 `errors.json` |
 | 10 | F-ACC-03 规则 2 | "最近活跃时间"只说显示，没说什么算活跃 | 登录、刷新、转正时更新，连接和收发不更新 |
 
-实现 C2 时发现的（PRD 冻结，没有改；按下面的理解实现）。**Frank 2026-11-09 回复"按现在的实现"，第 11～23 条都按"实现"一列确认**（PENDING P-36）；写进 PRD-chat v1.3 待办：
+实现 C2 时发现的（PRD 冻结，没有改；按下面的理解实现）。**Frank 2026-11-09 回复"按现在的实现"，第 11～23 条都按"实现"一列确认**（PENDING P-36）；已写进 [PRD-chat v1.3](../prd/PRD-chat-v1.3.md)（第 11、12、15、20 条不需要改 PRD）：
 
 | # | 位置 | 问题 | 现在的实现 |
 |---|---|---|---|

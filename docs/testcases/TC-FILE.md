@@ -1,6 +1,6 @@
 # 测试用例：图片和文件消息（FILE，C2）
 
-> 依据：[PRD-chat v1.2](../prd/PRD-chat-v1.2.md)（冻结）第 4、6 节、第 15 节 AC-FILE-90；[GATE-objstore](../review/GATE-objstore-2026-11-06.md)；[tools/objstore-contract](../../tools/objstore-contract/README.md)。任务单：[backend-chat](../tasks/backend-chat.md)、[console-chat](../tasks/console-chat.md)、[frontend-chat](../tasks/frontend-chat.md)。
+> 依据：[PRD-chat v1.3](../prd/PRD-chat-v1.3.md)（冻结）第 4、6 节、第 15 节 AC-FILE-90；[GATE-objstore](../review/GATE-objstore-2026-11-06.md)；[tools/objstore-contract](../../tools/objstore-contract/README.md)。任务单：[backend-chat](../tasks/backend-chat.md)、[console-chat](../tasks/console-chat.md)、[frontend-chat](../tasks/frontend-chat.md)。
 > 范围：标了【C2】的 AC-FILE（CH-27）。依赖撤回、清空、举报的 AC 随 C4～C6。
 >
 > 通用约定：
@@ -331,7 +331,7 @@
 - 批次：C2
 - 层级：后端 e2e
 - 环境：E1 + 假 S3
-- 前置条件：假 S3 可注入"HEAD 之后替换对象"；u1 `kind=file` 内容 M1；替换内容 M2（大小相同）
+- 前置条件：假 S3 可注入"HEAD 之后替换对象"；u1 `kind=file` 内容 M1；替换内容 M2（大小相同，能通过嗅探）；另备 M3（大小相同、嗅探通不过，例如 HTML）
 - 步骤：
   1. 注入 A：HEAD 之后、嗅探之前替换为 M2；`complete`
   2. 查假 S3 请求记录、`final/`、临时键
@@ -340,6 +340,7 @@
 - 预期结果：
   1. A、B 都是：带 `If-Match` 的读或条件 Copy 得到 412，内部重试 1 次
   2. 持续替换时最终 400 / 4000，`reason=uploadMismatch`；`final/` 没有 M2；临时对象没有被删
+  3. （v1.3）注入 B 换成 M3：415，临时对象被删除，`final/` 没有 M3
 
 ### TC-FILE-01-16 PUT 地址过期或取消后不占未完成名额
 - 关联 AC：AC-FILE-01-16

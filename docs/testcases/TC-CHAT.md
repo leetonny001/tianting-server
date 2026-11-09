@@ -1,6 +1,6 @@
 # 测试用例：聊天产品非功能（CHAT，C1、C2 部分）
 
-> 依据：[PRD-chat v1.2](../prd/PRD-chat-v1.2.md)（冻结）第 15 节 F-CHAT-90。任务单：[backend-chat](../tasks/backend-chat.md)、[frontend-chat](../tasks/frontend-chat.md)。
+> 依据：[PRD-chat v1.3](../prd/PRD-chat-v1.3.md)（冻结）第 15 节 F-CHAT-90。任务单：[backend-chat](../tasks/backend-chat.md)、[frontend-chat](../tasks/frontend-chat.md)。
 > 范围：标了【C1】【C2】【全部】的 AC-CHAT（CH-27）。**【全部】的 AC 每个里程碑发布前跑一次，这里只写到 C2 为止的范围**（第 15 节累计表），C3～C6 增加的部分随对应里程碑。
 > 判定（R-CQ-22）：主判据用绝对值，增幅只记录；每条写明负载和样本数（≥ 1000），生产配置，3 次取最差，报告写基线提交号。**所有数字都未校准；开发机结果只记录，不算通过，发布判定等 P-12**。
 >

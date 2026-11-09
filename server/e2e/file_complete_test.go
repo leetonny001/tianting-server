@@ -292,6 +292,34 @@ func TestTC_FILE_01_15_ReplaceDuringVerify(t *testing.T) {
 			}
 		})
 	}
+	// PRD-chat v1.3 AC-FILE-01-15 补充：换成嗅探通不过的内容（禁止的真实类型 PE）时按规则 3 ② 415 并删除临时对象。
+	t.Run("replaced with content that fails the sniff", func(t *testing.T) {
+		e := newFileEnv(t, nil)
+		tok := e.token("u1")
+		good := pad([]byte("%PDF-1.4 "), 4096)
+		r := e.mustRequest(tok, fileReq("a.pdf", int64(len(good)), "application/pdf"))
+		e.mustPut(r.Put, good)
+		tmp := e.file(r.FileID).TmpKey
+		pe := pad([]byte("MZ\x90\x00\x03\x00\x00\x00PE"), 4096)
+		n := 0
+		e.s3.After(func(method, bucket, key string, _ url.Values) {
+			if method == "HEAD" && key == tmp && n == 0 {
+				n++
+				e.s3.Put(e.s3.Private, tmp, pe, "application/pdf")
+			}
+		})
+		code, b := e.complete(tok, r.FileID)
+		wantErr(t, "replaced with PE", code, b, 415, protocol.CodeFileTypeNotAllowed, "")
+		if n != 1 {
+			t.Errorf("replaced %d times, want 1", n)
+		}
+		if keys := e.s3.Keys(e.s3.Private, "final/"); len(keys) != 0 {
+			t.Errorf("final keys: %v", keys)
+		}
+		if _, ok := e.s3.Get(e.s3.Private, tmp); ok {
+			t.Error("tmp object with the forbidden type not deleted")
+		}
+	})
 }
 
 // TC-FILE-01-18（AC-FILE-01-18）[IM 钟]：剩余 1 MiB，3 个 1 MiB 上传依次 complete：第 1 个成功，后面 429；

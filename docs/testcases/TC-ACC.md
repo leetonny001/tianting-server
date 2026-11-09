@@ -1,6 +1,6 @@
 # 测试用例：账号注册和登录（ACC，C1；头像部分 C2）
 
-> 依据：[PRD-chat v1.2](../prd/PRD-chat-v1.2.md)（冻结）第 4、5 节；[ERRORS.md](../../protocol/ERRORS.md)。任务单：[backend-chat](../tasks/backend-chat.md)、[console-chat](../tasks/console-chat.md)、[frontend-chat](../tasks/frontend-chat.md)。
+> 依据：[PRD-chat v1.3](../prd/PRD-chat-v1.3.md)（冻结）第 4、5 节；[ERRORS.md](../../protocol/ERRORS.md)。任务单：[backend-chat](../tasks/backend-chat.md)、[console-chat](../tasks/console-chat.md)、[frontend-chat](../tasks/frontend-chat.md)。
 > 范围：标了【C1】【C2】的 AC-ACC（CH-27）。C3～C6 的 AC-ACC 不在这里。
 >
 > 通用约定：
