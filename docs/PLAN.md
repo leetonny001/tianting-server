@@ -185,7 +185,7 @@ PC 用三栏布局（导航 / 会话列表 / 聊天），H5 和移动端用单�
 | [tianting-admin](https://github.com/leetonny001/tianting-admin) | 管理后台 H5（业务运营） | `tianting-admin/` |
 | [tianting-ops](https://github.com/leetonny001/tianting-ops) | 运维后台 H5 | `tianting-ops/` |
 
-全部私有。各 SDK 仓库里的 `protocol/` 是本仓库 `protocol/` 的副本，用各自的 `scripts/sync-protocol.sh` 同步，不在副本里改。后台服务（`console-server`，X-1）拍板后再建仓库。
+2026-11-09 起全部公开（Frank 决定，用公开仓库的免费 Actions），仓库里不能放任何真实密钥。各 SDK 仓库里的 `protocol/` 是本仓库 `protocol/` 的副本，用各自的 `scripts/sync-protocol.sh` 同步，不在副本里改。后台服务（`console-server`，X-1）拍板后再建仓库。
 
 ---
 
