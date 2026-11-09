@@ -57,8 +57,8 @@ func (c *Client) Load(convID string, msgs []Msg) []string {
 }
 
 // Connect 处理一次（重）连接：convs 应答之后，对已加载的会话按 modVer 决定要不要重拉（F-RCL-03 规则 2）。
-// replies 是每个会话重拉的应答，errs 是重拉失败的错误码。重拉按会话依次进行，一个失败就停（这一轮其余的也不拉），
-// 失败的会话不记新的 modVer，下次重连还会拉。返回发过 sync 的会话（排好序）和新变成过期的 fileId。
+// replies 是每个会话重拉的应答，errs 是重拉失败的错误码。每个要重拉的会话独立处理（P-39 ②，Frank 2026-11-10）：
+// 一个失败只影响它自己——不记新的 modVer，下次重连还会拉；其余会话这一轮照常重拉并记新的 modVer。返回发过 sync 的会话（排好序）和新变成过期的 fileId。
 func (c *Client) Connect(convs []Conv, replies map[string][]Msg, errs map[string]int) (syncs, expired []string) {
 	byID := map[string]Conv{}
 	for _, cv := range convs {
@@ -83,7 +83,7 @@ func (c *Client) Connect(convs []Conv, replies map[string][]Msg, errs map[string
 		// 没有 modVer（老服务端）或这次 convs 里没有它：按原来的做法重拉。
 		syncs = append(syncs, id)
 		if _, failed := errs[id]; failed {
-			break
+			continue
 		}
 		expired = append(expired, c.merge(id, replies[id])...)
 		if inList && cv.ModVer != nil {

@@ -54,6 +54,7 @@ type file struct {
 const (
 	ab = "c2c:alice:bob"
 	g1 = "group:g1"
+	g2 = "group:g2"
 	// 文件名是特征串：过期后内存、本地库都不能再有（F-FILE-06 规则 3）。
 	secretName = "ZXQ-FILE-NAME.pdf"
 )
@@ -160,6 +161,27 @@ var cases = []vcase{
 		},
 	},
 	{
+		// P-39 ②（Frank 2026-11-10）：失败的跳过、其余照拉。G1 排在中间，按顺序重拉时它后面的 G2 也要拉。
+		Name: "多个会话要重拉、中间一个失败：其余照拉并记新的 modVer，失败的下次重连再拉", Rule: "F-RCL-03 规则 2（P-39 ②）",
+		ACs: []string{"AC-RCL-03-11"},
+		Steps: []step{
+			conn(cv(ab, 2, v(3)), cv(g1, 1, v(7)), cv(g2, 1, v(1))),
+			load(ab, img(1, "F1", false), doc(2, "F2", false)),
+			load(g1, img(1, "G1F", false)),
+			load(g2, img(1, "G2F", false)),
+			drop,
+			{
+				Op: "connect", Convs: []Conv{cv(ab, 2, v(4)), cv(g1, 1, v(8)), cv(g2, 1, v(2))},
+				Replies: map[string][]Msg{ab: {img(1, "F1", true), doc(2, "F2", true)}, g2: {img(1, "G2F", true)}},
+				Errors:  map[string]int{g1: 5000},
+			},
+			drop,
+			connReply(map[string][]Msg{g1: {img(1, "G1F", true)}}, cv(ab, 2, v(4)), cv(g1, 1, v(8)), cv(g2, 1, v(2))),
+			drop,
+			conn(cv(ab, 2, v(4)), cv(g1, 1, v(8)), cv(g2, 1, v(2))),
+		},
+	},
+	{
 		Name: "没加载过的会话：modVer 变了也不发请求；加载时的 convs 值是基线", Rule: "F-RCL-03 规则 2",
 		ACs: []string{"AC-RCL-03-11"},
 		Steps: []step{
@@ -224,7 +246,7 @@ func TestChatSyncVectors(t *testing.T) {
 			"connect":    "（重）连接成功，convs 应答为 convs。之后 SDK 发出的每个 sync 都按 convId 回复：errors 里有的回这个错误码，否则回 replies 里的消息（没有就是空列表），hasMore=false，直到不再发 sync。maxSeq 等于已加载的最大 seq，所以只有重拉，没有补拉",
 			"disconnect": "连接断开（不是退出登录），之后按 SDK 的重连规则重连，由下一步 connect 完成",
 			"load":       "App 打开会话加载最新一页（loadHistory），SDK 发出的 sync 回复 messages，hasMore=false。messages 为空时 SDK 可以不发请求",
-			"expect":     "syncs：这一步 SDK 发过 sync 的会话（排好序，空列表表示一个都没有；重拉的顺序各端可以不同，用例里出错的步骤只有一个已加载的会话）。filesExpired：这一步新变成已过期的 fileId（排好序；sdk-ts 是 filesExpired 事件，原生端是 FilesExpired / .filesExpired），空列表表示没有。messages：已加载的会话的全部消息，按 seq 比较 type、fileId、expired（缺省为 false）和 file 的 name",
+			"expect":     "syncs：这一步 SDK 发过 sync 的会话（排好序，空列表表示一个都没有；重拉的顺序各端可以不同；某个会话重拉失败只影响它自己，其余会话照拉（P-39 ②），所以集合和顺序无关）。filesExpired：这一步新变成已过期的 fileId（排好序；sdk-ts 是 filesExpired 事件，原生端是 FilesExpired / .filesExpired），空列表表示没有。messages：已加载的会话的全部消息，按 seq 比较 type、fileId、expired（缺省为 false）和 file 的 name",
 		},
 		Self: "alice",
 	}
@@ -282,6 +304,19 @@ func TestChatModelRules(t *testing.T) {
 	failed := find("重拉失败：不记新的 modVer，下次重连还拉；成功之后才不拉")
 	if !slices.Equal(*failed.Steps[5].Expect.Syncs, []string{ab}) || len(*failed.Steps[7].Expect.Syncs) != 0 {
 		t.Errorf("failed re-sync must be retried once: %+v", failed.Steps)
+	}
+	multi := find("多个会话要重拉、中间一个失败：其余照拉并记新的 modVer，失败的下次重连再拉")
+	if s := multi.Steps[5].Expect; !slices.Equal(*s.Syncs, []string{ab, g1, g2}) || !slices.Equal(s.FilesExpired, []string{"F1", "F2", "G2F"}) {
+		t.Errorf("a failed re-sync must not stop the others: %+v", s)
+	}
+	if m := multi.Steps[5].Expect.Messages; !m[g2][0].Expired || m[g1][0].Expired {
+		t.Errorf("G2 merged after G1 failed, G1 untouched: %+v", m)
+	}
+	if s := multi.Steps[7].Expect; !slices.Equal(*s.Syncs, []string{g1}) || !slices.Equal(s.FilesExpired, []string{"G1F"}) {
+		t.Errorf("only the failed conversation is retried, the others recorded the new modVer: %+v", s)
+	}
+	if s := multi.Steps[9].Expect; len(*s.Syncs) != 0 {
+		t.Errorf("after the retry succeeds nothing is re-synced: %+v", s)
 	}
 	unloaded := find("没加载过的会话：modVer 变了也不发请求；加载时的 convs 值是基线")
 	if len(*unloaded.Steps[2].Expect.Syncs) != 0 || len(*unloaded.Steps[5].Expect.Syncs) != 0 {
