@@ -1,14 +1,14 @@
-# 前端任务单：天听聊天产品第一批（三套 SDK、H5、Android、iOS、管理后台页面，C1、C2）
+# 前端任务单：天听聊天产品第一批（三套 SDK、H5、Android、iOS、管理后台页面，C1、C2、C3）
 
 | 项 | 内容 |
 |---|---|
-| 依据 | [PRD-chat v1.4](../prd/PRD-chat-v1.4.md)（冻结）第 5、6、13、14.1、15 节；[PRD-ui v1.2](../prd/PRD-ui-v1.3.md)（界面规则 B-1～B-8，第 6 节视觉）；[SDK 设计说明](../sdk/README.md)；[errors.json](../../protocol/errors.json) |
-| 范围 | **只有 C1、C2 和公共部分**（CH-27）。撤回、引用、@、置顶、举报、设备通知的接口和界面不做；【全部】的 AC 只验证到 C2 为止的页面（第 15 节累计表） |
+| 依据 | [PRD-chat v1.4](../prd/PRD-chat-v1.4.md)（冻结）第 5～7、13、14.1、15、20.3 节；[PRD-ui v1.2](../prd/PRD-ui-v1.3.md)（界面规则 B-1～B-8，第 6 节视觉）；[SDK 设计说明](../sdk/README.md)；[errors.json](../../protocol/errors.json) |
+| 范围 | **C1、C2、C3 和公共部分**（CH-27；C3 是 Frank 2026-11-10 决定按顺序继续的）。撤回、引用、@、置顶、举报的接口和界面不做；设备通知（C3）只有原生端，H5 没有离线通知（第 13.2 节）；【全部】的 AC 验证到 C3 为止的页面（第 15 节累计表） |
 | 负责 | 前端（AI） |
 | 仓库 | tianting-sdk-ts、tianting-sdk-kotlin（`sdk-core` 纯 JVM）、tianting-sdk-swift、tianting-web（H5）、tianting-android、tianting-ios、tianting-admin |
-| 编号 | **FE-600 起**。公共 FE-600～602，C1 FE-610～620，C2 FE-630～640 |
+| 编号 | **FE-600 起**。公共 FE-600～602，C1 FE-610～620，C2 FE-630～640，C3 FE-650～656 |
 | 端的范围 | PC（Tauri）排除：`tianting-web` 宽屏界面照常实现，不验收打包形态（第 2.5 节）。Web Push、拍照不做 |
-| 完成定义 | 任务内的 AC 有通过的测试（SDK：假 HTTP + `FakeTransport` + 假时钟 + 共享向量；H5：Vitest、Playwright；原生：Compose UI Test、XCUITest），用例编号见 [TC-ACC](../testcases/TC-ACC.md)、[TC-FILE](../testcases/TC-FILE.md)、[TC-CHAT](../testcases/TC-CHAT.md)。**CI 现在不运行（P-21），原生 CI 也缺 P-15，真机和其他浏览器在 P-13**，结果都要标明环境 |
+| 完成定义 | 任务内的 AC 有通过的测试（SDK：假 HTTP + `FakeTransport` + 假时钟 + 共享向量；H5：Vitest、Playwright；原生：Compose UI Test、XCUITest），用例编号见 [TC-ACC](../testcases/TC-ACC.md)、[TC-FILE](../testcases/TC-FILE.md)、[TC-APN](../testcases/TC-APN.md)、[TC-CHAT](../testcases/TC-CHAT.md)。**CI 现在不运行（P-21），原生 CI 也缺 P-15，真机和其他浏览器在 P-13**，结果都要标明环境。**C3 收到真实系统通知要 Frank 先做第 20.3 节的 APNs、FCM 步骤**（PENDING P-40），之前原生端用令牌和授权的测试替身 + 服务端假通道 |
 
 格式说明：每个任务的 `- AC：` 一行列出它负责满足的验收标准，追溯矩阵由 `tools/trace.py` 从这一行生成。工具只查"有一个任务"，**端到端 AC 和【前端】AC 按端拆开列**，所以同一条 AC 会出现在多个任务里。标了（Android、iOS）的只进原生任务，标了（H5）的只进 H5 任务，（三套 SDK）的只进 SDK 任务。
 
@@ -41,26 +41,27 @@
 | FE-637 | 🟡 部分完成（iOS） | tianting-ios@52c6f2f，SDK tianting-sdk-swift@662e4f2（**模拟器，本地；CI 不运行，真机（P-13）未执行**，iPhone 16 Pro，iOS 18.4）。聊天页"+"（`features.files` 关时没有）：PHPicker（不要相册完整权限，一次最多 9 张）、`UIDocumentPicker`（多选超过 9 个提示"一次最多选择 9 个"、整批不发，v1.4 规则 6）；选中的先复制到临时目录，图片轮到它时在后台用 ImageIO 处理（先看头部像素上限，按 EXIF 方向转正后只写像素，再删掉 ImageIO 自己加的 Exif 段（I13），长边 4096，缩略图 480 ≤ 512 KiB，透明的输出 png，GIF 原样，HEIC 转 jpeg），交给 SDK 复制进沙盒；处理中、上传中 N%、等待发送、取消（发 `DELETE`）、失败原因（PRD v1.4 规则 9 的文案，同 H5、Android）；"文件"方式选图片先提示保留原始信息；"我"页点头像：裁剪（拖动、双指缩放）→ 512×512 jpeg → `kind=avatar` → `PATCH profile`，本次登录用本地文件显示（同 A30）。sdk-swift 的 H13、P-37 ① 已处理（见问题表）。用例：Kit 单测 `MediaTests` 14 个；XCUITest `FilesE2ETests` 25 个、`ZzFilesClockE2ETests` 2 个（真实 im-server `IM_FILES_ENABLED=1` + `scripts/fake_s3.py`）。通过的 AC：AC-ACC-06-6、AC-FILE-01-12、01-17、02-1、02-4（同 H18 的方法，没有 exiftool、没有 MinIO 复跑）、02-5、02-13、03-1、03-6、07-1、07-4、07-5（I14）、07-6（I15）、07-7（同 H19 推断：5 次 PUT 失败，没有新的最终对象）、07-9、07-10（v1.4 正常断言：有沙盒副本的重新上传后送达，没有的提示"原文件已不可用，请重新选择"、只能删除）。**没有验收的部分**：AC-FILE-04-11 部分通过：App 和 SDK 自己的日志里没有，系统 CFNetwork 的任务失败日志带完整预签名地址（I11，待决定）；AC-FILE-07-2 只有 SDK 单测（I18，同 A27）；AC-FILE-02-10 手工 + 真机未执行（I19）。全量回归：XCUITest 159 个（154 过、3 个按设计跳过、2 个新用例 02-09、04-10 碰到陌生人限额 4137 失败；改成先加好友、合并同一张图的并发加载（I23）之后，文件用例 27 个整组重跑全过），`check_e2e_leftovers` 通过（I11、I12 的系统日志单独计数）；Kit 单测 126 个（122 过、4 个跳过，同 FE-618）；`check_sources`、`check_tokens`、`gen_tokens --check` 通过。问题见 I11～I22 |
 | FE-638 | 🟡 部分完成（iOS） | tianting-ios@52c6f2f（**模拟器，本地；CI 不运行，真机（P-13）未执行**）。图片气泡按宽高占位（4000×3000 → 200×150 pt）、行建出来才取缩略图（LazyVStack，SDK 同一轮合并地址申请）、交给解码器前先看头部（像素上限，认不出或超限"图片无法显示"）、解码后的图按 `fileId:variant` 缓存（最多 300 张，`filesExpired` 时丢掉）、加载失败"加载失败，点击重试"、过期"图片已过期""文件已过期"且不申请地址；全屏看原图（双指缩放、拖动、双击还原、保存到相册：只要"添加照片"权限，被拒提示"没有相册权限"和"前往设置"，I16）；GIF 首帧 + "GIF"标记；文件气泡：类型标签、文件名纯文本中间省略、大小，SDK 的 URLSession 下载到私有缓存（"下载中 N%"、取消、"下载失败，点击重试"从头再下、重新申请地址，文案同 Android，见 A34），别人发的文件每个会话第一次提示来源（只在内存，同 H17），下载后 pdf、txt、图片才有"打开"（Quick Look），都有"保存"（分享面板，I21）；会话列表摘要"[图片]""[文件]"。通过的 AC：AC-FILE-02-1、02-6（下一条消息位移 ≤ 1 pt）、02-7、02-8、02-9（只取视口附近的缩略图、0 次原图）、02-12、02-14、03-1（SHA-256 一致，两个方向）、03-4、03-5（I15）、03-8、03-9（pdf 有"打开""保存"、`.xyz` 只有"保存"；打开了 Quick Look，分享面板里的目标没有验证）、04-10（200 张，滚到最早一条再回来没有 4290，缩略图下载 ≤ 200 次，再进一次 0 次下载）、05-3、06-6（IM 钟 181 天 + `file_purge`）。**没有验收或只验证一部分**：AC-CHAT-90-8、90-9：可读名称（"+"是"发送图片或文件"，图片"图片"，文件"文件 文件名，大小"，头像"更换头像"，查看器"关闭"）、系统审计 `.sufficientElementDescription`（文件名单独的文字被审计判为"不可读"，改成由气泡统一读出）、浅色深色截图做了；新消息播报（"收到一张图片"）iOS 原来就没有，没有做（同 A29）；"存储空间不足"没有制造磁盘满（同 A32）；"保存权限被拒"在模拟器上用系统弹窗"不允许"走通，真机未执行 |
 | FE-640 | 🟡 部分完成（验收已做，报告见 [c2-frontend-acceptance-2026-11-09](../reports/c2-frontend-acceptance-2026-11-09.md)） | **本地结果，CI 不运行**（Chrome；emulator-5556 Pixel_10_Pro_XL API 37；iPhone 16 Pro iOS 18.4）。48 条（FE-630～640 的 42 条 + 后端【全部】6 条）：通过 33、部分通过 12、未执行 3、失败 0。AC-FILE-02-1、03-1 三端互发互收 6 个方向通过：三端先后连同一个 im-server + 假 S3，各端用自己的界面发图片（1600×1200 纯色 jpeg）和群文件，再各端用自己的界面和 SDK 收（缩略图、原图、颜色、`size`，文件 SHA-256），用例 tianting-web@12ee72e `e2e/xp-files.spec.ts`、tianting-android@79893a7 `CrossPlatformE2e`、tianting-ios@7f1b997 `CrossPlatformE2ETests`（不是同时在线互发，是先发后收）。AC-CHAT-90-8、90-9：Android 新增文件页面的名字检查和浅色深色截图（`FilesUiTest` 2 个），发现能点的缩略图没有名字并修了（`Attachments.kt` 一行，`FilesUiTest` 17 个、`FilesE2eTest` 17 个过）；新消息播报三端都没有，**未执行**；图标清单没有逐个核对，记部分通过。**未执行**：AC-FILE-02-10（真机 P-13）、AC-FILE-90-2（云厂商 CH-05）、AC-CHAT-90-1（P-12）。AC-CHAT-90-15 按 PRD 第 15 节 C2 要 `chat-sync.json`，没有（BE-403），记部分通过。需要 Frank 决定的事见报告第 7 节 |
+| FE-650～FE-656 | ⬜ 未开始 | 2026-11-10 分发（C3）。真实通道和真机的部分挡在第 20.3 节和 P-13，见 FE-656 |
 | 其余 | ⬜ 未开始 | Kotlin、Swift 照 [SDK 设计说明第 6 节](../sdk/README.md) 做 |
 
 ## 总览
 
-| 第 18 节的列 | 公共 | C1 | C2 | 任务 |
-|---|---|---|---|---|
-| sdk-ts | 1 | 3.5 | 3.5 | FE-600、FE-610、FE-630 |
-| sdk-kotlin | 1 | 4 | 5.5 | FE-601、FE-611、FE-631 |
-| sdk-swift | 1 | 4 | 5.5 | FE-602、FE-612、FE-632 |
-| H5 | 0 | 5 | 6 | FE-613（2.5）、FE-614（2.5）；FE-633（3）、FE-634（3） |
-| Android | 0 | 5.5 | 8 | FE-615（2.5）、FE-616（3）；FE-635（4）、FE-636（4） |
-| iOS | 0 | 5.5 | 8 | FE-617（2.5）、FE-618（3）；FE-637（4）、FE-638（4） |
-| console + 后台页面（页面部分） | 0 | 1 | 1 | FE-619、FE-639；其余 CS-200～202 |
-| 测试（前端部分） | 0 | 3.5 | 4 | FE-620、FE-640；其余 BE-422、BE-440 |
-| 文档（前端部分） | 0 | 0.5 | 0 | FE-620 |
-| **本单合计** | **3** | **32.5** | **41.5** | **77** |
+| 第 18 节的列 | 公共 | C1 | C2 | C3 | 任务 |
+|---|---|---|---|---|---|
+| sdk-ts | 1 | 3.5 | 3.5 | 0 | FE-600、FE-610、FE-630；C3 只同步协议副本（BE-450） |
+| sdk-kotlin | 1 | 4 | 5.5 | 3 | FE-601、FE-611、FE-631、FE-650 |
+| sdk-swift | 1 | 4 | 5.5 | 3 | FE-602、FE-612、FE-632、FE-651 |
+| H5 | 0 | 5 | 6 | 0 | FE-613（2.5）、FE-614（2.5）；FE-633（3）、FE-634（3）；C3 没有（H5 无离线通知） |
+| Android | 0 | 5.5 | 8 | 5 | FE-615（2.5）、FE-616（3）；FE-635（4）、FE-636（4）；FE-652（2.5）、FE-653（2.5） |
+| iOS | 0 | 5.5 | 8 | 5 | FE-617（2.5）、FE-618（3）；FE-637（4）、FE-638（4）；FE-654（2.5）、FE-655（2.5） |
+| console + 后台页面（页面部分） | 0 | 1 | 1 | 0 | FE-619、FE-639；其余 CS-200～203 |
+| 测试（前端部分） | 0 | 3.5 | 4 | 2.5 | FE-620、FE-640、FE-656；其余 BE-422、BE-440、BE-459 |
+| 文档（前端部分） | 0 | 0.5 | 0 | 0 | FE-620 |
+| **本单合计** | **3** | **32.5** | **41.5** | **18.5** | **95.5** |
 
-**差异说明**：和第 18 节一致（按列拆分，不是独立重估，**低置信**）。三份任务单合计 145，对照见 [backend-chat](backend-chat.md)。把每个端拆成两个任务只是为了每个任务不超过 4 人日，两个任务的 SDK 接口是同一套。
+**差异说明**：和第 18 节一致（按列拆分，不是独立重估，**低置信**）。三份任务单合计 145（C1 + C2 + 公共），加 C3 38.5 共 183.5，对照见 [backend-chat](backend-chat.md)。把每个端拆成两个任务只是为了每个任务不超过 4 人日，两个任务的 SDK 接口是同一套。
 
-**依赖顺序**：BE-400 → FE-600 → FE-601、FE-602 → FE-610 → FE-611、FE-612 → FE-613、FE-615、FE-617 → FE-614、FE-616、FE-618 → FE-619 → FE-620 →（C1 校准）→ BE-403 → FE-630 → FE-631、FE-632 → FE-633、FE-635、FE-637 → FE-634、FE-636、FE-638 → FE-639 → FE-640。
+**依赖顺序**：BE-400 → FE-600 → FE-601、FE-602 → FE-610 → FE-611、FE-612 → FE-613、FE-615、FE-617 → FE-614、FE-616、FE-618 → FE-619 → FE-620 →（C1 校准）→ BE-403 → FE-630 → FE-631、FE-632 → FE-633、FE-635、FE-637 → FE-634、FE-636、FE-638 → FE-639 → FE-640 →（C2 校准，Frank 决定 C3）→ BE-450 → FE-650、FE-651（先用 `FakeTransport`，BE-452、BE-454 好了接真实 im-server）→ FE-652、FE-654 → FE-653、FE-655 → FE-656（真机部分等第 20.3 节和 P-13）。
 
 ---
 
@@ -87,7 +88,7 @@
 - 内容：
   1. `sdk-core` 增加假 HTTP 和 [SDK 钟] 注入点（第 4.4 节，sdk-ts 已有，其他两套要有同样的注入点）；不引入 Android 依赖。
   2. 错误枚举、向量执行器，同 FE-600。
-  3. Play 服务可用性替身、系统通知授权替身（第 4.5 节）属于 C3，不在这里。
+  3. Play 服务可用性替身、系统通知授权替身（第 4.5 节）属于 C3，不在这里，见 FE-650。
 - 工作量：1 人日（sdk-kotlin，公共）
 
 ### FE-602 sdk-swift：假 HTTP、SDK 钟注入、共享向量
@@ -127,7 +128,7 @@
 - 内容：
   1. 语义同 FE-610（第 13.1 节），放在 `sdk-core`。
   2. **新 token 先落盘再使用**（R-CF-09）；确认恢复码之前 token 只放内存（F-ACC-05 规则 1，RS5-13）。Session 增加 `refreshToken`、`mode`；老 `{userId, token}` 按 `demo` 处理（R-CF-11）。
-  3. "待退出"持久化 `sid` 和 refresh，联网补发（F-ACC-04 规则 1）。系统令牌注销的调用点留接口，FCM 接入随 C3。
+  3. "待退出"持久化 `sid` 和 refresh，联网补发（F-ACC-04 规则 1）。系统令牌注销的调用点留接口，FCM 接入随 C3，见 FE-650、FE-652。
   4. OkHttp 的隐式重试要确认不会把同一个 refresh 请求多发（第 21 节 16）；调试日志不打印 URL 查询串。`IMClient.kt` 第 916～932 行的重连入口和 4011 分支要改。
 - 工作量：4 人日（sdk-kotlin）
 
@@ -190,7 +191,7 @@
   1. `core/SessionStore.kt`：Keystore 加密文件增加 `refreshToken`、`mode`（F-ACC-03 规则 8）。
   2. 飞行模式显示缓存和"网络不可用"；冷启动和回前台触发检查。
   3. 断网退出（F-ACC-04 规则 1）；"账号安全"；弹窗；`securityNotice`；"我"页改昵称。
-  4. `setAppState`、通知设置属于 C3。
+  4. `setAppState`、通知设置属于 C3，见 FE-652、FE-653。
 - 工作量：3 人日（Android）
 
 ### FE-617 iOS：登录、注册、恢复码、配置
@@ -332,7 +333,7 @@
 - 内容：
   1. 系统照片选择器（不要存储权限）、SAF。F-FILE-07 规则 2：**发送前复制到 App 沙盒**，发送成功后删除，失败的保留，退出登录清除；磁盘不足提示"存储空间不足"。
   2. 系统图片接口重编码，EXIF 方向后去掉；API 28+ 尝试 HEIC（系统解码能力未核实，实现时实测）。
-  3. App 退到后台不保证继续上传（规则 7）。Manifest 通知权限属于 C3。开发环境 http MinIO 用 debug 例外（F-FILE-01 规则 10）。
+  3. App 退到后台不保证继续上传（规则 7）。Manifest 通知权限属于 C3，见 FE-652。开发环境 http MinIO 用 debug 例外（F-FILE-01 规则 10）。
 - 工作量：4 人日（Android）
 
 ### FE-636 Android：显示、下载、打开、保存
@@ -353,7 +354,7 @@
 - 仓库：tianting-ios
 - 依赖：FE-632
 - AC：AC-ACC-06-6、AC-FILE-01-12、AC-FILE-01-17、AC-FILE-02-1、AC-FILE-02-4、AC-FILE-02-5、AC-FILE-02-10、AC-FILE-02-13、AC-FILE-03-1、AC-FILE-03-6、AC-FILE-04-11、AC-FILE-07-1、AC-FILE-07-2、AC-FILE-07-4、AC-FILE-07-5、AC-FILE-07-6、AC-FILE-07-7、AC-FILE-07-9、AC-FILE-07-10
-- 内容：同 FE-635。PHPicker（不要完整相册权限）、`UIDocumentPicker`、ImageIO；HEIC 转 jpeg。`.entitlements` 属于 C3。
+- 内容：同 FE-635。PHPicker（不要完整相册权限）、`UIDocumentPicker`、ImageIO；HEIC 转 jpeg。`.entitlements` 属于 C3，见 FE-654。
 - 工作量：4 人日（iOS）
 
 ### FE-638 iOS：显示、下载、打开、保存
@@ -388,6 +389,106 @@
   3. **AC-FILE-90-2 等云厂商（CH-05）**：合同工具见 BE-439；这里是上线前用生产 CORS、CSP 走查 H5、Android、iOS 的上传下载。`trace.py` 要求手工 AC 有 FE 任务，这是实际内容，不是占位。
   4. AC-CHAT-90-8、90-9：文件页面的状态、图标、深色、无障碍（图片替代文本"图片"，文件读文件名和大小；新消息播报）。
 - 工作量：4 人日（测试）
+
+---
+
+## C3 离线推送
+
+> 2026-11-10 分发。依据 PRD 第 7 节、第 13.1、13.2、13.4、15 节的 C3 部分。**H5 没有离线通知**（第 13.2 节），sdk-ts 和 H5 在第 18 节都是 0。
+> 测试替身（第 4.5 节）：系统通知授权替身、Google Play 服务可用性替身、系统令牌替身（假令牌字符串），配合服务端的假 APNs、假 FCM（BE-406）。**模拟器上的原生 UI 测试不需要 Frank 的账号**；收到真实系统通知要第 20.3 节的 APNs、FCM 和 P-13 真机，见 FE-656。
+> 官方文档核对（backend-chat 文末第 34～46 条）里和客户端有关的：Android 13 起 `POST_NOTIFICATIONS` 是运行时权限、新安装默认关闭、被拒后系统不再自动弹（第 46 条）；Android 用 FCM 通知消息，`tag` 替换由 FCM 代为显示（第 40、43 条）。
+
+### FE-650 sdk-kotlin：设备通知接口、presence、令牌缓存
+- 优先级：P0
+- 批次：C3
+- 仓库：tianting-sdk-kotlin（`sdk-core`，纯 JVM）
+- 依赖：BE-450
+- AC：AC-CHAT-90-10、AC-APN-01-5、AC-APN-01-10、AC-APN-02-15、AC-APN-03-8、AC-APN-06-1、AC-ACC-04-6、AC-ACC-04-26
+- 内容：
+  1. 第 13.1 节：`deviceNotificationRegister`、`deviceNotificationUnregister`、`setDeviceNotificationDetail`（发 `deviceNotificationSettings`）、`setAppState`（发 `presence`）。名字避开现有系统通知的 `push`。
+  2. F-APN-02 规则 3（R-CF-06）：**`auth` ack 之后第一帧上报当前前后台状态**，重连同样；之后状态变化才发。
+  3. F-APN-01 规则 5、5a：授权和令牌由平台层通过接口提供（`NotificationAuthorization`、`PushTokenSource`、`PlayServicesAvailability`，第 4.5 节的替身就是这三个接口的测试实现）。授权关闭或 Play 服务不可用就不注册；每次回到前台对比授权和令牌，开了补注册、关了注销；令牌回调发生在没有连接时先缓存，连上后注册；距上次注册超过 30 天也重新注册一次（backend-chat 第 46 条）。
+  4. `sid` 变化（改密、找回、重新登录）后用新连接重新注册（AC-ACC-04-26）；"显示发送者和内容"由服务端复制，SDK 重新读取一次。退出时调用 `SystemTokenRevoker`（FE-611 已留调用点，AC-ACC-04-6 的 C3 部分；有新会话时不撤销的规则见问题 A15）。
+  5. `setDeviceNotificationDetail` 在没有令牌时也能调用，返回服务端当前值（AC-APN-03-8）；4290 不自动重试，下次回到前台再试；4030 `featureDisabled` 时隐藏入口（`GET /v1/config` 的 `features.offlinePush`）。
+  6. SDK 日志不打印推送令牌（第 13.1 节）。`frames.json` 新命令的执行器（AC-CHAT-90-10）。
+- 工作量：3 人日（sdk-kotlin）
+
+### FE-651 sdk-swift：设备通知接口、presence、令牌缓存
+- 优先级：P0
+- 批次：C3
+- 仓库：tianting-sdk-swift
+- 依赖：BE-450、FE-650
+- AC：AC-CHAT-90-10、AC-APN-01-5、AC-APN-01-10、AC-APN-02-15、AC-APN-03-8、AC-ACC-04-6、AC-ACC-04-26
+- 内容：
+  1. 语义同 FE-650（第 13.1 节），没有 Play 服务那一项；`env` 由 App 按构建配置传（debug `sandbox`，release `production`）。
+  2. iOS 进入后台时那一帧 `presence` 可能发不出去（第 13.2 节、第 21 节第 6 条，未实测）：SDK 尽力发送，服务端靠连接断开和 45 秒窗口兜底；实现时在模拟器上记录实际表现，写进问题表。
+  3. 退出时调用 `unregisterSystemPushToken`（FE-612 已留接口，AC-ACC-04-6 的 C3 部分）。
+- 工作量：3 人日（sdk-swift）
+
+### FE-652 Android：FCM 接入、授权、令牌、占位配置
+- 优先级：P0
+- 批次：C3
+- 仓库：tianting-android
+- 依赖：FE-650
+- AC：AC-APN-01-5、AC-APN-01-6、AC-APN-01-10、AC-APN-01-11、AC-APN-01-12、AC-APN-02-15、AC-APN-05-3、AC-APN-06-1、AC-APN-06-2、AC-ACC-04-6
+- 内容：
+  1. Manifest 加 `POST_NOTIFICATIONS`；**首次登录进入会话列表后才请求授权**，不在首次启动弹。被拒不注册；系统不再弹时只给"前往系统设置"。Android 13 以下也按 `areNotificationsEnabled()` 判断（AC-APN-01-11，API 30 模拟器）。
+  2. FCM 客户端（实现时按仓库规矩确认依赖和版本）；`onNewToken` 交给 SDK 缓存。**CI 和开发用占位 `google-services.json`，真实配置只在发布时注入，不进仓库**（R-CQ-21，AC-APN-01-12）；占位配置下 debug 构建和单测通过，拿不到真实令牌时用令牌替身。
+  3. F-APN-06：启动时用 Google Play 服务可用性判断，不可用或被禁用就不注册，"设置 → 通知"显示"此设备暂不支持离线通知，打开 App 才能收到消息"；后来变为可用，下次启动注册。
+  4. 通知渠道"消息"（F-APN-04 规则 3）；前后台切换调用 `setAppState`。
+  5. 收到真实推送（AC-APN-01-6、05-3、06-2）**要 Frank 的 Firebase 项目、真实 `google-services.json`（第 20.3 节）和真机（P-13）**，见 FE-656。
+- 工作量：2.5 人日（Android）
+
+### FE-653 Android：通知设置页、点击、清除
+- 优先级：P0
+- 批次：C3
+- 仓库：tianting-android
+- 依赖：FE-652
+- AC：AC-APN-01-5、AC-APN-03-4、AC-APN-03-5、AC-APN-03-8、AC-APN-04-1、AC-APN-04-2、AC-APN-04-3、AC-APN-04-6、AC-ACC-04-26、AC-CHAT-90-8、AC-CHAT-90-9
+- 内容：
+  1. "设置 → 通知"（第 13.3、13.4 节）：系统授权状态和前往系统设置、"显示发送者和内容"开关；状态：系统授权关闭、令牌获取中、令牌获取失败、设备不支持（F-APN-06）、保存失败。打开开关前先提示"内容会经过第三方通道"，确认后才生效，重启后保留（AC-APN-03-4）。
+  2. F-APN-04 规则 1：隐藏模式点通知进会话列表；详情模式走 `tianting://chat/{convId}`（PRD-ui 3.6 节，只接受已知路由），未登录先去登录，账号不同或 `convId` 不属于当前账号就进会话列表，不显示任何内容（AC-APN-04-3）。点通知时登录已失效按 F-ACC-03 刷新，失败回登录页。
+  3. 回到前台清除本 App 已显示的通知（AC-APN-04-6）。
+  4. AC-CHAT-90-8、90-9 的 C3 部分：通知设置页符合 B-1、B-3，深色模式、无障碍（开关和入口有可读名称）。
+- 工作量：2.5 人日（Android）
+
+### FE-654 iOS：APNs 接入、entitlements、授权、令牌
+- 优先级：P0
+- 批次：C3
+- 仓库：tianting-ios
+- 依赖：FE-651
+- AC：AC-APN-01-5、AC-APN-01-6、AC-APN-01-10、AC-APN-02-15、AC-APN-05-3、AC-ACC-04-6
+- 内容：
+  1. 加 `.entitlements` 的 `aps-environment`（debug development、release production，F-APN-01 规则 5b）。真实签名和含推送能力的描述文件依赖 Frank 的 Apple Developer 账号（第 20.3 节）；没有之前，模拟器和单测用令牌替身。
+  2. 首次登录进入会话列表后请求授权（含 `.badge`）；`registerForRemoteNotifications` 拿到的令牌按十六进制交给 SDK；回到前台对比授权和令牌（F-APN-01 规则 5a）。
+  3. 前后台切换调用 `setAppState`；记录进入后台那一帧的实际表现（FE-651 第 2 条）。
+  4. 收到真实推送（AC-APN-01-6、05-3）要 APNs Key（第 20.3 节）和真机（P-13），见 FE-656。
+- 工作量：2.5 人日（iOS）
+
+### FE-655 iOS：通知设置页、点击、角标、清除
+- 优先级：P0
+- 批次：C3
+- 仓库：tianting-ios
+- 依赖：FE-654
+- AC：AC-APN-01-5、AC-APN-03-4、AC-APN-03-5、AC-APN-03-8、AC-APN-04-1、AC-APN-04-2、AC-APN-04-3、AC-APN-04-6、AC-ACC-04-26、AC-CHAT-90-8、AC-CHAT-90-9
+- 内容：
+  1. 同 FE-653 第 1、2、4 条。
+  2. F-APN-04 规则 2：角标 = 服务端发送时的总未读，App 回到前台时按本地总未读刷新；第一批不保证跨设备已读后清除已送达的通知。
+  3. 回到前台清除本 App 已送达的通知（AC-APN-04-6）。
+- 工作量：2.5 人日（iOS）
+
+### FE-656 C3 三端验收和真机
+- 优先级：P0
+- 批次：C3
+- 仓库：tianting-android、tianting-ios（tianting-web 只核对没有"通知"入口）
+- 依赖：FE-653、FE-655、BE-459
+- AC：AC-APN-01-6、AC-APN-03-5、AC-APN-04-1、AC-APN-04-2、AC-APN-05-3、AC-APN-06-2、AC-ACC-04-26、AC-CHAT-90-8、AC-CHAT-90-9
+- 内容：
+  1. 按 TC-APN 落地原生 UI 测试（Compose UI Test、XCUITest，模拟器 + 替身 + 真实 im-server 测试模式 + 假通道）。
+  2. **手工 AC（AC-APN-01-6、03-5、04-1、04-2、05-3、06-2）依赖 P-13 真机**；其中**收到真实通知的还依赖第 20.3 节**：iOS 要 APNs Key 和带推送能力的签名，Android 要 Firebase 项目和真实 `google-services.json`，服务器要能访问 Apple、Google（AC-APN-05-3）；AC-APN-06-2 要一台没有谷歌服务的国内 Android 真机（不需要 FCM 账号）。未到位记未执行，不算通过。
+  3. H5：设置页不出现"通知"（第 13.2 节没有离线通知；AC-UI-16-6 的改写见 BE-460）。
+  4. 写验收报告 `docs/reports/c3-frontend-acceptance-<日期>.md`。
+- 工作量：2.5 人日（测试）
 
 ---
 
@@ -462,7 +563,7 @@ PRD 冻结，没有改，都按最保守的理解实现，等 Frank 决定。第
 | A12 | securityNotice 的文案（H7、A11、I9） | PRD 只给了 `newDeviceLogin` 的文案（AC-ACC-02-13） | **实现时加的文案，待确认**，三端相同：`recoveryCodeRegenerated` "你的恢复码已重新生成"；`refreshReplay` "检测到你的账号登录凭证异常"；`refreshRateLimited` "你的账号登录凭证刷新过于频繁"。不认识的 kind 不提示 这次新增，同样待确认，三端相同：`newIpPrefix` "你的账号正在新的网络使用"；`passwordChanged` "你的账号密码已被修改"；`passwordRecovered` "你的账号已通过恢复码重设密码"。**Frank 决定（2026-11-09，都按建议）**：按实现的文案确认，已写进 PRD-chat v1.2 F-ACC-02 规则 3b |
 | A13 | F-ACC-02 规则 3b，F-ACC-05 规则 5（server） | PRD 要求来自新 IP 前缀的刷新或转正也提醒其他在线设备，服务端只写 `newIpPrefix` 事件，没有 `notify`（`refresh.go`）。规则 3b 也列了改密、找回，第 467 行也写了改密时收到 `securityNotice`，服务端只发 `kicked` | **已处理**：im-mvp@3ab750c。刷新和转正提交之后发 `newIpPrefix`；改密、找回发 `passwordChanged`、`passwordRecovered`，排在 `kicked` 之前。PRD 写得明确，所以补了，`kicked` 不代替它。提醒和踢线原来各走各的协程，踢线会抢先关连接，所以网关改成等已入队的帧写完再踢，新帧不再入队。`logout-others` 不在规则 3b 的列表里，只有 `kicked`。SDK 放行：tianting-sdk-ts@c583243、tianting-sdk-kotlin@278f8c4、tianting-sdk-swift@985b68c；文案：tianting-web@6b8632d、tianting-android@1c9ed56、tianting-ios@1e46ef7，见 A12。**频率待 Frank 决定**：PRD 和安全复查（RS4-08）都没有规定频率，F-ACC-03 规则 4 只写了弱网切换也会触发，所以只提醒不吊销。按要求没有自造限频：每条会话每个没见过的前缀提醒一次（`seen_ip_prefixes` 记 64 个，超出丢最旧的）。CGNAT 或移动网络下前缀常变的用户，其他设备可能频繁收到提醒，没有实测过频次 |
 | A14 | F-ACC-05 规则 5（server） | `notify` 用 `DeliverToUser(userID, b, "")`，没有排除发起方。实测确认：重新生成恢复码的设备自己在线时会收到提醒，限流时这条会话的连接也会收到。PRD 写的是"其他设备" | **已处理**：im-mvp@3ab750c。发起方是 HTTP 请求，没有连接 ID，所以新增 `DeliverToUserExceptSID`，按 `sid` 排除，同一 `sid` 的其他连接也不提醒（多标签页已互斥）。`newDeviceLogin`、`passwordRecovered` 的发起方这时还没有连接，排除的是新 `sid`，没有实际效果 |
-| A15 | A1 的修复，F-ACC-04 规则 1 | 旧 logout 失败时本来要撤销系统推送令牌，但新会话已经在用这个令牌 | 有新会话时不撤销，改成立刻补发旧 sid。补发成功之前，旧 sid 的推送还可能到这台设备（系统令牌接入随 C3，真实推送没有验证） |
+| A15 | A1 的修复，F-ACC-04 规则 1 | 旧 logout 失败时本来要撤销系统推送令牌，但新会话已经在用这个令牌 | 有新会话时不撤销，改成立刻补发旧 sid。补发成功之前，旧 sid 的推送还可能到这台设备（系统令牌接入随 C3，真实推送没有验证；C3 里由 FE-650、FE-651 第 4 条和 TC-APN-91-03 覆盖） |
 | F2 | F-ACC-03 规则 5，AC-ACC-03-43（server，FE-620 发现） | 到绝对上限前不足 1 秒，服务端已经踢 `tokenExpired`（JWT 的 `exp` 只到秒），刷新还能返回 200，于是有几次多余的刷新和重连，随后到点回登录页。`IM_REFRESH_ABSOLUTE=25s` 实测 2 次 | 没有改：`model.go` 规定 `kicked` 可以刷新，服务端要不要在上限的同一秒不再签发由 Frank 决定。三端用例只断言"上限前没有刷新"。**Frank 决定（2026-11-09，都按建议）**：修服务端：距上限不足 1 秒的刷新按到期处理（PRD-chat v1.2 `IM_REFRESH_ABSOLUTE`，TC-ACC-03-51）；三端 03-45 用例改回"到期后也不刷新"。**处理结果（2026-11-09，tianting-ios@54caa87、tianting-android@d50c230、tianting-web@f0c5b6f）**：三端改回检查到期之后：上限前 0 次刷新，到期后没有成功的刷新、不重连。三端实测服务端在上限那一秒踢 `tokenExpired` 后 SDK 仍发 1 次刷新，服务端回 401 / 4019，用例断言"最多这 1 次且被拒绝"，不是"请求数为 0"。要 0 次需要改三套 SDK，待 Frank 决定（验收报告第 10 节），AC-ACC-03-43 仍是部分通过 |
 | A16 | tianting-android `ChatTest`（FE-620 发现，不是 C1 范围） | 整类连跑 7 次失败 2 次：`menu_copy_retry_delete` 删除后 5 秒内消息还在；`at_bottom_follows_new_message` 在聊天页消息列表的 Compose `LazyColumn` 测量时 `IndexOutOfBoundsException`（区间列表为空却取第 0 项）。单独跑都通过 | 根因没有查明，没有改。后一个是 App 进程里的崩溃，真实用户可能遇到，建议单独排查。**Frank 决定（2026-11-09，都按建议）**：C2 开工前先查清并修复。**处理结果（2026-11-09，tianting-android@d50c230）**：崩溃的根因查明：聊天页在组合的上下文里收集 SDK 线程更新的 `messagesFlow`，Compose 测试的调度器不切线程，重组和 LazyColumn 测量跑在 `tianting-sdk` 线程上，和主线程并发（现场栈：`CalledFromWrongThreadException ... Calling: tianting-sdk`，随后 "performMeasureAndLayout called during measure layout"）。改成在主线程收集，聊天页的 SDK 挂起调用经 `onMain` 回主线程；新用例 `sdk_thread_updates_reach_ui_on_main_thread` 修前失败（34～35 次通知在 SDK 线程）、修后通过。正式运行的调度器会切回主线程，按代码判断真实用户碰不到。`menu_copy_retry_delete` 按代码判断是等待条件（重发后旧的失败图标先满足等待，删除时消息其实在发送中），改成等 SDK 里真的又失败；这一轮没有复现，根因未经现场证实。另外修了软键盘动画中点"发送"落空的等待条件。ChatTest 整类连跑 10 次全过（模拟器，本地） |
 | A17 | tianting-android `ConvListTest.start_chat_self_and_friends_mode_warning`（FE-620 发现） | 约 1/3 失败：已经跳转到聊天页（路径对、对方是好友），5 秒内没有 `chat-title` | 根因没有查明。试过重复点击、先等好友关系，都没用，已撤销。**处理结果（2026-11-09，tianting-android@d50c230）**：和 A16 同一原因：发起单聊弹窗里 `relationOf` 在 SDK 线程上恢复后直接导航。改成经 `onMain`。ConvListTest 连跑 6 次全过（之前约 1/3 失败）；6 次不足以证明，只能说没有再出现 |

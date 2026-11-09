@@ -2,8 +2,8 @@
 
 > 由 `python3 tools/trace.py` 生成，不要手工编辑。
 
-- AC 总数：1462，完全覆盖：1462，有缺口：0
-- 关联到 AC 的测试用例数：1782
+- AC 总数：1513，完全覆盖：1513，有缺口：0
+- 关联到 AC 的测试用例数：1843
 - 引用了不存在的 AC：无
 - 重复的 AC 编号：无
 
@@ -15,7 +15,7 @@
 | admin-v1.3 | 280 | 280 |
 | ops-v1.4 | 172 | 172 |
 | live-v1.2 | 113 | 113 |
-| chat-v1.4 | 286 | 286 |
+| chat-v1.4 | 337 | 337 |
 
 | AC | PRD | 验证层 | 后端任务（BE / CS） | 前端任务 | 测试用例 | 状态 |
 |---|---|---|---|---|---|---|
@@ -1247,7 +1247,7 @@
 | AC-ACC-03-16 | chat-v1.4 | 后端 | BE-416 | — | TC-ACC-03-16 | ✅ |
 | AC-ACC-03-17 | chat-v1.4 | 后端 | BE-416 | — | TC-ACC-03-17 | ✅ |
 | AC-ACC-03-18 | chat-v1.4 | 前端 | — | FE-611、FE-612、FE-616、FE-618 | TC-ACC-03-18 | ✅ |
-| AC-ACC-03-19 | chat-v1.4 | 后端 | BE-415 | — | TC-ACC-03-19 | ✅ |
+| AC-ACC-03-19 | chat-v1.4 | 后端 | BE-415、BE-453 | — | TC-ACC-03-19、TC-APN-91-01 | ✅ |
 | AC-ACC-03-20 | chat-v1.4 | 前端 | — | FE-611、FE-612、FE-616、FE-618 | TC-ACC-03-20 | ✅ |
 | AC-ACC-03-21 | chat-v1.4 | 后端 | BE-415 | — | TC-ACC-03-21 | ✅ |
 | AC-ACC-03-22 | chat-v1.4 | 后端 | BE-415 | — | TC-ACC-03-22 | ✅ |
@@ -1255,7 +1255,7 @@
 | AC-ACC-03-24 | chat-v1.4 | 后端 | BE-415 | — | TC-ACC-03-24 | ✅ |
 | AC-ACC-03-25 | chat-v1.4 | 后端 | BE-415 | — | TC-ACC-03-25 | ✅ |
 | AC-ACC-03-26 | chat-v1.4 | 前端 | — | FE-610、FE-611、FE-612、FE-614、FE-616、FE-618 | TC-ACC-03-26 | ✅ |
-| AC-ACC-03-27 | chat-v1.4 | 后端 | BE-415 | — | TC-ACC-03-27 | ✅ |
+| AC-ACC-03-27 | chat-v1.4 | 后端 | BE-415、BE-453 | — | TC-ACC-03-27、TC-APN-91-02 | ✅ |
 | AC-ACC-03-28 | chat-v1.4 | 后端 | BE-416 | — | TC-ACC-03-28 | ✅ |
 | AC-ACC-03-29 | chat-v1.4 | 后端 | BE-416 | — | TC-ACC-03-29 | ✅ |
 | AC-ACC-03-30 | chat-v1.4 | 后端 | BE-416 | — | TC-ACC-03-30 | ✅ |
@@ -1284,7 +1284,7 @@
 | AC-ACC-04-3 | chat-v1.4 | 后端 | BE-417 | — | TC-ACC-04-03 | ✅ |
 | AC-ACC-04-4 | chat-v1.4 | 后端 | BE-417 | — | TC-ACC-04-04 | ✅ |
 | AC-ACC-04-5 | chat-v1.4 | 前端 | — | FE-610、FE-611、FE-612、FE-614、FE-616、FE-618 | TC-ACC-04-05 | ✅ |
-| AC-ACC-04-6 | chat-v1.4 | 前端 | — | FE-611、FE-612、FE-616、FE-618 | TC-ACC-04-06 | ✅ |
+| AC-ACC-04-6 | chat-v1.4 | 前端 | — | FE-611、FE-612、FE-616、FE-618、FE-650、FE-651、FE-652、FE-654 | TC-ACC-04-06、TC-APN-91-03 | ✅ |
 | AC-ACC-04-7 | chat-v1.4 | 后端 | BE-417 | — | TC-ACC-04-07 | ✅ |
 | AC-ACC-04-8 | chat-v1.4 | 后端 | BE-417 | — | TC-ACC-04-08 | ✅ |
 | AC-ACC-04-10 | chat-v1.4 | 端到端 | BE-417 | FE-610、FE-611、FE-612、FE-614、FE-616、FE-618、FE-620 | TC-ACC-04-09 | ✅ |
@@ -1303,6 +1303,7 @@
 | AC-ACC-04-23 | chat-v1.4 | 后端 | BE-418 | — | TC-ACC-04-22 | ✅ |
 | AC-ACC-04-24 | chat-v1.4 | 后端 | BE-412、BE-418 | — | TC-ACC-04-23 | ✅ |
 | AC-ACC-04-25 | chat-v1.4 | 端到端 | BE-417 | FE-610、FE-611、FE-612、FE-614、FE-616、FE-618、FE-620 | TC-ACC-04-24 | ✅ |
+| AC-ACC-04-26 | chat-v1.4 | 前端 | — | FE-650、FE-651、FE-653、FE-655、FE-656 | TC-ACC-04-30 | ✅ |
 | AC-ACC-04-27 | chat-v1.4 | 前端 | — | FE-610、FE-611、FE-612、FE-614、FE-616、FE-618 | TC-ACC-04-25 | ✅ |
 | AC-ACC-04-28 | chat-v1.4 | 后端 | BE-420 | — | TC-ACC-04-26 | ✅ |
 | AC-ACC-04-29 | chat-v1.4 | 后端 | BE-417、BE-422 | — | TC-ACC-04-27 | ✅ |
@@ -1464,20 +1465,70 @@
 | AC-FILE-07-8 | chat-v1.4 | 后端 | BE-434 | — | TC-FILE-07-08 | ✅ |
 | AC-FILE-07-9 | chat-v1.4 | 前端 | — | FE-631、FE-632、FE-635、FE-637 | TC-FILE-07-09 | ✅ |
 | AC-FILE-07-10 | chat-v1.4 | 前端 | — | FE-630、FE-631、FE-632、FE-633、FE-635、FE-637 | TC-FILE-07-10 | ✅ |
-| AC-CHAT-90-1 | chat-v1.4 | 后端 | BE-422、BE-440 | — | TC-CHAT-90-01 | ✅ |
-| AC-CHAT-90-2 | chat-v1.4 | 后端 | BE-422、BE-431、BE-440 | — | TC-CHAT-90-02 | ✅ |
-| AC-CHAT-90-3 | chat-v1.4 | 后端 | BE-438、BE-440 | — | TC-CHAT-90-03 | ✅ |
-| AC-CHAT-90-5 | chat-v1.4 | 后端 | BE-422、BE-440 | — | TC-CHAT-90-04、TC-CHAT-90-05 | ✅ |
+| AC-APN-01-1 | chat-v1.4 | 后端 | BE-452 | — | TC-APN-01-01 | ✅ |
+| AC-APN-01-2 | chat-v1.4 | 后端 | BE-457 | — | TC-APN-01-02 | ✅ |
+| AC-APN-01-3 | chat-v1.4 | 后端 | BE-453、BE-459、CS-203 | — | TC-APN-01-03 | ✅ |
+| AC-APN-01-4 | chat-v1.4 | 后端 | BE-451、BE-452 | — | TC-APN-01-04 | ✅ |
+| AC-APN-01-5 | chat-v1.4 | 前端 | — | FE-650、FE-651、FE-652、FE-653、FE-654、FE-655 | TC-APN-01-05 | ✅ |
+| AC-APN-01-6 | chat-v1.4 | 手工 | — | FE-652、FE-654、FE-656 | TC-APN-01-06 | ✅ |
+| AC-APN-01-7 | chat-v1.4 | 后端 | BE-452 | — | TC-APN-01-07 | ✅ |
+| AC-APN-01-8 | chat-v1.4 | 后端 | BE-452、BE-456 | — | TC-APN-01-08 | ✅ |
+| AC-APN-01-9 | chat-v1.4 | 后端 | BE-453、BE-455 | — | TC-APN-01-09 | ✅ |
+| AC-APN-01-10 | chat-v1.4 | 前端 | — | FE-650、FE-651、FE-652、FE-654 | TC-APN-01-10 | ✅ |
+| AC-APN-01-11 | chat-v1.4 | 前端 | — | FE-652 | TC-APN-01-11 | ✅ |
+| AC-APN-01-12 | chat-v1.4 | 前端 | — | FE-652 | TC-APN-01-12 | ✅ |
+| AC-APN-01-13 | chat-v1.4 | 后端 | BE-450、BE-452 | — | TC-APN-01-13 | ✅ |
+| AC-APN-02-1 | chat-v1.4 | 后端 | BE-455 | — | TC-APN-02-01 | ✅ |
+| AC-APN-02-2 | chat-v1.4 | 后端 | BE-454 | — | TC-APN-02-02 | ✅ |
+| AC-APN-02-3 | chat-v1.4 | 后端 | BE-454 | — | TC-APN-02-03 | ✅ |
+| AC-APN-02-4 | chat-v1.4 | 后端 | BE-455 | — | TC-APN-02-04 | ✅ |
+| AC-APN-02-5 | chat-v1.4 | 后端 | BE-406、BE-454 | — | TC-APN-02-05 | ✅ |
+| AC-APN-02-6 | chat-v1.4 | 后端 | BE-454 | — | TC-APN-02-06 | ✅ |
+| AC-APN-02-7 | chat-v1.4 | 后端 | BE-455 | — | TC-APN-02-07 | ✅ |
+| AC-APN-02-8 | chat-v1.4 | 后端 | BE-455、BE-459 | — | TC-APN-02-08 | ✅ |
+| AC-APN-02-9 | chat-v1.4 | 后端 | BE-455 | — | TC-APN-02-09 | ✅ |
+| AC-APN-02-10 | chat-v1.4 | 后端 | BE-455 | — | TC-APN-02-10 | ✅ |
+| AC-APN-02-12 | chat-v1.4 | 后端 | BE-455、BE-459 | — | TC-APN-02-12 | ✅ |
+| AC-APN-02-13 | chat-v1.4 | 后端 | BE-454 | — | TC-APN-02-13 | ✅ |
+| AC-APN-02-14 | chat-v1.4 | 后端 | BE-454 | — | TC-APN-02-14 | ✅ |
+| AC-APN-02-15 | chat-v1.4 | 前端 | — | FE-650、FE-651、FE-652、FE-654 | TC-APN-02-15 | ✅ |
+| AC-APN-02-16 | chat-v1.4 | 后端 | BE-455 | — | TC-APN-02-16 | ✅ |
+| AC-APN-02-17 | chat-v1.4 | 后端 | BE-450、BE-451 | — | TC-APN-02-17 | ✅ |
+| AC-APN-03-1 | chat-v1.4 | 后端 | BE-456 | — | TC-APN-03-01 | ✅ |
+| AC-APN-03-2 | chat-v1.4 | 后端 | BE-456 | — | TC-APN-03-02 | ✅ |
+| AC-APN-03-4 | chat-v1.4 | 前端 | — | FE-653、FE-655 | TC-APN-03-04 | ✅ |
+| AC-APN-03-5 | chat-v1.4 | 手工 | — | FE-653、FE-655、FE-656 | TC-APN-03-05 | ✅ |
+| AC-APN-03-6 | chat-v1.4 | 后端 | BE-456 | — | TC-APN-03-06 | ✅ |
+| AC-APN-03-7 | chat-v1.4 | 后端 | BE-456 | — | TC-APN-03-07 | ✅ |
+| AC-APN-03-8 | chat-v1.4 | 前端 | — | FE-650、FE-651、FE-653、FE-655 | TC-APN-03-08 | ✅ |
+| AC-APN-04-1 | chat-v1.4 | 手工 | — | FE-653、FE-655、FE-656 | TC-APN-04-01 | ✅ |
+| AC-APN-04-2 | chat-v1.4 | 手工 | — | FE-653、FE-655、FE-656 | TC-APN-04-02 | ✅ |
+| AC-APN-04-3 | chat-v1.4 | 前端 | — | FE-653、FE-655 | TC-APN-04-03 | ✅ |
+| AC-APN-04-5 | chat-v1.4 | 后端 | BE-455 | — | TC-APN-04-05 | ✅ |
+| AC-APN-04-6 | chat-v1.4 | 前端 | — | FE-653、FE-655 | TC-APN-04-06 | ✅ |
+| AC-APN-05-1 | chat-v1.4 | 后端 | BE-457、BE-458 | — | TC-APN-05-01 | ✅ |
+| AC-APN-05-2 | chat-v1.4 | 后端 | BE-457、BE-458 | — | TC-APN-05-02 | ✅ |
+| AC-APN-05-3 | chat-v1.4 | 手工 | — | FE-652、FE-654、FE-656 | TC-APN-05-03 | ✅ |
+| AC-APN-05-4 | chat-v1.4 | 后端 | BE-406、BE-457 | — | TC-APN-05-04 | ✅ |
+| AC-APN-05-5 | chat-v1.4 | 后端 | BE-457 | — | TC-APN-05-05 | ✅ |
+| AC-APN-06-1 | chat-v1.4 | 前端 | — | FE-650、FE-652 | TC-APN-06-01 | ✅ |
+| AC-APN-06-2 | chat-v1.4 | 手工 | — | FE-652、FE-656 | TC-APN-06-02 | ✅ |
+| AC-APN-06-3 | chat-v1.4 | 后端 | BE-452、BE-455 | — | TC-APN-06-03 | ✅ |
+| AC-CHAT-90-1 | chat-v1.4 | 后端 | BE-422、BE-440、BE-459 | — | TC-CHAT-90-01 | ✅ |
+| AC-CHAT-90-2 | chat-v1.4 | 后端 | BE-422、BE-431、BE-440、BE-451、BE-459 | — | TC-CHAT-90-02、TC-CHAT-90-19 | ✅ |
+| AC-CHAT-90-3 | chat-v1.4 | 后端 | BE-438、BE-440、BE-459 | — | TC-CHAT-90-03、TC-CHAT-90-20 | ✅ |
+| AC-CHAT-90-5 | chat-v1.4 | 后端 | BE-422、BE-440、BE-459 | — | TC-CHAT-90-04、TC-CHAT-90-05、TC-CHAT-90-21 | ✅ |
 | AC-CHAT-90-6 | chat-v1.4 | 后端 | BE-410 | — | TC-CHAT-90-06 | ✅ |
-| AC-CHAT-90-8 | chat-v1.4 | 前端 | — | FE-614、FE-616、FE-618、FE-620、FE-634、FE-636、FE-638、FE-640 | TC-CHAT-90-07 | ✅ |
-| AC-CHAT-90-9 | chat-v1.4 | 前端 | — | FE-614、FE-616、FE-618、FE-620、FE-634、FE-636、FE-638、FE-640 | TC-CHAT-90-08 | ✅ |
-| AC-CHAT-90-10 | chat-v1.4 | 后端 | BE-400、BE-401、BE-402、BE-403 | FE-600、FE-601、FE-602 | TC-CHAT-90-09 | ✅ |
+| AC-CHAT-90-8 | chat-v1.4 | 前端 | — | FE-614、FE-616、FE-618、FE-620、FE-634、FE-636、FE-638、FE-640、FE-653、FE-655、FE-656 | TC-CHAT-90-07、TC-CHAT-90-22 | ✅ |
+| AC-CHAT-90-9 | chat-v1.4 | 前端 | — | FE-614、FE-616、FE-618、FE-620、FE-634、FE-636、FE-638、FE-640、FE-653、FE-655、FE-656 | TC-CHAT-90-08、TC-CHAT-90-23 | ✅ |
+| AC-CHAT-90-10 | chat-v1.4 | 后端 | BE-400、BE-401、BE-402、BE-403、BE-450 | FE-600、FE-601、FE-602、FE-650、FE-651 | TC-CHAT-90-09、TC-CHAT-90-24 | ✅ |
 | AC-CHAT-90-11 | chat-v1.4 | 后端 | BE-422 | — | TC-CHAT-90-10 | ✅ |
 | AC-CHAT-90-12 | chat-v1.4 | 后端 | BE-432、BE-440 | — | TC-CHAT-90-11 | ✅ |
+| AC-CHAT-90-13 | chat-v1.4 | 后端 | BE-455、BE-459 | — | TC-CHAT-90-18 | ✅ |
 | AC-CHAT-90-14 | chat-v1.4 | 后端 | BE-400 | FE-600、FE-601、FE-602 | TC-CHAT-90-12 | ✅ |
 | AC-CHAT-90-15 | chat-v1.4 | 前端 | BE-402、BE-403 | FE-600、FE-601、FE-602、FE-610、FE-611、FE-612、FE-620、FE-630、FE-631、FE-632、FE-640 | TC-CHAT-90-13 | ✅ |
 | AC-CHAT-90-16 | chat-v1.4 | 后端 | BE-411 | — | TC-CHAT-90-14 | ✅ |
-| AC-CHAT-90-17 | chat-v1.4 | 后端 | BE-422、BE-423、BE-438、BE-440 | — | TC-CHAT-90-15、TC-CHAT-90-16 | ✅ |
+| AC-CHAT-90-17 | chat-v1.4 | 后端 | BE-422、BE-423、BE-438、BE-440、BE-458、BE-459、CS-203 | — | TC-CHAT-90-15、TC-CHAT-90-16、TC-CHAT-90-25 | ✅ |
 | AC-CHAT-90-18 | chat-v1.4 | 后端 | BE-405 | — | TC-CHAT-90-17 | ✅ |
 | AC-FILE-90-1 | chat-v1.4 | 后端 | BE-439 | — | TC-FILE-90-01 | ✅ |
 | AC-FILE-90-2 | chat-v1.4 | 手工 | BE-439 | FE-640 | TC-FILE-90-02 | ✅ |

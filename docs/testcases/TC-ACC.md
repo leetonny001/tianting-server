@@ -1,7 +1,7 @@
 # 测试用例：账号注册和登录（ACC，C1；头像部分 C2）
 
 > 依据：[PRD-chat v1.4](../prd/PRD-chat-v1.4.md)（冻结）第 4、5 节；[ERRORS.md](../../protocol/ERRORS.md)。任务单：[backend-chat](../tasks/backend-chat.md)、[console-chat](../tasks/console-chat.md)、[frontend-chat](../tasks/frontend-chat.md)。
-> 范围：标了【C1】【C2】的 AC-ACC（CH-27）。C3～C6 的 AC-ACC 不在这里。
+> 范围：标了【C1】【C2】【C3】的 AC-ACC（CH-27）。C3 只有 AC-ACC-04-26（TC-ACC-04-30）；C1 AC 的推送令牌部分在 [TC-APN](TC-APN.md) TC-APN-91-01～03。C4～C6 的 AC-ACC 不在这里。
 >
 > 通用约定：
 > - 环境：**E1 单节点**（1 个 im-server，development，`IM_TEST_MODE=1`，SQLite 独立库；`IM_TRUSTED_PROXIES` 配成测试客户端，换 IP 用 `X-Forwarded-For`，PRD 第 4.5 节）；**E1 + 假 S3**（再加 `objstoretest` 独立进程，`IM_FILES_ENABLED=1`，公开桶和私有桶都在假 S3 上）；**E1 + console-server + tianting-admin**（`CON_TEST_MODE=1`，Postgres）；**真实 MinIO**（`deploy/testenv-ci.sh` 的固定版本）；**EP 性能**（目标机，P-12）；**Postgres**（B6 之后）；**模拟器**（Android 模拟器、iOS Simulator）；**真机**（P-13）。开发机不安装软件。
@@ -129,6 +129,7 @@
 | TC-ACC-04-27 | 【未执行】Postgres：recover 持锁期间，三种请求都等待后 401 | AC-ACC-04-29 | 后端 e2e（Postgres 并发） | P0 |
 | TC-ACC-04-28 | 专用位公平：攻击者循环持新码，受害者和其他账号都在时限内成功 | AC-ACC-04-30 | 后端 e2e | P0 |
 | TC-ACC-04-29 | 成功次数上限只约束最新一代，受害者手里的旧代不受限 | AC-ACC-04-31 | 后端 e2e | P0 |
+| TC-ACC-04-30 | 打开"显示内容"的设备改密：换 sid 后重新注册，设置保留（C3） | AC-ACC-04-26 | 原生 UI 测试 + SDK 单测 + 后端 e2e | P0 |
 | TC-ACC-05-01 | 正确恢复码找回：新密码可用，旧设备下线，旧码作废 | AC-ACC-05-1 | 后端 e2e | P0 |
 | TC-ACC-05-02 | 用户名不存在、恢复码错、已用过：响应相同 | AC-ACC-05-2 | 后端 e2e | P0 |
 | TC-ACC-05-03 | 恢复码错误 5 次后再错 429；正确的不受限 | AC-ACC-05-3 | 后端 e2e | P0 |
@@ -1841,6 +1842,23 @@
   2. V 成功（C2 不受这个上限），比 C2 新的代都作废
   3. X 最后一次 401 / 4018
 
+### TC-ACC-04-30 打开"显示内容"的设备改密：换 sid 后重新注册，设置保留
+- 关联 AC：AC-ACC-04-26
+- 优先级：P0
+- 批次：C3
+- 层级：原生 UI 测试（Android、iOS）+ SDK 单测 + 后端 e2e
+- 环境：模拟器 + 替身，连 E1 + 假通道（[TC-APN](TC-APN.md) 的环境）；SDK 单测
+- 前置条件：u1 的设备 `D1` 已注册令牌 `TA1`，"显示发送者和内容"已打开
+- 步骤：
+  1. 在 `D1` 的"账号安全"里改密
+  2. 观察上行帧和 `device_push`
+  3. App 退到后台（上报 `background`）后断开；u2 发一条含特征串的消息，抓假通道请求
+- 预期结果：
+  1. 改密响应给了新 `sid`；旧 `sid` 的令牌行随吊销删除（BE-453）
+  2. 新连接 `auth` 之后重新发 `deviceNotificationRegister`（同一个 `TA1`），绑定新 `sid`
+  3. `deviceNotificationSettings {}` 读到 `showDetail=true`（服务端从旧会话复制）；设置页仍是开
+  4. 假通道有调用，请求是详情模式（标题是 u2 的昵称）
+
 ## F-ACC-05 恢复码与找回密码
 
 ### TC-ACC-05-01 正确恢复码找回：新密码可用，旧设备下线，旧码作废
@@ -2759,5 +2777,5 @@
 分发时发现的矛盾已在 [PRD-chat v1.1](../prd/PRD-chat-v1.1.md) 第 22 节修正；C1 验收发现的口径问题在 [v1.2](../prd/PRD-chat-v1.2.md) 第 22 节修正（TC-ACC-03-08 两种文案、新增 TC-ACC-03-51）。用例和 AC 一致。
 
 - AC-ACC-04-29 只有 Postgres 实现后才能跑，C1 验收记未执行。
-- AC-ACC-03-19、03-27、04-6 的推送令牌部分 C3 上线时验。
+- AC-ACC-03-19、03-27、04-6 的推送令牌部分 C3 上线时验，用例见 [TC-APN](TC-APN.md) TC-APN-91-01～03。
 - AC-ACC-04-31 的"攻击者第 7 次 429"要发生在受害者找回之前，受害者成功后攻击者的码已作废。

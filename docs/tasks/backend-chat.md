@@ -1,17 +1,17 @@
-# 后端任务单：天听聊天产品第一批（C1 账号、C2 图片和文件、公共部分）
+# 后端任务单：天听聊天产品第一批（C1 账号、C2 图片和文件、C3 离线推送、公共部分）
 
 | 项 | 内容 |
 |---|---|
-| 依据 | [PRD-chat v1.4](../prd/PRD-chat-v1.4.md)（冻结）第 4～6、11、12、14、15、16、18 节；[ARCH-v1](../arch/ARCH-v1.md)；[协议](../../protocol/README.md)、[错误码](../../protocol/ERRORS.md)、[管理接口](../../protocol/ADMIN.md) |
-| 范围 | **只有 C1、C2 和公共部分**（PRD 决定 CH-27）。C3～C6 的 AC 不进任务；【全部】的 AC 只验证到 C2 为止的部分（PRD 第 15 节的累计表） |
+| 依据 | [PRD-chat v1.4](../prd/PRD-chat-v1.4.md)（冻结）第 4～7、11、12、14、15、16、18、20.3 节；[ARCH-v1](../arch/ARCH-v1.md)；[协议](../../protocol/README.md)、[错误码](../../protocol/ERRORS.md)、[管理接口](../../protocol/ADMIN.md) |
+| 范围 | **C1、C2、C3 和公共部分**（PRD 决定 CH-27；C3 是 Frank 2026-11-10 决定按顺序继续的）。C4～C6 的 AC 不进任务；【全部】的 AC 验证到 C3 为止的部分（PRD 第 15 节累计表） |
 | 负责 | 后端（AI） |
 | 仓库 | im-server（GitHub 仓库 `tianting-server`，本地 `im-mvp/server/`）；协议在同仓库 `protocol/`，部署在 `deploy/`，工具在 `tools/` |
-| 编号 | **BE-400 起**。公共 BE-400～BE-408，C1 BE-410～BE-424，C2 BE-430～BE-440 |
+| 编号 | **BE-400 起**。公共 BE-400～BE-408，C1 BE-410～BE-424，C2 BE-430～BE-440，C3 BE-450～BE-460 |
 | 起点 | 现有迁移到 `0014_admin_stats.sql`；只有 SQLite；`IM_V13_ADMIN_FEATURES` 默认关闭；`tools/objstore-contract` 已有合同工具 |
-| 完成定义 | 任务内的 AC 都有通过的自动化测试，用例名带 TC 编号（[TC-ACC](../testcases/TC-ACC.md)、[TC-FILE](../testcases/TC-FILE.md)、[TC-CHAT](../testcases/TC-CHAT.md)）；`go test -race ./...` 全过；默认配置下 `server/e2e` 现有文件不改代码全过（AC-ACC-07-1）；Schema、向量、`ERRORS.md`、`ADMIN.md` 同步；`python3 -I tools/trace.py --check` 没有缺口 |
-| 环境限制 | **CI 现在不运行**（[PENDING](../reports/PENDING.md) P-21，Actions 预算是 $0），所有结果都是本地结果，要标明。开发机不装软件；真实 MinIO 要 Frank 同意才能临时构建。压测机 P-12、真机和渗透 P-13 未到位 |
+| 完成定义 | 任务内的 AC 都有通过的自动化测试，用例名带 TC 编号（[TC-ACC](../testcases/TC-ACC.md)、[TC-FILE](../testcases/TC-FILE.md)、[TC-APN](../testcases/TC-APN.md)、[TC-CHAT](../testcases/TC-CHAT.md)）；`go test -race ./...` 全过；默认配置下 `server/e2e` 现有文件不改代码全过（AC-ACC-07-1）；Schema、向量、`ERRORS.md`、`ADMIN.md` 同步；`python3 -I tools/trace.py --check` 没有缺口 |
+| 环境限制 | **CI 现在不运行**（[PENDING](../reports/PENDING.md) P-21，Actions 预算是 $0），所有结果都是本地结果，要标明。开发机不装软件；真实 MinIO 要 Frank 同意才能临时构建。压测机 P-12、真机和渗透 P-13 未到位。**C3 的真实 APNs、FCM 要 Frank 先做 PRD 第 20.3 节的账号和网络步骤**（PENDING P-40），之前只用假通道 |
 
-格式说明：每个任务的 `- AC：` 一行列出它负责满足的验收标准，追溯矩阵由 `tools/trace.py` 从这一行生成。一条 AC 可以出现在多个任务里（功能任务 + 验收任务）。C3～C6 只写在任务内容里说明，不进 `- AC：` 行。
+格式说明：每个任务的 `- AC：` 一行列出它负责满足的验收标准，追溯矩阵由 `tools/trace.py` 从这一行生成。一条 AC 可以出现在多个任务里（功能任务 + 验收任务）。C4～C6 只写在任务内容里说明，不进 `- AC：` 行。
 
 ## 进度
 
@@ -50,7 +50,8 @@
 | BE-438 | ✅ 完成（部署样例和检查；厂商生效未验证） | `deploy/FILES-RUNBOOK.md`（桶、凭证、生命周期、CORS、Android 开发例外、访问日志、备份不含文件、恢复后手动对账、配置检查、指标、告警）；`deploy/objstore/` 样例只有占位符（`policy-im-server.json` 只给 `final/` 前缀列举、`policy-public-read.json` 没有列举、`lifecycle-private.json` `tmp/` 1 天、`cors-private.json` 限定来源、`im-files.example.env` 凭证留空），`test_samples.py` 11 项静态检查。服务端：配置检查 `objstore_https`（生产 http 本来就拒绝启动，补了单测 `TestObjstoreHTTPSCheck`）、`objstore_reachable`（按 `final/` 列举 1 个键）；指标 `im_file_uploads_total{kind,result}`、`im_objstore_errors_total{op}`、`im_objstore_requests_total{op}`，**`im_file_uploaded_bytes_total` 改名为第 14.2 节的 `im_file_bytes_total`**。告警只写在部署说明（第一批不发页面告警，`alerts.yml` 是 F-OPS-07 的 11 条）。**本地结果，CI 不运行**：AC-CHAT-90-17（C2 部分，TC-CHAT-90-16）通过；AC-CHAT-90-3 见 BE-440 |
 | BE-439 | 🟡 第 1、2 条完成；第 3 条等云厂商 | 第 2 条：生命周期实际清除、CORS 限定来源写进 `FILES-RUNBOOK.md` 第 7 节，另记了"无列举权限时不存在的键返回 403 还是 404"。第 1 条：`server/e2e/file_realstore_test.go`（`TestTC_FILE_90_01_RealStore`，设 `IM_E2E_S3_*` 才运行，默认跳过；同一套检查在假 S3 上跑通 `TestRealStoreChecksOnFake`，不算 AC 通过），`run-local-minio.sh` 加 `RUN_IM_E2E=1`。**2026-11-09 Frank 同意（P-38 ④）后由主会话在真实 MinIO 上运行：合同工具 46 项必需全过，`TestTC_FILE_90_01_RealStore` 6 个子用例全过，AC-FILE-90-1 通过；跑完已删除 MinIO**。AC-FILE-90-2 等 CH-05 |
 | BE-440 | 🟡 后端用例完成，AC-FILE-90-1、90-2 未执行，性能未判定 | 报告 [c2-backend-acceptance-2026-11-09.md](../reports/c2-backend-acceptance-2026-11-09.md)。`e2e/file_acceptance_test.go`：F-FILE-01 攻击序列对应表（22 条，`TestFileAttackSequencesHaveTests`）、TC-CHAT-90-03（拒绝连接和黑洞各 1000 条文本）、TC-CHAT-90-05（C2 流程日志和除 `files` 外全部表含 `admin_audit`，用 `scan-logs`）、TC-CHAT-90-16。`TestTC_CHAT_90_12_UploadRequestLatency` 按 TC 编号改名为 `TestTC_CHAT_90_11_…`。**本地结果，CI 不运行**。性能（90-1、90-2 的 TC-PERF、90-3、90-12）开发机只记录，不算通过，等 P-12 |
-| 全部 | 🟡 C1 已校准 | 见 [c1-acceptance-2026-11-07.md](../reports/c1-acceptance-2026-11-07.md) 第 9 节：人日不能直接换算成 AI 用时，瓶颈是本机资源和待决定项。C3 起的部分等 Frank 决定 |
+| BE-406、BE-450～BE-460 | ⬜ 未开始 | 2026-11-10 分发 C3（任务、TC-APN、`trace.py` 加【C3】）。BE-406 在 C2 期间没有做，随 C3 第一波做。官方文档核对见文末第 34～46 条，PENDING P-40 |
+| 全部 | 🟡 C1、C2 已校准 | 见 [c1-acceptance-2026-11-07.md](../reports/c1-acceptance-2026-11-07.md) 第 9 节、[c2-calibration-2026-11-10.md](../reports/c2-calibration-2026-11-10.md)：人日不能直接换算成 AI 用时，瓶颈是本机资源和待决定项。C3 已分发；C4 起的部分等 Frank 决定 |
 
 ## 总览
 
@@ -59,23 +60,24 @@
 | 公共 | BE-400～BE-408 | 14 | 协议、向量、测试设施（假 S3、假通道、账号并发钩子）、测试环境、冻结文档变更 |
 | C1 账号 | BE-410～BE-424 | 27.5 | 迁移、`/v1` 基座、闸门和限流、注册、登录、会话续期、改密、恢复码、注销、邀请码、验收、部署和运维手册 |
 | C2 文件 | BE-430～BE-440 | 24.5 | 对象存储客户端、上传、`complete`、发送、访问控制、生命周期、头像、部署、合同测试、验收 |
+| C3 推送 | BE-450～BE-460 | 19.5 | 协议、迁移和开关、令牌注册、吊销删令牌、在线判断和补推、队列和 worker、内容和隐私、APNs 和 FCM 通道、部署、验收、文档（假通道 BE-406 的 1 人日在公共里） |
 
 **人日对照（PRD-chat 第 18 节）**
 
-| 第 18 节的列 | 公共 | C1 | C2 | 落在 |
-|---|---|---|---|---|
-| 服务端 | 3 | 18.5 | 14.5 | 本单：BE-400～402、405；BE-410～421；BE-430～437 |
-| console + 后台页面 | 0 | 1.5 | 2.5 | [console-chat](console-chat.md) 和 [frontend-chat](frontend-chat.md) |
-| sdk-ts / sdk-kotlin / sdk-swift | 1 / 1 / 1 | 3.5 / 4 / 4 | 3.5 / 5.5 / 5.5 | [frontend-chat](frontend-chat.md) |
-| H5 / Android / iOS | 0 | 5 / 5.5 / 5.5 | 6 / 8 / 8 | [frontend-chat](frontend-chat.md) |
-| 测试 | 6 | 8.5 | 9.5 | 公共 6：BE-402～406。C1：BE-422 5 + FE-620 3.5。C2：BE-440 5.5 + FE-640 4 |
-| 部署 | 1 | 1.5 | 3 | BE-407；BE-423；BE-438 2 + BE-439 1 |
-| 文档 | 4 | 3 | 1.5 | 公共：BE-400 1、BE-401 0.5、BE-408 2.5。C1：BE-423 1.5、BE-424 1、FE-620 0.5。C2：BE-438 1、BE-439 0.5 |
-| **合计（三份任务单）** | **17** | **60.5** | **67.5** | **145，和第 18 节一致** |
+| 第 18 节的列 | 公共 | C1 | C2 | C3 | 落在 |
+|---|---|---|---|---|---|
+| 服务端 | 3 | 18.5 | 14.5 | 13 | 本单：BE-400～402、405；BE-410～421；BE-430～437；BE-450 0.5、BE-451 1.5、BE-452 2、BE-453 1.5、BE-454 2、BE-455 3、BE-456 1、BE-457 1.5 |
+| console + 后台页面 | 0 | 1.5 | 2.5 | 0.5 | [console-chat](console-chat.md) 和 [frontend-chat](frontend-chat.md)；C3：CS-203 |
+| sdk-ts / sdk-kotlin / sdk-swift | 1 / 1 / 1 | 3.5 / 4 / 4 | 3.5 / 5.5 / 5.5 | 0 / 3 / 3 | [frontend-chat](frontend-chat.md)；C3：FE-650、FE-651（sdk-ts 只同步协议副本，随 BE-450） |
+| H5 / Android / iOS | 0 | 5 / 5.5 / 5.5 | 6 / 8 / 8 | 0 / 5 / 5 | [frontend-chat](frontend-chat.md)；C3：FE-652、653；FE-654、655 |
+| 测试 | 6 | 8.5 | 9.5 | 6 | 公共 6：BE-402～406。C1：BE-422 5 + FE-620 3.5。C2：BE-440 5.5 + FE-640 4。C3：BE-459 3.5 + FE-656 2.5 |
+| 部署 | 1 | 1.5 | 3 | 2 | BE-407；BE-423；BE-438 2 + BE-439 1；BE-458 2 |
+| 文档 | 4 | 3 | 1.5 | 1 | 公共：BE-400 1、BE-401 0.5、BE-408 2.5。C1：BE-423 1.5、BE-424 1、FE-620 0.5。C2：BE-438 1、BE-439 0.5。C3：BE-450 0.5、BE-460 0.5 |
+| **合计（三份任务单）** | **17** | **60.5** | **67.5** | **38.5** | **183.5，和第 18 节一致**（C3 本单 19.5、console-chat 0.5、frontend-chat 18.5） |
 
-**差异说明**：合计和第 18 节没有差异，因为这里是按第 18 节的列拆分，不是独立重估，**都是低置信**。下面这些第 18 节没有单独算，也没有另加人日，如果 C1 校准时超出就从这里看：① 第 4.5 节没有列的暂停点和故障注入（BE-404、BE-405）；② `sessions revoke-all` 命令路径（BE-415）；③ 邀请码重新启用和可信出口网段的配置（BE-421、BE-423）。
+**差异说明**：合计和第 18 节没有差异，因为这里是按第 18 节的列拆分，不是独立重估，**都是低置信**。下面这些第 18 节没有单独算，也没有另加人日，如果 C1 校准时超出就从这里看：① 第 4.5 节没有列的暂停点和故障注入（BE-404、BE-405）；② `sessions revoke-all` 命令路径（BE-415）；③ 邀请码重新启用和可信出口网段的配置（BE-421、BE-423）。**C3 同样是按列拆分**，第 18 节没有单独算、这里也没有另加人日的：④ 官方文档核对后补的行为（JWT 定时重签、`ExpiredProviderToken` 重签重试、延迟重试队列、410 的 `timestamp` 比较，文末第 34～46 条）；⑤ 假通道按官方错误码补的注入（BE-406）；⑥ 真机等待和 Frank 的账号步骤（第 18 节本来就不含）。
 
-**依赖顺序**：BE-400、BE-401 → BE-408、BE-402、BE-403 → BE-405、BE-407 → BE-410 → BE-411 → BE-412 → BE-413、BE-414 → BE-415 → BE-416 → BE-417 → BE-418 → BE-419、BE-420、BE-421 → BE-424、BE-423 → BE-422 →（C1 结束，校准）→ BE-404、BE-406 → BE-430 → BE-431 → BE-432 → BE-433 → BE-434 → BE-435 → BE-436 → BE-437 → BE-438、BE-439 → BE-440。console 和前端的依赖写在各自任务里。
+**依赖顺序**：BE-400、BE-401 → BE-408、BE-402、BE-403 → BE-405、BE-407 → BE-410 → BE-411 → BE-412 → BE-413、BE-414 → BE-415 → BE-416 → BE-417 → BE-418 → BE-419、BE-420、BE-421 → BE-424、BE-423 → BE-422 →（C1 结束，校准）→ BE-404、BE-406 → BE-430 → BE-431 → BE-432 → BE-433 → BE-434 → BE-435 → BE-436 → BE-437 → BE-438、BE-439 → BE-440 →（C2 校准，Frank 决定 C3）→ BE-450 → BE-406、BE-451、BE-460 → BE-452、BE-454 → BE-453、BE-455 → BE-456、BE-457 → BE-458 → CS-203 → BE-459。console 和前端的依赖写在各自任务里。
 
 ---
 
@@ -164,15 +166,17 @@
 - 工作量：2.5 人日（服务端 1 + 测试 1.5，公共）
 
 ### BE-406 测试设施：假 APNs、假 FCM 和其余替身
-- 优先级：P2（C3 才使用；放在公共部分是因为第 18 节这样算）
-- 批次：C2
-- 仓库：tianting-server
-- 依赖：BE-405
-- AC：无（本批没有 AC 用到它）
+- 优先级：P0（2026-11-10 起：Frank 决定先做 C3；人日仍算在公共部分，第 18 节这样算）
+- 批次：C3（原写 C2，C2 期间没有做）
+- 仓库：tianting-server（`server/internal/push/pushtest`，写法同 `objstoretest`：在测试进程里、监听独立端口）
+- 依赖：BE-405、BE-450
+- AC：AC-APN-05-4、AC-APN-02-5
 - 内容：
-  1. 第 4.5 节：HTTP 层假通道，`IM_APNS_ENDPOINT`、`IM_FCM_ENDPOINT` 只在测试模式生效；校验 ES256 JWT、必需请求头、OAuth；可注入 410、`UNREGISTERED`、429、503、超时；保存完整请求（含请求头）供断言。
-  2. `IM_TEST_DISABLE_IDLE=1`，只关服务端 4408。
-  3. **C3 没有排期（CH-27）。如果校准后决定不做 C3，这 1 人日省下**；Frank 可以决定推迟（见汇报）。
+  1. 第 4.5 节：HTTP 层假通道，`IM_APNS_ENDPOINT`、`IM_FCM_ENDPOINT` 只在测试模式生效（生产拒绝启动已在 BE-405 做了）；校验 ES256 JWT、必需请求头、OAuth；可注入 410、`UNREGISTERED`、429、503、超时；保存完整请求（含请求头）供断言。
+  2. **按官方文档补的校验**（文末第 34～46 条）：假 APNs 要求 HTTP/2、`:path=/3/device/<token>`、`apns-topic`、`apns-push-type`；JWT 头 `alg=ES256`、10 字符 `kid`，声明 `iss`（10 字符 Team ID）、`iat`；`iat` 超过 1 小时返回 403 `ExpiredProviderToken`，同一连接 20 分钟内换 JWT 返回 429 `TooManyProviderTokenUpdates`；`apns-collapse-id` 超过 64 字节返回 400 `BadCollapseId`；sandbox 令牌打到 production 端点返回 400 `BadDeviceToken`；410 响应体带 `reason`、`timestamp`。假 FCM 校验 `Authorization: Bearer`、路径里的项目 ID，带 `collapse_key` 的请求照常接受并记录（AC-APN-03-6 靠记录断言没有它）；可注入 `UNREGISTERED`（404）、`INVALID_ARGUMENT`（400）、`SENDER_ID_MISMATCH`（403）、`QUOTA_EXCEEDED`（429 带 `Retry-After`）、`UNAVAILABLE`（503）、超时。假 OAuth token 端点签发短期 access token。
+  3. 测试接口：读取已记录请求（按令牌、按时间）、清空、设定下一次或持续的响应、阻塞（AC-APN-02-10）、"暂停在调用前"（AC-APN-01-9）。
+  4. `IM_TEST_DISABLE_IDLE=1`，只关服务端 4408（AC-APN-02-5）。
+  5. 测试用的 `.p8`、服务账号 JSON 由测试在临时目录现场生成，**仓库里没有任何密钥文件**（仓库公开）。
 - 工作量：1 人日（测试 1，公共）
 
 ### BE-407 测试环境和 CI 任务定义
@@ -195,7 +199,7 @@
 - AC：无（文档任务；要作废和改写的 AC 列在内容里，不进这一行）
 - 内容（第 16.1、16.2 节，走 [process](../process/README.md) 的变更流程：PRD 升小版本，文末变更记录写原因，同步任务单和用例）：
   1. **作废 AC-UI-03-9**（"请从业务方入口进入天听"）：PRD-ui 升版；AC-ACC-07-5 取代。删除 `TC-UI.md` 第 33、447 行起的 TC-UI-03-09 和第 2436 行的对照行；`frontend-ui.md` 第 236 行去掉这个编号；否则 `trace.py` 报 UNKNOWN。
-  2. **改写 AC-UI-15-3**（"我"页没有编辑入口 → 账号会话有，演示会话没有）：改 TC-UI-15-03；**改写 AC-UI-16-6**（设置页增加"账号安全"，演示会话不显示；"通知"这一项随 C3）：改 TC-UI-16-06。
+  2. **改写 AC-UI-15-3**（"我"页没有编辑入口 → 账号会话有，演示会话没有）：改 TC-UI-15-03；**改写 AC-UI-16-6**（设置页增加"账号安全"，演示会话不显示；"通知"这一项随 C3，见 BE-460）：改 TC-UI-16-06。
   3. **改写 AC-AUTH-02-4**：账号模式下 4011 先刷新一次（F-ACC-03 规则 7），演示模式不变。改 TC-AUTH-02-07、02-09（只在演示模式下断言），TC-AUTH-02-08 不变。
   4. **AC-UI-90-13**：断言不变；NF-UI-14 的 `connect-src` 加具体存储域名，`img-src` 加 `blob:`（C2）；改 TC-UI-90-14 的前置配置。
   5. **AC-KEY-02-2**：参数化表增加 `account.invite`；改 TC-KEY-02-02。`report.*`、`moderation.words` 随 C6。
@@ -203,7 +207,7 @@
   7. **不变、只核对**：AC-CONV-01-1（`modVer` 是可选字段，断言不变）；AC-CON-10-3（后台 CSP 不放宽）；TC-USER-01-16（由 AC-ACC-01-5 补上自动化）。
   8. **第 16.1 节 C1 的部分**：PRD-core F-AUTH-01 规则 1、F-AUTH-02、F-AUTH-03、F-AUTH-04、F-AUTH-05、F-USER-01 规则 4、F-USER-02、第 1、2 节"业务方"表述；PRD-social 1.3、11.2 增加注册路径，F-SOC-09、F-SOC-10 的说明；PRD-ui F-UI-03、F-UI-15、F-UI-16、第 126 行、第 11 节和 G-UI-05、3.4 节 token 存储、D-UI-10，`tianting-web/deploy/nginx.conf`、`vite.config.ts` 转发 `/v1/`（代码随 FE-613）；PRD-admin F-KEY-02 规则 2、4、5 和第 5 节矩阵（`account.invite`、业务方典型配置去掉 `token.issue`）；PRD-ops F-OPS-06、07、10 的账号部分；ARCH S4（`open` 和 `token.issue` 的启动保护）。`docs/sdk/README.md` 由 FE-620 更新。
   9. **第 16.1 节 C2 的部分**：PRD-core 第 704 行、F-MSG-01 规则 6、F-MSG-05 规则 7、F-MSG-06 规则 6、3.1 节消息类型、F-CONV-01 的 `modVer`；PRD-ui G-UI-06、G-UI-11、F-UI-04 规则 5 的摘要、NF-UI-14；PRD-admin F-ADM-31 规则 6、7 和 F-ADM-32 里**文件名进隔离区和文件处理**的部分；PRD-ops F-OPS-06、07、10 的文件部分、F-OPS-12；ARCH 3.4 节、第 2 节图（对象存储）。
-  10. **留到 C3～C6，这个任务不动**：AC-UI-09-1、AC-UI-23-1、23-2、AC-GRP-03-3、AC-ADM-31-6、AC-ADM-60-1（TC-ADM-60-01 改关联）、AC-ADM-60-2（TC-ADM-60-02 删除）；AC-UI-09-7、AC-SOC-02-5 不变。第 16.1 节里 PRD-core 第 705、709、512 行，F-CONV-01 其余、F-CONV-02 规则 5，F-GRP-03 规则 4；PRD-social F-SOC-02、`groupMembers`；PRD-ui G-UI-07、08、10、13，第 245 行，F-UI-04 规则 9，F-UI-09，F-UI-23，F-UI-42；PRD-admin F-ADM-60、F-KEY-02 的 `report.evidence`、第 12 节；PRD-ops 的推送、撤回、治理部分；PRD-live F-ROOM-11；ARCH S13、S14、G1、G2、推送通道和 `Presence`。
+  10. **留到 C3～C6，这个任务不动**（C3 的部分见 BE-460）：AC-UI-09-1、AC-UI-23-1、23-2、AC-GRP-03-3、AC-ADM-31-6、AC-ADM-60-1（TC-ADM-60-01 改关联）、AC-ADM-60-2（TC-ADM-60-02 删除）；AC-UI-09-7、AC-SOC-02-5 不变。第 16.1 节里 PRD-core 第 705、709、512 行，F-CONV-01 其余、F-CONV-02 规则 5，F-GRP-03 规则 4；PRD-social F-SOC-02、`groupMembers`；PRD-ui G-UI-07、08、10、13，第 245 行，F-UI-04 规则 9，F-UI-09，F-UI-23，F-UI-42；PRD-admin F-ADM-60、F-KEY-02 的 `report.evidence`、第 12 节；PRD-ops 的推送、撤回、治理部分；PRD-live F-ROOM-11；ARCH S13、S14、G1、G2、推送通道和 `Presence`。
   11. **工具**：`tools/trace.py` 已由 Frank 改好，本任务不改它。各 PRD 升版后 `PRDS` 的文件名要跟着改，在这个任务执行时一起提交。
 - 工作量：2.5 人日（文档 2.5，公共）
 
@@ -291,7 +295,7 @@
   4. 转正才滑动到期时间（`IM_REFRESH_TTL`、`_WEB`），不超过 `IM_REFRESH_ABSOLUTE`（RS4-10）；响应带 `absoluteExpiresAt`。
   5. 每次刷新和转正比较 IP 前缀（`seen_ip_prefixes`），新前缀写事件；响应带其他会话数量和最近活跃时间（RS4-08）。指标 `im_refresh_reissue_total`、`im_refresh_replay_total`。
   6. `recoverBefore`（规则 6a）：按账号状态每次计算；`mac` 正确时 4019 都带。
-  7. `session_purge` 每天清除过期 30 天以上的会话（规则 13）。**绑定令牌的删除随 C3**（`device_push` 还没有）。
+  7. `session_purge` 每天清除过期 30 天以上的会话（规则 13）。**绑定令牌的删除随 C3**（`device_push` 还没有），见 BE-453。
   8. `im-server sessions revoke-all`（第 12.2 节，RS4-14，AC-ACC-03-50）：吊销全部设备会话，`reason=revoked`，不计重放。
 - 工作量：3.5 人日（服务端）
 
@@ -307,7 +311,7 @@
   3. **入表后复查**（规则 2）：不能照搬 `gateway.go` 第 166 行的 `err == nil &&`，出错用 1011 断开；同时覆盖 `sid`、代号、版本号、`credentials_changed_at`。`delivery.Session` 增加 `sid`、`gen`（第 11.4 节，RS5-08）。
   4. `delivery.Router` 增加按 `sid` 踢线和按"`sid` + 代号"踢线；转正时断开这条 `sid` 上代号不是新 `current` 的连接。
   5. 周期复查（`IM_SESSION_RECHECK`，10 分钟、总线重连后），连续失败 3 次才 1011（RS4-09、RS5-09）。
-  6. 无 `sid` 的 token（规则 11）：`auth` 和 `/v1/*` 拒绝 `iat` 早于 `credentials_changed_at` 的；调账号接口 403 / 4030。`delivery.Presence` 和 `Session` 的前后台字段随 C3。
+  6. 无 `sid` 的 token（规则 11）：`auth` 和 `/v1/*` 拒绝 `iat` 早于 `credentials_changed_at` 的；调账号接口 403 / 4030。`delivery.Presence` 和 `Session` 的前后台字段随 C3，见 BE-454。
 - 工作量：1.5 人日（服务端）
 
 ### BE-417 退出、改密、退出其他设备、凭证版本
@@ -318,7 +322,7 @@
 - AC：AC-ACC-04-1、AC-ACC-04-2、AC-ACC-04-3、AC-ACC-04-4、AC-ACC-04-7、AC-ACC-04-8、AC-ACC-04-10、AC-ACC-04-11、AC-ACC-04-12、AC-ACC-04-14、AC-ACC-04-15、AC-ACC-04-16、AC-ACC-04-18、AC-ACC-04-19、AC-ACC-04-25、AC-ACC-04-29
 - 内容：
   1. `logout`（规则 1）：Bearer 或 refresh 有一个有效就执行，幂等；`mac` 必须正确；任何一代的值都按退出处理，不算重放。
-  2. `password`（规则 2、3）：吊销全部会话，给当前设备新 `sid`，响应带新 token 和新恢复码；写 `credentials_changed_at`；旧码按 F-ACC-05 规则 5。写库失败整体回滚。**"显示内容"设置的复制和令牌重新注册随 C3**。
+  2. `password`（规则 2、3）：吊销全部会话，给当前设备新 `sid`，响应带新 token 和新恢复码；写 `credentials_changed_at`；旧码按 F-ACC-05 规则 5。写库失败整体回滚。**"显示内容"设置的复制和令牌重新注册随 C3**，见 BE-453 第 3 条和 FE-650～655。
   3. `logout-others`（规则 6），`revokeReason=loggedOutOthers`。强制下线和封禁同时吊销（规则 4）。
   4. **凭证版本**（规则 8，RS4-06、RS7-01）：所有用密码的操作，Argon2 在事务外，**提交事务第一条语句锁 `accounts` 行**，持锁后校验 `credentials_version`、调用方 `sid`、账号状态；不匹配 401 / 4018，不计失败。
   5. **AC-ACC-04-29 只有 Postgres 实现后才能跑**：测试代码随功能写好，SQLite 下跳过并标"未执行"，C1 验收不算通过（见 BE-422）。
@@ -561,6 +565,166 @@
 
 ---
 
+## C3 离线推送
+
+> 2026-11-10 分发（Frank 决定按顺序先做 C3，CH-27，QUEUE Q26）。依据 PRD 第 7 节 F-APN-01～06、第 4.1、4.5、11、12.1、13～15 节的 C3 部分、第 18 节 C3 行、第 20.3 节；官方文档核对见文末第 34～46 条（PENDING P-40）。
+> **开发和后端验收都用假 APNs、假 FCM（BE-406）**，不需要 Frank 的账号。真实通道只有 AC-APN-05-3（手工）要用，挡在第 20.3 节和 P-13，见 FE-656。
+> 标了 C4、C5 的 AC-APN-03-3（撤回替换通知）、AC-APN-04-4（免打扰角标口径）不在本批，代码只留调用点。F-MEN-03 的免打扰过滤随 C4、C5。
+
+### BE-450 协议变更（C3 部分）：设备通知命令、presence
+- 优先级：P0
+- 批次：C3
+- 仓库：tianting-server（`protocol/`、`server/internal/protocol`）
+- 依赖：BE-401
+- AC：AC-CHAT-90-10、AC-APN-01-13、AC-APN-02-17
+- 内容：
+  1. `frame.schema.json`（第 11.1 节）：上行 `deviceNotificationRegister {provider:"apns"|"fcm", token, env?:"sandbox"|"production", appId}` → `{}`；`deviceNotificationUnregister {}` → `{}`；`deviceNotificationSettings {showDetail?}` → `{showDetail}`；`presence {state:"foreground"|"background"}` → `{}`（普通带 `id` 的命令，不改 gateway 的特判，R-CB-26）。令牌长度上限写进 Schema（PRD 只说"超长"，取 APNs 十六进制令牌和 FCM 令牌都放得下的 4096 字节，按 4000 拒绝）。
+  2. `errors.json`、`ERRORS.md`：`4290` 用于注册频率（每账号每小时 10 次）；`4030 featureDisabled` 覆盖新命令；`4000` 令牌为空或超长。不新增错误码。
+  3. `frames.json` 增加这 4 个命令的合法和非法用例（`provider` 取值、`env` 缺省、空令牌、超长令牌、`state` 取值）。三套 SDK 同步 `protocol/` 副本：sdk-ts 只同步副本和跑 Schema 校验（第 18 节 sdk-ts 列为 0，不加接口）；sdk-kotlin、sdk-swift 的执行器随 FE-650、FE-651。
+  4. 名字避开现有系统通知的 `push`、`pushSync`（R-CF-26）。
+- 工作量：1 人日（服务端 0.5 + 文档 0.5）
+
+### BE-451 迁移、存储、配置和开关
+- 优先级：P0
+- 批次：C3
+- 仓库：tianting-server（`store`、`config`）
+- 依赖：BE-450
+- AC：AC-APN-02-17、AC-APN-01-4、AC-CHAT-90-2
+- 内容：
+  1. `0018_device_push.sql`（第 12.1 节）：`device_push`（`token_hash` 唯一、`token` 字段级加密、`provider`、`env`、`user_id`、`sid` 可空、`show_detail` 只用于无 `sid`、`registered_at`）；`device_sessions` 增加 `show_detail`。`store.PushStore` 和契约用例（storetest），Postgres 随 B6。
+  2. 令牌加密复用现有字段级加密的做法，密钥缺失时生产拒绝启动；日志和审计只记 provider 和令牌 SHA-256 前 8 位（规则 6）。
+  3. 第 4.1 节配置：`IM_OFFLINE_PUSH_ENABLED`（默认关，和 `IM_PUSH_ENABLED` 无关）、`IM_PUSH_LIVE_WINDOW`、`IM_PUSH_GRACE`、`IM_PUSH_GRACE_DELAY`、`IM_PUSH_QUEUE_MAX`、`IM_PUSH_MERGE_SECONDS`；F-APN-05 规则 1、2 的通道配置。开关关：新命令 403 / 4030 `featureDisabled`，不入队；`GET /v1/config` 的 `features` 增加 `offlinePush`。
+  4. AC-CHAT-90-2 的 C3 部分：推送开关关时现有 e2e 不改代码全过（第 15 节累计表）。
+- 工作量：1.5 人日（服务端）
+
+### BE-452 令牌注册、注销、通知设置
+- 优先级：P0
+- 批次：C3
+- 仓库：tianting-server（`logic`、`gateway`）
+- 依赖：BE-451
+- AC：AC-APN-01-1、AC-APN-01-4、AC-APN-01-7、AC-APN-01-8、AC-APN-01-13、AC-APN-06-3
+- 内容：
+  1. F-APN-01 规则 1：令牌绑定当前 `sid`；**没有 `sid` 的连接（演示、管理接口 token）只绑定 `userId`**，按"该用户没有任何活跃连接"判断是否推送（R-CQ-10）。频率每账号每小时 10 次（4290），空或超长 4000。
+  2. 规则 2：同一令牌只属于一个用户。另一个账号注册同一令牌时把令牌从旧账号移走，**"显示发送者和内容"重置为关**（R-CS-03）；令牌刷新（同一 `sid` 换令牌）覆盖旧值，不影响设置（R-CB-23）。
+  3. F-APN-03 规则 2：`deviceNotificationSettings {showDetail}` 存 `device_sessions.show_detail`（无 `sid` 时存令牌行），没有令牌也能设，ack 返回当前值（R-CF-22）。
+  4. AC-APN-06-3：没有令牌的用户不报错、不调用通道，消息照常进 `sync`。
+  5. 规则 6 和 AC-CHAT-90-5 的 C3 部分：令牌、`showDetail` 变更的日志和审计只有 provider 和哈希前缀。
+- 工作量：2 人日（服务端）
+
+### BE-453 sid 吊销同事务删令牌（不变量）
+- 优先级：P0
+- 批次：C3
+- 仓库：tianting-server（`account`、`sessions`、`logic`）
+- 依赖：BE-452
+- AC：AC-APN-01-3、AC-APN-01-9、AC-ACC-03-19、AC-ACC-03-27
+- 内容：
+  1. F-APN-01 规则 4：**`sid` 吊销或过期，同一事务删除绑定的令牌**。覆盖退出、改密、退出其他设备、找回、refresh 重放、`session_purge`（BE-415 第 7 条的遗留）、强制下线、封禁、注销、`sessions revoke-all`。加锁顺序沿用第 4.3 节"账号事务"。
+  2. **发送前按当前 `sid` 状态复查**：worker 调通道前再查一次，已吊销的不发（R-CB-23，AC-APN-01-9 用 `/admin/test/faults` 的暂停点在入队后、调用前吊销）。
+  3. 改密（BE-417 第 2 条的遗留）：当前设备换新 `sid` 时**复制 `show_detail`**，旧令牌随旧 `sid` 删除，客户端用新 `sid` 重新注册（AC-ACC-04-26 的服务端部分；客户端见 FE-650～655）。
+  4. C1 AC 里"C3 上线时验"的部分：AC-ACC-03-19（refresh 响应丢失重试后推送令牌还在）、AC-ACC-03-27（`session_purge` 同时清除令牌），见 TC-APN-91-01、91-02。
+- 工作量：1.5 人日（服务端）
+
+### BE-454 在线判断：Presence、前后台、断线补推
+- 优先级：P0
+- 批次：C3
+- 仓库：tianting-server（`delivery`、`hub`、`gateway`）
+- 依赖：BE-451
+- AC：AC-APN-02-2、AC-APN-02-3、AC-APN-02-5、AC-APN-02-6、AC-APN-02-13、AC-APN-02-14
+- 内容：
+  1. 第 11.4 节：**新增 `delivery.Presence` 接口**（hub 本地实现，不扩 Router，R-CB-16）；`delivery.Session` 增加最近收帧时间、前后台状态（BE-416 第 6 条的遗留）。`logic` 不依赖 `hub`（ARCH 2.2 节）。
+  2. F-APN-02 规则 2、3：按**设备**判断；活跃 = `IM_PUSH_LIVE_WINDOW`（45 秒）内收到过帧且前台。`platform` 是 android、ios 的连接在收到 `presence` 之前按后台（R-CF-06）；`web`、`pc` 默认前台。
+  3. 规则 4 断线补推（R-CB-11）：只对关闭码 1006、4408；延迟 `IM_PUSH_GRACE_DELAY`（30 秒），期间同一设备重连就取消；该设备没有其他连接、`IM_PUSH_GRACE`（120 秒）内下发过消息且仍有未读 → 一条聚合通知"你有新消息"。全局每秒 100 条。滚动重启的 1001 不触发。
+  4. `IM_TEST_DISABLE_IDLE=1`（BE-406）让 AC-APN-02-5 能构造"46 秒没有帧但连接还在"。
+  5. 第 15 节"集群"：第一批只支持单节点，节点本地状态在 B6 重写，接口留好。
+- 工作量：2 人日（服务端）
+
+### BE-455 推送队列和 worker：入队、合并、批量查询、重试
+- 优先级：P0
+- 批次：C3
+- 仓库：tianting-server（新包 `push`、`logic`）
+- 依赖：BE-452、BE-454
+- AC：AC-APN-02-1、AC-APN-02-4、AC-APN-02-7、AC-APN-02-8、AC-APN-02-9、AC-APN-02-10、AC-APN-02-12、AC-APN-02-16、AC-APN-04-5、AC-APN-01-9、AC-APN-06-3、AC-CHAT-90-13
+- 内容：
+  1. F-APN-02 规则 1：只推 `text`、`image`、`file`；不推 `tip`、`custom`、自己发的（含发送者自己的其他设备）、撤回和删除事件、系统通知 `push` 帧、好友申请。
+  2. 规则 7（R-CB-12）：**`send` 的 ack 之后异步入队**，队列单位是消息（`IM_PUSH_QUEUE_MAX`），满了丢弃并计 `im_offline_push_dropped_total`。worker 批量查询：一条消息一次取齐全部收件人的令牌、拉黑（免打扰随 C5），每条消息数据库查询 ≤ 5 次。SQLite 只有一条连接，worker 的查询要短。
+  3. 角标：聚合查询 + 60 秒缓存；离线设备超过 200 的群消息不带 `badge`（AC-APN-04-5）。口径按 F-CVS-02 规则 4 的部分随 C5（AC-APN-04-4），本批是"总未读"。
+  4. 规则 6：同一设备同一会话 `IM_PUSH_MERGE_SECONDS`（5 秒）内最多 1 条；collapse id 的算法见 BE-456。
+  5. 规则 8 重试：429、5xx 首次调用外最多重试 2 次；**重试间隔按官方文档（文末第 36 条，等 Frank 定）**：实现成可配置的延迟队列，不占 worker，测试用 [IM 钟] 推进；通知过期时间隐藏 24 小时、详情 1 小时，超过过期时间不再重试。重试用尽丢弃并计数，不积压。
+  6. 指标 `im_offline_push_total{provider,result}`、`im_offline_push_queue_len`；`result` 是有界取值（ok、retry_exhausted、token_deleted、auth_error、bad_request、timeout、dropped），不带 userId 和令牌。
+  7. 第 15 节性能：入队到调用通道 P99 ≤ 2 秒（AC-CHAT-90-13）；通道超时、2000 人群时 ack P99 ≤ 200 ms（AC-APN-02-8、02-12）。开发机只记录，判定等 P-12。
+- 工作量：3 人日（服务端）
+
+### BE-456 通知内容、隐私和 collapse id
+- 优先级：P0
+- 批次：C3
+- 仓库：tianting-server（`push`）
+- 依赖：BE-455
+- AC：AC-APN-03-1、AC-APN-03-2、AC-APN-03-6、AC-APN-03-7、AC-APN-01-8
+- 内容：
+  1. F-APN-03 规则 1（CH-11）：默认标题"天听"、正文"你收到一条新消息"；**整个请求（含请求头）不含 `convId`、`userId`、`msgId` 及它们的普通哈希**；角标数字保留。
+  2. 规则 3：打开详情时标题是昵称（**不用备注**）或群名，昵称为空用 `userId`；正文摘要最多 50 个码点，先去控制字符；图片"[图片]"，文件"[文件]"不带文件名。只有开了详情的那台设备带内容（AC-APN-03-7）。
+  3. F-APN-02 规则 6：**隐藏模式每设备一个固定的不透明 id**（所有会话折叠成一条）；**详情模式 id = `HMAC(服务端密钥, sid + convId)` 截断**。APNs 放 `apns-collapse-id`（**上限 64 字节**，文末第 42 条）；FCM **不用 `collapse_key`**，放 `android.notification.tag`（官方已核实，文末第 40 条）。
+  4. F-APN-04 规则 1：详情模式数据字段带 `convId`（deep link 用），隐藏模式没有。iOS `badge`；Android 渠道"消息"（`channel_id`）。
+  5. F-APN-03 规则 4（撤回、删除后的替换通知）属于 C4（AC-APN-03-3）：只留"这台设备这个会话最后推送的一条"的内存 LRU 接口，本批不发。
+- 工作量：1 人日（服务端）
+
+### BE-457 通道：push.Provider、APNs、FCM 客户端和启动检查
+- 优先级：P0
+- 批次：C3
+- 仓库：tianting-server（`push/apns`、`push/fcm`、`config`、`opsapi`）
+- 依赖：BE-406、BE-455
+- AC：AC-APN-01-2、AC-APN-05-1、AC-APN-05-2、AC-APN-05-4、AC-APN-05-5
+- 内容：
+  1. F-APN-05 规则 5：`push.Provider` 接口隔离，测试用假通道，以后可加厂商通道。**不新增依赖**：HTTP/2 用标准库，ES256 用标准库 `crypto/ecdsa`，OAuth 的服务账号 JWT 也用标准库签（RS256）。
+  2. APNs（规则 1）：`.p8` token 认证，`IM_APNS_KEY_FILE`、`IM_APNS_KEY_ID`、`IM_APNS_TEAM_ID`、`IM_APNS_TOPIC`（`com.tianting.im`）；按令牌的 `env` 选 `api.sandbox.push.apple.com` 或 `api.push.apple.com`（443）；请求头 `authorization: bearer <JWT>`、`apns-topic`、`apns-push-type: alert`、`apns-priority`、`apns-expiration`（epoch 秒）、`apns-collapse-id`；**JWT 缓存，20～60 分钟之间重签**（文末第 38 条）。
+  3. FCM（规则 2）：HTTP v1 `POST https://fcm.googleapis.com/v1/projects/{project_id}/messages:send`，`IM_FCM_CREDENTIALS_FILE`（服务账号）、项目 ID；OAuth scope 用 `https://www.googleapis.com/auth/firebase.messaging`（最小权限，文末第 44 条），token 端点取凭证文件的 `token_uri`；`android.ttl`（如 `"3600s"`）、`android.priority: HIGH`、`android.notification.tag`、`channel_id`；不带 `collapse_key`。
+  4. 错误映射（F-APN-01 规则 3、F-APN-05 异常，**按文末第 34、35、37、39 条的建议实现，Frank 定后再调**）：APNs 410（`Unregistered`、`ExpiredToken`）和 400 `BadDeviceToken` → 删除令牌；FCM 404 `UNREGISTERED` → 删除；APNs 403 `ExpiredProviderToken` → 重签 JWT 后重试 1 次；其余 401 / 403 → 计凭证失败（F-OPS-07 指标），不影响消息；400 其他 → 不重试。
+  5. 规则 3：密钥文件权限必须 0600，不进仓库；`IM_ENV=production` 开关打开但缺密钥或权限不对 → 非 0 退出，错误信息不含密钥内容（AC-APN-05-1）；非生产告警并关闭该通道（AC-APN-05-5）。
+  6. 配置检查 `GET /internal/v1/config`（第 14.2 节，AC-APN-05-2）：通道是否启用、key id、文件存在、权限正确、最近一次调用结果，不含密钥。
+  7. 第 15 节可用性：APNs、FCM 不可用不影响文本收发，不是 `/readyz` 的条件。
+- 工作量：1.5 人日（服务端）
+
+### BE-458 C3 部署：推送运维手册和网络
+- 优先级：P0
+- 批次：C3
+- 仓库：tianting-server（`deploy/`）
+- 依赖：BE-457
+- AC：AC-APN-05-1、AC-APN-05-2、AC-CHAT-90-17
+- 内容：
+  1. `deploy/PUSH-RUNBOOK.md`：第 20.3 节 Frank 的步骤（APNs Key、Firebase 项目、服务账号）对应的服务器配置；密钥文件 0600、不进仓库、不发到聊天里；Key 轮换 = 改配置文件后重启；配置检查和指标；告警（推送失败率、队列满，第一批不发页面告警）。
+  2. **网络**（F-APN-05 规则 4，CH-13）：出站白名单 `api.push.apple.com`、`api.sandbox.push.apple.com`（443，可选 2197）、`fcm.googleapis.com`、凭证文件里的 OAuth `token_uri` 的主机；中国大陆部署到谷歌不通时的出境代理（未核实，写成"部署前 Frank 确认"）。
+  3. `deploy/push/im-push.example.env`：变量名和占位符，**没有任何真实值**（仓库公开）；`test_deploy.py` 加静态检查（占位符、没有私钥头、权限说明）。
+  4. AC-CHAT-90-17 的 C3 部分：推送指标和配置检查项出现，标签没有无界字段。
+- 工作量：2 人日（部署）
+
+### BE-459 C3 后端验收
+- 优先级：P0
+- 批次：C3
+- 仓库：tianting-server（`server/e2e`）
+- 依赖：BE-453、BE-456、BE-457、BE-458、CS-203
+- AC：AC-CHAT-90-1、AC-CHAT-90-2、AC-CHAT-90-3、AC-CHAT-90-5、AC-CHAT-90-13、AC-CHAT-90-17、AC-APN-01-3、AC-APN-02-8、AC-APN-02-12
+- 内容：
+  1. 按 [TC-APN](../testcases/TC-APN.md) 落地后端 e2e，`push_*_test.go`，用例名带 TC 编号，全部用假 APNs、假 FCM 和账号登录的 token（有 `sid`，第 4.5 节）。
+  2. 隐私序列单独一个文件：AC-APN-03-1、03-6 抓完整请求（头和体）搜特征串；AC-APN-01-3 的 9 条吊销路径一张表（含 `sessions revoke-all`、注销）。
+  3. 【全部】的 C3 部分：AC-CHAT-90-2（推送开关关）、90-3（APNs、FCM 拒绝连接和黑洞）、90-5（推送流程的日志和审计）、90-17（推送指标），见 TC-CHAT-90-19～25。
+  4. 性能（AC-APN-02-8、02-12，AC-CHAT-90-1、90-3、90-13）开发机只记录，不算通过，等 P-12。
+  5. 写验收报告 `docs/reports/c3-backend-acceptance-<日期>.md`：哪些是假通道结果、哪些等真实通道（AC-APN-05-3，FE-656）。
+- 工作量：3.5 人日（测试）
+
+### BE-460 冻结文档变更（C3 涉及的部分）
+- 优先级：P1
+- 批次：C3
+- 仓库：tianting-server（`docs/`）
+- 依赖：BE-450
+- AC：无（文档任务）
+- 内容（第 16.1、16.2 节 C3 的部分，走变更流程）：
+  1. PRD-core 第 709 行"离线推送随原生端" → 移到 PRD-chat C3；PRD-ui 第 245 行 iOS 角标进第一批；AC-UI-16-6 设置页的"通知"一项（BE-408 第 2 条留到 C3 的部分，**H5 没有离线通知，不显示"通知"**，第 13.2 节）；PRD-ops F-OPS-06、07、10 的推送部分；ARCH 的推送通道依赖和 `Presence`。
+  2. 文末第 34～46 条 Frank 定了之后，需要改 PRD 的写进下一个小版本（不在本任务里先改）。
+  3. `docs/sdk/README.md` 的设备通知接口（随 FE-650、FE-651）。
+- 工作量：0.5 人日（文档）
+
+---
+
 ## PRD 问题的处理
 
 分发时发现的矛盾和缺口已在 [PRD-chat v1.1](../prd/PRD-chat-v1.1.md) 第 22 节修正。实现 C1 时发现的（PRD 冻结，没有改，都按最保守的理解实现，等 Frank 决定）：
@@ -615,3 +779,23 @@ BE-403 共享向量时发现的（PRD 冻结，没有改；按"实现"一列做�
 |---|---|---|---|
 | 32 | F-RCL-03 规则 2 | 重连时有几个已加载的会话都要重拉，其中一个 `sync` 失败，其余会话这一次还拉不拉没写 | 三套 SDK 一致：按顺序重拉，第一个失败就停，这一轮其余的不拉；失败的会话不记新的 `modVer`，下次重连再拉（`chat-sync.json` 只断言"失败的下次再拉"，出错的用例里只有一个已加载的会话）。**要 Frank 定**：保持现状，或改成失败的跳过、其余照拉（三套 SDK 和向量一起改） |
 | 33 | F-FILE-07 规则 4 | "别人的 `fileId` 收到 4048 不重传"：SDK 现在没有转发入口，正常流程造不出带别人 `fileId` 的消息 | 向量的 `foreignFileId` 起点由各端测试直接写进本地仓库（sdk-ts、sdk-swift 写内存，sdk-kotlin 写本地库）；有转发后改走公开接口 |
+
+C3 开工时按 PRD 第 21 节第 2 条核对官方文档（2026-11-10，**只看 Apple、Google 官方页面**；Apple 文档页面是前端渲染，读的是同一路径的官方数据接口 `developer.apple.com/tutorials/data/documentation/usernotifications/<页面>.json`）。PRD 冻结，没有改；**要 Frank 定的是第 34、36、37、39 条**（PENDING P-40），其余是缺口或确认，按"建议"一列实现，Frank 不同意再改。任务里写的实现都按"建议"一列。
+
+| # | 位置 | PRD 原文 | 官方文档 | 来源 | 建议 |
+|---|---|---|---|---|---|
+| 34 | F-APN-01 规则 3、AC-APN-01-2 | "通道返回令牌失效（APNs 410 / `BadDeviceToken`…）：删除这条令牌" | 410 的 reason 是 `Unregistered`（令牌对这个 topic 不再有效）和 `ExpiredToken`（令牌已过期），410 的响应体带 `timestamp`（APNs 确认失效的毫秒时间）；Apple 说 `Unregistered` 之后不用再推，"除非 App 重新拿到同一个令牌"。**`BadDeviceToken` 不是 410，是 400**，含义是令牌无效**或和环境（sandbox / production）不匹配** | [handling-notification-responses-from-apns](https://developer.apple.com/documentation/usernotifications/handling-notification-responses-from-apns) | 410（两种 reason）删除，但 **`timestamp` 早于这条令牌最近一次注册时间时不删**（设备又注册了同一个令牌）；400 `BadDeviceToken` 也删除（Apple 列为不要重试），按 reason 计数，配置检查显示最近的 `BadDeviceToken` 数量，用来发现 `env` 配错。PRD 下一版把"410 / `BadDeviceToken`"改成"410（`Unregistered`、`ExpiredToken`）/ 400 `BadDeviceToken`" |
+| 35 | F-APN-01 规则 3、F-APN-02 规则 8 | 只列了令牌失效和"可重试的错误（429、5xx）" | 400 还有 `DeviceTokenNotForTopic`、`BadTopic`、`TopicDisallowed`、`BadCollapseId`、`PayloadTooLarge`（413）等；Apple 明确不要重试 `BadDeviceToken`、`DeviceTokenNotForTopic`、`Forbidden`、`ExpiredToken`、`Unregistered`、`PayloadTooLarge` | 同上 | 缺口，不矛盾。`DeviceTokenNotForTopic`、`BadTopic`、`TopicDisallowed` 多半是 `IM_APNS_TOPIC` 配错，**不删令牌**（否则一次配错删光全部令牌），计 `bad_request` 并在配置检查显示；其余 4xx 不重试 |
+| 36 | F-APN-02 规则 8、AC-APN-02-9 | "可重试的错误（429、5xx）首次调用外最多重试 2 次"，没写间隔；AC 例子"503 一次后成功 → 共 2 次" | APNs：5xx "15 分钟后"可以重试，可以退避；`TooManyRequests`（429）可以延迟后重试；另一个 429 `TooManyProviderTokenUpdates` 是服务端 JWT 换得太勤，原样重试没用。FCM：429 按 `Retry-After` 等待（没有时默认 60 秒），`QUOTA_EXCEEDED` 指数退避且首次至少 1 分钟；503 按 `Retry-After`；500 指数退避；请求超时至少设 10 秒；400、401、403、404 不重试；连续失败 60 分钟放弃 | Apple 同上；[FCM ErrorCode](https://firebase.google.com/docs/reference/fcm/rest/v1/ErrorCode)、[scale-fcm 的 Handling retries](https://firebase.google.com/docs/cloud-messaging/scale-fcm) | **要 Frank 定**。建议：次数不变（AC-APN-02-9 不变），间隔按官方：APNs 5xx 15 分钟、30 分钟；APNs 429 和 FCM 按 `Retry-After`，没有时 60 秒起翻倍；超过通知过期时间（隐藏 24 小时、详情 1 小时）就放弃。重试放延迟队列，不占 worker，测试用 [IM 钟]。代价：详情模式的第 2 次重试接近 1 小时过期。另一个选项是保持 PRD 的立即重试（几秒内），实现简单，但违背 Apple 对 5xx 的建议 |
+| 37 | F-APN-05 异常、AC-APN-05-5 | "凭证过期或被吊销（通道返回 401 / 403）：该通道的调用全部计失败" | APNs 不返回 401；403 里 `ExpiredProviderToken` 是 **JWT 过期，要重新生成**（不是凭证被吊销），`InvalidProviderToken`、`MissingProviderToken`、`BadEnvironmentKeyIdInToken`、`BadCertificate` 才是凭证或配置问题，`UnrelatedKeyIdInToken` 要换新连接。FCM 401 是 `THIRD_PARTY_AUTH_ERROR`（APNs 证书或 Web Push 密钥无效，iOS 不走 FCM 时正常不出现）；403 是 `SENDER_ID_MISMATCH`（令牌属于另一个发送方，是单个令牌的问题）。OAuth access token 过期时 FCM 返回什么，ErrorCode 页没有写（**未核实**） | Apple 同上；[FCM ErrorCode](https://firebase.google.com/docs/reference/fcm/rest/v1/ErrorCode) | **要 Frank 定**。建议：APNs 403 `ExpiredProviderToken` 先重签 JWT 重试 1 次，不计凭证失败；FCM 401 先换 access token 重试 1 次；其余 401、403 计凭证失败（F-OPS-07）；`SENDER_ID_MISMATCH` 计失败、不删令牌（Google 只说 `UNREGISTERED`、`INVALID_ARGUMENT` 可以删）。AC-APN-05-5 的"假通道返回 403 → 计失败"不变 |
+| 38 | F-APN-05 规则 1、AC-APN-05-4 | 只写"token 认证（`.p8`）""校验 ES256 JWT" | JWT 头 `alg=ES256`、`kid`（10 字符 Key ID），声明 `iss`（10 字符 Team ID）、`iat`；**刷新不早于 20 分钟、不晚于 60 分钟**；`iat` 超过 1 小时被拒（403 `ExpiredProviderToken`）；同一连接上换得太勤返回 429 `TooManyProviderTokenUpdates` | [establishing-a-token-based-connection-to-apns](https://developer.apple.com/documentation/usernotifications/establishing-a-token-based-connection-to-apns)；错误码同第 34 条 | 缺口。JWT 缓存，每 40～50 分钟重签；假 APNs 校验这两条（BE-406）。Key 轮换仍是改配置后重启（F-APN-05 异常） |
+| 39 | F-APN-01 规则 3、AC-APN-01-2 | FCM 只写 `UNREGISTERED` 删除令牌 | `UNREGISTERED`（404）：从服务端删除这个令牌；**`INVALID_ARGUMENT`（400）在消息本身完全合法时也表示令牌无效，可以删除** | [manage-tokens](https://firebase.google.com/docs/cloud-messaging/manage-tokens)、[FCM ErrorCode](https://firebase.google.com/docs/reference/fcm/rest/v1/ErrorCode) | **要 Frank 定**。建议：请求体由服务端固定模板生成、发送前自检，`INVALID_ARGUMENT` 时删除令牌并计数（批量出现就是模板错了，靠指标发现）。保守的选项是只计失败不删，代价是无效令牌一直占调用 |
+| 40 | F-APN-02 规则 6 | "FCM 不用 `collapse_key`（官方文档：每设备只保留 4 个，通知消息还会忽略它）；Android 用通知 `tag`（未核实）" | 一致：每设备最多存 4 个不同 collapse key 的消息；通知消息"总是可折叠，会忽略 `collapse_key`"。`AndroidNotification.tag`：同 tag 的通知已显示时，新通知替换它；不设则每次新建一条。App 自己显示时，`NotificationManager.notify(tag, id, …)` 用 (tag, id) 这一对替换 | [collapsible-message-types](https://firebase.google.com/docs/cloud-messaging/customize-messages/collapsible-message-types)、[projects.messages](https://firebase.google.com/docs/reference/fcm/rest/v1/projects.messages)、[NotificationManager](https://developer.android.com/reference/android/app/NotificationManager) | 确认，不用改规则。PRD 下一版去掉"未核实"。`tag` 只对 FCM 代为显示的通知消息生效（App 在后台）；App 在前台时设备本来不推（F-APN-02 规则 2） |
+| 41 | F-APN-05 规则 4 | "im-server 要能访问外网：`api.push.apple.com`、`fcm.googleapis.com`、`oauth2.googleapis.com`" | APNs 开发环境是 `api.sandbox.push.apple.com`，生产 `api.push.apple.com`，端口 443（也可用 2197），HTTP/2 + TLS 1.2 以上。FCM 发送端点 `fcm.googleapis.com`。OAuth token 端点的主机官方页面没有直接写（**未核实**，服务账号 JSON 里有 `token_uri`） | [sending-notification-requests-to-apns](https://developer.apple.com/documentation/usernotifications/sending-notification-requests-to-apns)、[projects.messages.send](https://firebase.google.com/docs/reference/fcm/rest/v1/projects.messages/send) | 缺一个主机。出站白名单加 `api.sandbox.push.apple.com`（`env=sandbox` 的令牌要用）；OAuth 端点从凭证文件的 `token_uri` 读，不写死（BE-457、BE-458） |
+| 42 | F-APN-02 规则 6 | 详情模式 collapse id "`HMAC(服务端密钥, sid + convId)` 截断"，没写长度 | `apns-collapse-id` 最多 64 字节，超出返回 400 `BadCollapseId` | 同第 41 条 | 缺口。固定 32 个十六进制字符（HMAC-SHA256 取前 128 位）；隐藏模式的每设备 id 同样长度，外观相同 |
+| 43 | F-APN-02、F-APN-04 规则 3 | 没写 Android 用通知消息还是数据消息，也没写优先级 | 通知消息默认 HIGH，数据消息默认 NORMAL，"NORMAL 不会在设备休眠时打开网络连接"；`ttl` 最长 4 周，格式是秒数（如 `"3600s"`）；消息 4096 字节以内 | [projects.messages](https://firebase.google.com/docs/reference/fcm/rest/v1/projects.messages)、[setting-message-priority](https://firebase.google.com/docs/cloud-messaging/customize-messages/setting-message-priority)、[FCM ErrorCode](https://firebase.google.com/docs/reference/fcm/rest/v1/ErrorCode) | 缺口。Android 用**通知消息**（带 `notification.tag`、`channel_id`"消息"），显式 `priority: HIGH`，`ttl` 用隐藏 `86400s`、详情 `3600s`；摘要最多 50 个码点，远小于 4096 字节 |
+| 44 | AC-APN-05-4 | "假 FCM 校验 OAuth" | 发送接口要 OAuth scope `https://www.googleapis.com/auth/firebase.messaging` 或 `cloud-platform` 二选一，`Authorization: Bearer <access_token>` | [projects.messages.send](https://firebase.google.com/docs/reference/fcm/rest/v1/projects.messages/send)、[send/v1-api](https://firebase.google.com/docs/cloud-messaging/send/v1-api) | 缺口。只申请 `firebase.messaging`（最小权限）；假 FCM 校验 Bearer 和签发时的 scope |
+| 45 | F-APN-05 规则 1、AC-APN-05-4、AC-APN-02-9 | 断言 `apns-topic`、`apns-push-type`、`apns-expiration`，没写取值 | `apns-topic` 必需（bundle id）；`apns-push-type` 在 iOS 上是"建议"（watchOS 必需），可见通知用 `alert`；`apns-priority` 默认 10（立即），5 按功耗；`apns-expiration` 是 UTC epoch 秒，0 表示只投一次不存储，存储最多 30 天；正文 JSON 最大 4096 字节 | 同第 41 条 | 缺口。`apns-push-type: alert`、`apns-priority: 10`、`apns-expiration` = 发送时间 + 24 小时（隐藏）/ 1 小时（详情）的 epoch 秒；AC-APN-02-9 按这个口径断言 |
+| 46 | F-APN-01 规则 5、5a | Android 13 以上要 `POST_NOTIFICATIONS`；每次回到前台对比授权和令牌 | 一致：Android 13（API 33）起是运行时权限，新安装的 App 默认关闭，被拒后系统不会再自动弹。FCM 建议每月刷新一次令牌，安卓令牌 270 天不活跃会失效（iOS 走 APNs，没有这个规则） | [notification-permission](https://developer.android.com/develop/ui/views/notifications/notification-permission)、[manage-tokens](https://firebase.google.com/docs/cloud-messaging/manage-tokens) | 确认。小补充：回到前台时如果距上次注册超过 30 天，即使令牌没变也重新注册一次（在每小时 10 次的限额内），让服务端知道令牌还活着；不改 AC |
+
+没有查到官方说法、仍是"未核实"的：Apple Developer 费用和 App 内注销条款（第 21 节第 2 条前半，和推送实现无关，没有查）；FCM access token 的有效期；OAuth token 端点主机；中国大陆到 FCM 的连通性（第 21 节第 5 条，要部署地实测）；iOS 进入后台时 `presence` 那一帧能否发出（第 21 节第 6 条，FE-651、FE-654 实现时记录）。
