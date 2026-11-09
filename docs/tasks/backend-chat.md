@@ -815,4 +815,5 @@ C3 第一波实现时发现的（PRD 冻结，没有改；C3 已暂停，**都�
 - **已提交**：BE-450 的协议部分（见进度表）。
 - **没有提交、已从工作区撤掉**：BE-451（`0018_device_push.sql`、`store.DevicePushStore` 和契约用例 5 个、配置和开关、`features.offlinePush`）、BE-453 的存储部分（全部吊销入口同一事务删令牌、改密复制 `show_detail`、`session_purge` 清令牌）、BE-454（`delivery.Presence`、hub 实现、连接的收帧时间和前后台、`IM_TEST_DISABLE_IDLE`、关闭回调）、BE-455、456（`push` 包：队列、合并、延迟队列重试、断线补推、角标缓存、内容和 collapse id）、BE-406（`push/pushtest` 假 APNs、假 FCM、假 OAuth）、BE-457（`push/apns`、`push/fcm` 客户端）、app 和 admin 的接线。其中存储契约用例当时已经通过；`push` 包、假通道、客户端只编译过，**没有 e2e，也没有单测**。这份草稿只留在当时会话的临时目录里，不在仓库，**恢复时按任务单重新做，不要假设草稿存在**。
 - **恢复时从这里接着做**：按依赖顺序 BE-451（迁移 `0018`，`DevicePushStore`，`IM_OFFLINE_PUSH_ENABLED` 等第 4.1 节配置，4030，`features.offlinePush` 同时改 `http-client.schema.json`）→ BE-406、BE-452、BE-454 → BE-453、BE-455 → BE-456、BE-457 → BE-458 → BE-459。第 47、48 条 Frank 定了再落地；BE-455 的重试按 v1.5 的间隔（延迟队列 + [IM 钟]）。
+- **草稿参考**：暂停时的未测试草稿由协调方存成**本机本地分支** `wip/c3-push-2026-11-10`（c373fc4，基于 8dd5ab1，没有推送到远端，不要原样合并），恢复时可以对照，但按任务单重新做和测试。
 
