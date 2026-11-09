@@ -142,8 +142,30 @@ func TestTC_FILE_06_12_AdminDeletedPurge(t *testing.T) {
 	tok1 := e.token("u1")
 	e.token("u2")
 	id := e.uploadImage(tok1, "a.png", fakePNG(10, 10, 1024), smallThumb())
-	ack := mustAck[protocol.SendAck](t, sendFile(e.dial("u1", "web"), "c2c", "u2", "adm-0000001", "image", id, nil))
+	c := e.dial("u1", "web")
+	ack := mustAck[protocol.SendAck](t, sendFile(c, "c2c", "u2", "adm-0000001", "image", id, nil))
+	// 删除的不是最后一条（D1）：后面再发一条文字，modVer 仍要递增。
+	mustAck[protocol.SendAck](t, c.sendText("c2c", "u2", "adm-txt-0001", "after"))
+	modVer := func() int64 {
+		t.Helper()
+		convs := mustAck[protocol.ConvsAck](t, c.call(protocol.CmdConvs, map[string]any{}))
+		for _, cv := range convs.Convs {
+			if cv.ConvID == ack.ConvID {
+				return cv.ModVer
+			}
+		}
+		t.Fatalf("no conv %s", ack.ConvID)
+		return 0
+	}
+	before := modVer()
 	e.adminDelete(mod, ack.ConvID, ack.MsgID, t0)
+	if v := modVer(); v != before+1 {
+		t.Fatalf("modVer after admin delete = %d, want %d (F-RCL-03 规则 2)", v, before+1)
+	}
+	e.adminDelete(mod, ack.ConvID, ack.MsgID, t0)
+	if v := modVer(); v != before+1 {
+		t.Fatalf("modVer after repeated delete = %d, want %d (idempotent)", v, before+1)
+	}
 	e.setClock(t0.Add(29 * 24 * time.Hour))
 	e.runPurge()
 	if keys := e.s3.Keys(e.s3.Private, "final/"+id+"/"); len(keys) != 2 {

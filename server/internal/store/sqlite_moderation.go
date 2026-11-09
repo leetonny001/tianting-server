@@ -150,6 +150,13 @@ func (s *SQLite) DeleteMessages(ctx context.Context, req DeleteMessagesReq) ([]D
 		}
 		todo = append(todo, row{id, seq, body})
 	}
+	// PRD-chat F-RCL-03 规则 2：后台删除递增会话 mod_ver，SDK 重连时只重拉 modVer 变了的会话（D1）。
+	// 加锁顺序 conv_seq → 文件行（第 4.3 节），所以先于 revokeMessageFileTx。已删除的不再递增（幂等）。
+	if len(todo) > 0 {
+		if _, err := tx.ExecContext(ctx, `UPDATE conv_seq SET mod_ver = mod_ver + 1 WHERE conv_id = ?`, req.ConvID); err != nil {
+			return nil, err
+		}
+	}
 	out := make([]DeletedMessage, 0, len(todo))
 	for _, m := range todo {
 		// 文件消息（PRD-chat F-FILE-06 规则 4）：文件名移到隔离加密区（和原文一起加密），files.name 清空，立即停止发放地址（revoked），
