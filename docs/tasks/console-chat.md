@@ -16,7 +16,7 @@
 | 任务 | 状态 | 说明 |
 |---|---|---|
 | CS-200 | ✅ 完成（接口部分，页面随 FE-619） | console-server `6820da8`（**本地结果，CI 不运行**：真实 Postgres 17、真实 im-server，`go test -race -count=1 ./...` 全过）。AC-ACC-05-9（console 路由、源码、scope）、09-2、09-5、09-6、09-7、09-8、09-13 通过（`e2e/invites_test.go`、`internal/app/route_test.go`），矩阵（AC-ADM-05-1）覆盖 3 个新路由。AC-ACC-09-1 只验了后端部分，三端注册和"后台显示已用 2 次"的页面随 FE-610～619；AC-ACC-09-11 只验了接口，页面随 FE-619。AC-CHAT-90-5 的 C1 后端 e2e 通过，部署 e2e 没有执行。变异确认 20 条全部发现 |
-| CS-201、CS-202 | ⬜ 未开始 | C2 |
+| CS-201、CS-202 | ⬜ 未开始 | C2。2026-11-09 只看了代码、没有改也没有测：console 的元数据结构是白名单字段（`bizmeta.go` 的 `messageMeta`，没有正文），正文接口原样透传 im-server 的 `body`（im-server `a71a634` 起文件消息带文件名、元数据接口没有文件名，TC-FILE-91-01 在 im-server 侧通过）。console 侧的用例和后台页面列没做 |
 
 ## 总览
 

@@ -36,6 +36,16 @@
 | BE-424 | ✅ 完成（文档） | `docs/reports/privacy-notice-checklist-draft.md`：规则 3 的告知项、C1 和 C2 相关的事实和法务问题。**只是清单草稿，不代替法律文本** |
 | BE-423 | ✅ 完成 | `deploy/ACCOUNT-RUNBOOK.md`：配置、`GOMEMLIMIT`、配置检查和指标、密钥台账和泄露应急、数据库恢复、NAT。`IM_TRUSTED_EGRESS_CIDRS`、`IM_TRUSTED_EGRESS_FACTOR`（PRD 没有定义名字，任务单要求实现时加）。AC-CHAT-90-17（TC-CHAT-90-15）的用例在 BE-422 的提交里 |
 | BE-422 | 🟡 后端用例完成，AC-ACC-04-29 未执行，性能未判定 | 报告 `docs/reports/account-c1-acceptance-2026-11-06.md`。攻击序列对应表 `e2e/account_acceptance_test.go`；变异确认 `tools/account-mutation/run.py`，26 条全部被发现。AC-CHAT-90-5（im-server 部分）、90-17 通过；AC-CHAT-90-2 现有 e2e 全过，TC-PERF 等 P-12。**AC-ACC-04-29 未执行不算通过；AC-CHAT-90-1、90-11 开发机只记录；CS-200 还没做，依赖它的部分没验** |
+| BE-401 | ✅ 完成（服务端部分） | `7878e4b`。`errors.json`、`ERRORS.md`（415x 区段、4096、4139、4150、5032，4131 加 `client`，文件的 reason）、`frame.schema.json`（`image`、`file`、`BodyByType` 互斥、`modVer`）、`http-client.schema.json` 文件部分、`frames.go` 的 `Validate`。**本地结果，CI 不运行**：`internal/protocol` 的 Schema 和 Validate 用例通过（含 TC-FILE-02-15 的协议部分）。**AC-CHAT-90-10 只有服务端部分**：`frames.json` 的 image、file 用例随 BE-403，三套 SDK 随 FE-600～602 |
+| BE-404 | 🟡 部分完成（im-server 部分） | `7878e4b`。`internal/objstore/objstoretest`：校验 SigV4（请求头和预签名）、真实时钟过期、签入的大小和类型、未签入的 `x-amz-*`、ETag 条件、Copy 的元数据替换、`response-*`、匿名和列举权限、按前缀列举权限；注入不可用（拒绝连接、黑洞、503）、删除失败、Copy 失败、请求之后的回调（HEAD 之后替换）、直接写入、临时前缀生命周期。暂停点在 `files.Hooks`（测试模式）。**和第 4.5 节的差异：假 S3 在测试进程里、监听独立端口，不是独立 OS 进程**（AC-FILE-01-8 验的是字节只到对象存储的端口）。CORS 没有模拟（随 BE-438）。AC-FILE-01-8、01-15 通过（见 BE-433） |
+| BE-430 | ✅ 完成 | `7878e4b`。`internal/objstore`：自写 SigV4（AWS 公开预签名向量通过），预签名 PUT / GET、HEAD、Range GET（If-Match）、条件 Copy（REPLACE）、DELETE、List、按前缀删除；签名用真实时钟；错误不带地址和签名。`IM_OBJSTORE_*` 配置（PRD 没有定义名字，按任务单第 3 条加）。**本地结果，CI 不运行**：AC-FILE-04-4（TC-FILE-04-04，含真实 6 秒过期）、AC-FILE-04-6（TC-FILE-04-06，假 S3）通过。**真实存储上的行为没有验证**（AC-FILE-90-1 随 BE-439，未执行） |
+| BE-431 | ✅ 完成（本任务 AC 都有用例） | `a71a634`。`0017_files.sql`（`files` 第 12.1 节全部字段 + `declared_*`、`put_expires_at`、`objects_deleted` 等，`upload_quota`，`conv_seq.mod_ver`），`store.FileStore` 和契约用例 5 个；第 4.1 节文件配置；`IM_FILES_ENABLED` 关：`/v1/files/*` 404、`send` 的 image / file 4000；`GET /v1/config` 的 `features.files`、文件 `limits`；`IM_UPLOAD_PUT_TTL`。**本地结果，CI 不运行**：AC-FILE-01-14、05-6 通过；AC-CHAT-90-2 的 e2e 部分（默认配置现有 e2e 不改代码全过）通过，TC-PERF 等 P-12 |
+| BE-432 | ✅ 完成（本任务 AC 都有用例） | `a71a634`。`POST /v1/files/uploads`、`DELETE /v1/files/uploads/{id}`；额度、声明合计、未完成数在一个事务里；频率 60 次 / 分钟；文件名清洗（NFC、`::`、分隔符、控制、Bidi / Default_Ignorable、首尾点）；禁止名单（内置 + `IM_FILE_BLOCKLIST` 只能加）；图片白名单；大小。**本地结果，CI 不运行**：AC-ACC-01-20、06-4，AC-FILE-01-4、01-6、01-7、01-11、01-16、01-18、01-23、01-28、01-29、02-16、03-2、05-1、05-2 通过。**AC-CHAT-90-12 只有开发机参考**（1000 次顺序申请 P99 约 0.4 ms），不算通过 |
+| BE-433 | ✅ 完成（本任务 AC 都有用例） | `a71a634`。complete：租约（[IM 钟]，按 attempt 释放）、Copy 前查额度、HEAD → If-Match Range 64 KB 嗅探（png / jpeg / gif / webp 头部宽高，可执行、脚本、HTML、SVG 禁止）→ 条件 Copy 到 `final/{fileId}/{attemptId}/{variant}`（REPLACE，只写服务端类型）→ 再 HEAD 核对 Copy 返回的 ETag；412 重试 1 次；提交 `WHERE state='pending'` 并复查额度；败者只删自己的键；提交后删临时键和其他尝试；HEAD 404 / 提交失败先重读。**本地结果，CI 不运行**：AC-FILE-01-1、01-2、01-3、01-5、01-8、01-9、01-10、01-13、01-15、01-18、01-19、01-20、01-21、01-22、01-26、01-27、02-11、05-1、05-4 通过（攻击序列在 `e2e/file_complete_test.go`） |
+| BE-434 | ✅ 完成（本任务 AC 都有用例，端到端 AC 只验后端） | `a71a634`。判定顺序第 1 步（开关 4000、互斥）、第 6 步附件预检（4048、`fileKindMismatch`、4096）、第 10 步 `SaveMessage` 事务内绑定（4096，文件保持 ready）；第 6～10 步失败退还新对象配额（R-CB-20，**4137 也退还了，原来不退**）；正文只存 `fileId`，下发时按文件记录填写（过期 `expired=true`、文件名清空）；`lastMsg.text=""`；admin 正文接口带文件名，元数据接口没有。**本地结果，CI 不运行**：AC-FILE-02-2、02-3、02-11、02-15、06-4、06-7、06-8、07-8 通过；**AC-FILE-02-1、03-1 是端到端 AC，只验了后端部分**（客户端显示随 FE） |
+| BE-435 | ✅ 完成（本任务 AC 都有用例） | `a71a634`。`POST /v1/files/urls`：≤ 50（4131）、120 批 / 分钟（4290）、逐项 `code=4048`（和不存在完全相同）；单聊参与者、群成员 + `seq ≥ minSeq`、消息没删、文件没过期、上传者绑定前；签入 `response-content-type` 和 RFC 5987 / 6266 的 `response-content-disposition`（图片 inline、文件 attachment）；`im_file_url_issued_total`（无用户标签）。**本地结果，CI 不运行**：AC-FILE-01-25（后端部分）、04-1、04-2、04-3、04-4、04-5、04-7、04-8、04-9、05-5 通过。清空位置、撤回随 C4、C5 |
+| BE-436 | ✅ 完成（本任务 AC 都有用例） | `a71a634`。`file_purge`（每小时一批）：24 小时未绑定 → purging（租约条件）；换头像 7 天 → purging；保留期到 → expired（清空文件名、递增 `mod_ver`）后按前缀删对象；后台删除 → revoked（同一事务，文件名随原文进隔离加密区），30 天后删对象；purging 先删公开对象再删前缀和行；删除失败保留、下次重试。**本地结果，CI 不运行**：AC-FILE-01-24、01-26、06-1、06-2、06-5、06-7、06-9、06-10、06-11、06-13 通过；AC-FILE-06-12 只验了服务端（`modVer` 递增），SDK 重拉随 FE |
+| BE-437 | ✅ 完成（本任务 AC 都有用例） | `a71a634`。`PATCH profile` 的 `avatarFileId`：先写 `public_key` 再 Copy 到公开桶，重试复用；绑定事务写 `users.avatar`、旧头像 `avatar_replaced_at`，绑回清零；注销清理把头像改 purging；先改昵称再绑头像（存储不可用时昵称成功、头像 5032）。**本地结果，CI 不运行**：AC-ACC-06-3、06-7（`nosniff` 是厂商能力没有验）、06-8、06-9、06-10、06-11、06-12、06-13、08-7 通过 |
 | 全部 | 🟡 C1 已校准 | 见 [c1-acceptance-2026-11-07.md](../reports/c1-acceptance-2026-11-07.md) 第 9 节：人日不能直接换算成 AI 用时，瓶颈是本机资源和待决定项。C3 起的部分等 Frank 决定 |
 
 ## 总览
@@ -563,3 +573,22 @@
 | 8 | 第 11.2 节 | `recovery-code` 响应、`PATCH profile` 响应没有定义 | `{{recoveryCode, recoveryCodeGen}}`（Schema 补 `RecoveryCodeResponse`）、`{{}}` |
 | 9 | 第 11.5 节 | 4048 排在 C2 的协议任务，但 AC 要求 C1 的 `avatarFileId` 返回它 | 提前加进 `errors.json` |
 | 10 | F-ACC-03 规则 2 | "最近活跃时间"只说显示，没说什么算活跃 | 登录、刷新、转正时更新，连接和收发不更新 |
+
+实现 C2 时发现的（PRD 冻结，没有改；按下面的理解实现，**都要 Frank 决定**，见 PENDING P-36）：
+
+| # | 位置 | 问题 | 现在的实现 |
+|---|---|---|---|
+| 11 | 任务单 BE-401、BE-404、BE-431、BE-436 | 引用的"文末问题 4、8、9、10"在这份任务单里不存在（文末只有 C1 的 10 条） | 按引用处的说明实现 |
+| 12 | 第 4.5 节、AC-FILE-01-8 | 假 S3 要求"独立进程"，任务要求不在开发机安装和运行额外软件 | 假 S3 在测试进程里、监听独立端口；AC-FILE-01-8 验的是字节只进对象存储的端口、im-server 收到的请求体 ≤ 64 KB |
+| 13 | AC-FILE-01-15 第二种 | "嗅探之后、Copy 之前替换"：如果替换后的内容重试时嗅探不通过（例如换成 HTML），按规则 3 ② 是 415 并删除，和 AC 写的"4000、临时对象不删"冲突 | 替换内容能通过嗅探时 4000 `uploadMismatch`、不删；通不过时 415、删除。用例用能通过嗅探的替换内容 |
+| 14 | F-FILE-06 规则 2、3、4 | `expired`、`revoked` 之后写"purging → 物理删除"，但消息要继续显示"已过期"和占位尺寸 | 对象按前缀物理删除，`files` 行保留（状态 expired / revoked、文件名已清空、`objects_deleted=1`）；行一直不删 |
+| 15 | AC-ACC-01-20 | "申请超过 200 MiB 的当日上传"，但单个文件上限 100 MiB，只能靠已用量越过 | 用例把 `IM_FILE_MAX_BYTES` 调到 300 MiB，一次申请 201 MiB |
+| 16 | F-FILE-04 规则 6 | "按用户统计取地址量进指标"和"不进标签"（第 14.2 节、AC-OPS-90-4） | 只有不带标签的 `im_file_url_issued_total`，没有按用户的统计 |
+| 17 | F-FILE-01 规则 6 | "按实际大小扣"没说缩略图算不算 | 原图 + 缩略图都算（申请时的声明也一样） |
+| 18 | F-FILE-01 规则 3、规则 6a | 租约用哪个时钟没写；AC-FILE-01-27 是 [IM 钟]，AC-FILE-01-16 的 PUT 地址是 [真实钟] | 租约、24 小时清理、额度日期用 [IM 钟]；PUT 地址过期和未完成数用真实时钟 |
+| 19 | F-ACC-06 规则 1、异常 | 一次 `PATCH` 同时带昵称和头像、头像失败时的响应没写 | 昵称先保存，响应是头像的错误（5032 / 4048） |
+| 20 | 第 4.3 节第 10 步、R-CB-20 | 第 6～10 步失败退还 `newPeerReject`，第 10 步包括 4137，现有实现 4137 不退 | 按 PRD 退还（含 4137）；现有 e2e 全过 |
+| 21 | 第 11.3 节、BE-430 第 3 条 | 对象存储的环境变量名、禁止名单配置文件的变量名 PRD 没有定义 | `IM_OBJSTORE_ENDPOINT/REGION/BUCKET/PUBLIC_BUCKET/PUBLIC_BASE_URL/ACCESS_KEY/SECRET_KEY`、`IM_FILE_BLOCKLIST`（只能加不能减）；生产要求 https 和公开桶独立域名 |
+| 22 | F-FILE-01 规则 3b | GIF 帧数上限"未校准"没有数值 | 前 64 KB 内超过 300 帧拒绝 |
+| 23 | F-FILE-01 规则 3 ② | "与声明矛盾"对图片的判断粒度没写 | 图片、缩略图、头像的嗅探类型必须和声明完全相同（`image/jpg` 按 `image/jpeg`）；文件只拒绝禁止的真实类型，认不出的按 octet-stream |
+
