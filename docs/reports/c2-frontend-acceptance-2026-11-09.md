@@ -5,7 +5,7 @@
 | 范围 | frontend-chat.md 里 FE-630～FE-640 的 `- AC：` 行（42 条），加上 PRD-chat v1.4 第 15 节其余【全部】的 AC（6 条，后端的，状态引用后端报告），共 48 条。后端 AC 见 [c2-backend-acceptance-2026-11-09.md](c2-backend-acceptance-2026-11-09.md)，这里不重复 |
 | 环境 | 本地开发机（macOS，Apple Silicon）。**CI 不运行（P-21），所有结果都是本地结果**：H5 是"Chrome，本地"；Android 是"模拟器，本地"（emulator-5556，AVD Pixel_10_Pro_XL，API 37，`-read-only`）；iOS 是"模拟器，本地"（iPhone 16 Pro，iOS 18.4）。**没有执行**：真机（P-13）、WebKit 和其他浏览器（P-13，不安装）、原生 CI（P-15）、云厂商（CH-05）。对象存储都是假 S3：**只验调度，不证明厂商行为** |
 | 基线 | 页面代码：tianting-web@bdf0cd8、tianting-android@d263b6b（本次只改了一处图片的可读名称，见第 3 节）、tianting-ios@52c6f2f；SDK：tianting-sdk-ts@4f4312d、tianting-sdk-kotlin@1f5eccb、tianting-sdk-swift@662e4f2；后台 tianting-admin@4b18297；服务端 im-mvp@43eea52。本次新增用例：tianting-web@12ee72e、tianting-android@79893a7、tianting-ios@7f1b997 |
-| 结论 | **通过 33、部分通过 12、未执行 3、失败 0**（第 6 节）。AC-FILE-02-1、03-1 三端互发互收 6 个方向都通过（第 2 节） |
+| 结论 | **通过 35、部分通过 10、未执行 3、失败 0**（第 6 节；2026-11-10 BE-403 之后 AC-CHAT-90-10、90-15 由部分通过改为通过）。AC-FILE-02-1、03-1 三端互发互收 6 个方向都通过（第 2 节） |
 
 ## 1. 本次运行
 
@@ -69,7 +69,7 @@ AC 的"新增图标都在清单里"（B-3、AC-UI-11-3）只由各端已有的�
 - **AC-FILE-90-2**（手工）：要 Frank 选定的云厂商（CH-05），上线前跑合同测试，并用生产 CORS、CSP 走查三端上传下载。现在没有厂商、没有生产配置。AC-FILE-90-1 已在真实 MinIO 上通过（后端报告第 3 节），不能代替。
 - **AC-CHAT-90-1**：性能，等目标机（P-12），见后端报告。
 
-**AC-CHAT-90-15 按 PRD 判断**：第 15 节的累计表写明 C2 增加"`chat-sync.json` 的合并和过期"。`protocol/vectors/` 里还没有 `chat-sync.json`（BE-403 未做），三套 SDK 只能各自用单测覆盖单调合并和 `modVer`（D10）。C1 的 `account-session.json` 三套都通过。所以记**部分通过**，不是通过。AC-CHAT-90-10 同理：`frames.json` 里没有 `image`、`file`、`MsgBody` 的用例（BE-403）。
+**AC-CHAT-90-15、90-10（2026-11-10 更新，BE-403）**：原来记部分通过，因为 `protocol/vectors/` 没有 `chat-sync.json`，`frames.json` 没有 `image`、`file`、`MsgBody` 的用例（D10）。BE-403 补上了（tianting-server@6c0829f）：`chat-sync.json` 6 个用例（`expired` 单调合并、`modVer` 重拉，Go 参考客户端 `server/e2e/chatmodel` 生成），`account-session.json` 加附件状态机 11 个用例（F-FILE-07 规则 1、3、4），`frames.json` 加 11 个合法、18 个非法用例。服务端和三套 SDK 都跑并通过（**本地结果，CI 不运行**；sdk-ts 跳过 2 个冷启动用例，H5 没有持久化）。按第 15 节累计表 C2 的范围，两条都记**通过**。
 
 ## 5. 逐条结果
 
@@ -104,7 +104,7 @@ AC 的"新增图标都在清单里"（B-3、AC-UI-11-3）只由各端已有的�
 | AC-FILE-04-11 | 前端 | 部分通过 | H5 TC-FILE-04-11、Android Logcat 扫描、iOS `check_e2e_leftovers` | iOS 系统 CFNetwork 失败日志带完整预签名地址（I11，P-38 ② 接受为已知残留，真机是否仍是明文随 P-13）。本次两轮 iOS 运行里这类日志 0 行 |
 | AC-FILE-05-3 | 前端 | 通过 | TC-FILE-05-03 三端 | |
 | AC-FILE-06-6 | 前端 | 通过 | TC-FILE-06-05 三端 | |
-| AC-FILE-06-12 | 前端（三套 SDK） | 通过 | TC-FILE-06-11：sdk-ts `files.test.ts`、sdk-kotlin `FilesTest`、sdk-swift `testTC_FILE_06_11_…`；服务端部分见后端报告 | 三套 SDK 单测（FakeTransport），没有共享向量（D10） |
+| AC-FILE-06-12 | 前端（三套 SDK） | 通过 | TC-FILE-06-11：sdk-ts `files.test.ts`、sdk-kotlin `FilesTest`、sdk-swift `testTC_FILE_06_11_…`；服务端部分见后端报告 | 三套 SDK 单测（FakeTransport）；2026-11-10 起另有共享向量 `chat-sync.json`（BE-403） |
 | AC-FILE-07-1 | 前端（原生） | 通过 | Android `FilesKillE2e.uploadKilled`（真实杀进程）、iOS `testTC_FILE_07_01_…` | |
 | AC-FILE-07-2 | 前端 | 部分通过 | 三套 SDK 单测 | 三端页面都没有对应用例（A27、I18；H5 同样只有 SDK） |
 | AC-FILE-07-3 | 前端（H5） | 通过 | `files-real.spec.ts` TC-FILE-07-03 | |
@@ -116,22 +116,22 @@ AC 的"新增图标都在清单里"（B-3、AC-UI-11-3）只由各端已有的�
 | AC-FILE-07-10 | 前端 | 通过 | H5 `zz-im-clock.spec.ts`（tianting-web@bdf0cd8）、Android 两条（tianting-android@d263b6b）、iOS `ZzFilesClockE2ETests`（tianting-ios@52c6f2f） | v1.4（P-37 ①②），服务端回 4048 |
 | AC-CHAT-90-8 | 前端【全部】 | 部分通过 | 第 3 节 | 图标清单没有逐个核对；新消息播报三端未执行 |
 | AC-CHAT-90-9 | 前端【全部】 | 部分通过 | 第 3 节 | H5 axe；原生是等价检查（Android 语义树、iOS 系统审计），不是 axe；新消息播报未执行 |
-| AC-CHAT-90-15 | 前端【全部】（三套 SDK） | 部分通过 | `account-session.json` 三套通过（FE-600～602、FE-620） | `chat-sync.json` 不存在（BE-403），第 4 节 |
+| AC-CHAT-90-15 | 前端【全部】（三套 SDK） | 通过 | `account-session.json`（含 `attachmentCases`）、`chat-sync.json`：sdk-ts `account-vectors.test.ts`、`attachment-vectors.test.ts`、`chat-sync-vectors.test.ts`；sdk-kotlin `AccountVectorsTest`、`AttachmentVectorsTest`、`ChatSyncVectorsTest`；sdk-swift `AccountVectorTests`、`AttachmentVectorTests`、`ChatSyncVectorTests` | 2026-11-10 BE-403 后由部分通过改为通过，第 4 节。本地结果 |
 | AC-ADM-30-7 | 后台页面 | 通过 | tianting-admin@4b18297 `e2e/files.spec.ts`（元数据页没有正文和文件名，大小用 `fileSize`） | 页面部分；后端部分见后端报告和 TC-FILE-91-01 |
 | AC-FILE-90-2 | 手工 | 未执行 | — | 第 4 节（CH-05） |
 | AC-CHAT-90-1 | 后端【全部】 | 未执行 | 后端报告 | 性能，P-12 |
 | AC-CHAT-90-2 | 后端【全部】 | 部分通过 | 后端报告 | e2e 不回归；TC-PERF 等 P-12 |
 | AC-CHAT-90-3 | 后端【全部】 | 部分通过 | 后端报告 | 功能部分通过，性能等 P-12 |
 | AC-CHAT-90-5 | 后端【全部】 | 部分通过 | 后端报告 | im-server 部分通过，其余见后端报告 |
-| AC-CHAT-90-10 | 后端【全部】 | 部分通过 | C1 帧：服务端和三套 SDK 的 `frames.json` 校验（FE-600～602） | C2 的 `image`、`file`、`MsgBody` 向量不在 `frames.json`（BE-403 未做）；后端报告没有列这一条，本次也没有重跑服务端 |
+| AC-CHAT-90-10 | 后端【全部】 | 通过 | `frames.json`（C1 帧，加 BE-403 的 `image`、`file`、`MsgBody` 互斥、`modVer`）：服务端 `TestFrameVectors`（Schema）和 `TestFrameVectorsServerParse`（真实帧解析），sdk-ts `frames-schema.test.ts`（Schema 校验），sdk-kotlin `VectorsTest`，sdk-swift `VectorTests` | 2026-11-10 BE-403 后由部分通过改为通过，第 4 节；后端报告第 5 节同样补了这一条。本地结果 |
 | AC-CHAT-90-17 | 后端【全部】 | 通过 | 后端报告 | |
 
 ## 6. 汇总
 
 | 状态 | 数量 |
 |---|---|
-| 通过 | 33 |
-| 部分通过 | 12 |
+| 通过 | 35 |
+| 部分通过 | 10 |
 | 未执行 | 3 |
 | 失败 | 0 |
 | 合计 | 48（前端任务的 42 条 + 后端【全部】6 条） |
@@ -141,7 +141,7 @@ AC 的"新增图标都在清单里"（B-3、AC-UI-11-3）只由各端已有的�
 ## 7. 需要 Frank 决定的事（只列出，没有替你定）
 
 1. **新消息播报**（FE-640 内容 4："收到一张图片"）三端都没有实现。C2 补做，还是记为已知缺口挪到后面？
-2. **`chat-sync.json` 和 `frames.json` 的 C2 用例（BE-403）**没有做，AC-CHAT-90-15、90-10 只能部分通过。C2 是否等它，还是排到下一批？
+2. ~~**`chat-sync.json` 和 `frames.json` 的 C2 用例（BE-403）**~~：2026-11-10 已做完，AC-CHAT-90-15、90-10 改为通过，不用再定。
 3. **AC-FILE-02-10 真机**和 **WebKit / 其他浏览器**：等 P-13。
 4. **AC-FILE-90-2 云厂商**：等 CH-05；届时一并确认后端问题 28（最小权限下不存在的键回 403 还是 404）和 I11 在真机上是否仍是明文。
 5. **AC-FILE-02-4 的"EXIF 解析工具"**：要不要临时安装 exiftool（或接受现在按段检查的方法，H18）。

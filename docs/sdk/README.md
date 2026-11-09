@@ -107,7 +107,7 @@ account.on('ended', (end) => …);                                          // �
 
 三套 SDK 和服务端跑同一批数据，保证规则一致：
 
-各 SDK 用同名文件的副本（`scripts/sync-protocol.sh`，`protocol/SOURCE` 记提交号）。下表最后一列是 sdk-ts 的用例，sdk-kotlin 是 `VectorsTest`、`AccountVectorsTest`、`AccountHttpSchemaTest`，sdk-swift 同样有对应用例（`swift test`）。C1 没有 `chat-sync.json`，随 FE-630。
+各 SDK 用同名文件的副本（`scripts/sync-protocol.sh`，`protocol/SOURCE` 记提交号）。下表最后一列是 sdk-ts 的用例，sdk-kotlin 是 `VectorsTest`、`AccountVectorsTest`、`AccountHttpSchemaTest`，sdk-swift 同样有对应用例（`swift test`）。`chat-sync.json` 和 `account-session.json` 的 `attachmentCases` 随 BE-403（sdk-kotlin `ChatSyncVectorsTest`、`AttachmentVectorsTest`，sdk-swift `ChatSyncVectorTests`、`AttachmentVectorTests`）。
 
 | 文件 | 内容 | 服务端 | sdk-ts |
 |---|---|---|---|
@@ -116,6 +116,7 @@ account.on('ended', (end) => …);                                          // �
 | `protocol/vectors/frames.json` | 帧格式的合法 / 非法用例 | Schema 校验 | `frames-schema.test.ts`（Schema 校验，合法和非法都跑） |
 | `protocol/schema/http-client.schema.json` | 账号接口的请求和响应 | `validateHTTP` | `account-http-schema.test.ts`（请求体）、`test/support/account.ts`（假响应） |
 | `protocol/vectors/account-session.json` | `cases`：客户端判断。`serverCases`：规则 4 的判定表 | `server/e2e/accountmodel`、`account_vectors_test.go` | `account-vectors.test.ts`：`cases` 跑真实的 `AccountClient` + 假 HTTP + 假时钟；`serverCases` 约束假服务端 |
+| `protocol/vectors/chat-sync.json` | `expired` 单调合并、`modVer` 重拉（C2；撤回、引用等随 C4、C5） | `server/e2e/chatmodel` | `chat-sync-vectors.test.ts`：真实的 `IMClient` + `FakeTransport`；`attachmentCases` 在 `attachment-vectors.test.ts`（冷启动用例跳过） |
 
 ## 5. 测试
 

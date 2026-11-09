@@ -2,10 +2,10 @@
 
 | 项 | 内容 |
 |---|---|
-| 范围 | backend-chat.md 里 BE-430～BE-440 的 `- AC：` 行，共 80 条。**前端和三端的 AC 不在本报告**（FE-640 另做）；端到端 AC 只记后端部分 |
+| 范围 | backend-chat.md 里 BE-430～BE-440 的 `- AC：` 行，共 80 条；2026-11-10 补 BE-403 的后端 AC-CHAT-90-10，共 81 条（BE-403 的另一条 AC-CHAT-90-15 是三套 SDK 的前端 AC，在前端报告）。**前端和三端的 AC 不在本报告**（FE-640 另做）；端到端 AC 只记后端部分 |
 | 环境 | 本地开发机（macOS，Apple Silicon 10 核）。**CI 不运行（P-21），所有结果都是本地结果**。对象存储是进程内假 S3（`internal/objstore/objstoretest`，独立端口，校验 SigV4）；**假 S3 只验调度逻辑，不证明厂商行为** |
 | 基线 | im-mvp@892fd62 + 本报告所在的提交（代码、用例、部署样例同一个提交） |
-| 结论 | 通过 70、部分通过 7、未执行 3、失败 0。性能没有判定（P-12）；AC-FILE-90-1 在真实 MinIO 上通过（第 3 节），云厂商（AC-FILE-90-2）没有验证 |
+| 结论 | 通过 71、部分通过 7、未执行 3、失败 0（含 2026-11-10 补的 AC-CHAT-90-10）。性能没有判定（P-12）；AC-FILE-90-1 在真实 MinIO 上通过（第 3 节），云厂商（AC-FILE-90-2）没有验证 |
 
 ## 1. 运行
 
@@ -140,6 +140,7 @@ Frank 2026-11-09 在会话里对 P-38 ④ 回复"都按建议"（同意按上次
 | AC-FILE-90-2 | 未执行 | TC-FILE-90-02 | — | 等云厂商（CH-05）。手工 AC，前端走查部分见 FE-640 |
 | AC-CHAT-90-1 | 未执行 | TC-CHAT-90-01 | — | 性能。开发机只记录（第 4 节），不算通过，发布判定等 P-12。C2 的范围和 C1 相同（第 15 节表"不变"） |
 | AC-CHAT-90-5 | 部分通过 | TC-CHAT-90-04,TC-CHAT-90-05 | `TestTC_CHAT_90_04_NoSecretsInLogs`, `TestTC_CHAT_90_05_NoSecretsInLogsC2` | im-server 部分通过：C1（TC-CHAT-90-04）和 C2（TC-CHAT-90-05：上传、下载、415、4292、存储不可用、后台删除、过期清理）的日志和数据库（除 `files` 外全部表，含 `admin_audit`）搜不到 token、预签名查询串和签名、文件名、存储密钥。console-server 的 C2 日志和审计随 CS-201 / FE-640 |
+| AC-CHAT-90-10 | 通过 | TC-CHAT-90-09 | `protocol.TestFrameVectors`、`protocol.TestFileFramesMatchSchema`、`logic.TestFrameVectorsServerParse` | 2026-11-10 补（BE-403，tianting-server@6c0829f）。C2 范围（第 15 节表）：`frames.json` 加 `image`、`file`、`MsgBody` 互斥、`modVer` 的 11 个合法、18 个非法用例；服务端 Schema 校验全过，`send` 的用例另用真实帧解析（严格解码 + `SendReq.Validate`）跑，image、file 的下行消息用服务端模型解码再编码。三套 SDK 同样通过（前端报告）。本地结果 |
 
 ## 6. 需要 Frank 决定的事
 
