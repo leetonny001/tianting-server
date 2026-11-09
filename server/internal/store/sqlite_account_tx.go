@@ -322,6 +322,12 @@ func (s *SQLite) RemoveUserSocial(ctx context.Context, userID, nickname string, 
 	if _, err := t.exec(`UPDATE users SET nickname = ?, avatar = '' WHERE user_id = ?`, nickname, userID); err != nil {
 		return nil, err
 	}
+	// 头像文件（PRD-chat F-ACC-06 规则 4，RS6-04）：注销清理时改成 purging，由 file_purge 删公开对象、final/{fileId}/ 前缀和行。
+	// pending 只匹配没有租约或租约已过期的（F-FILE-06 规则 2）。消息文件不受影响（保留期到了再删）。
+	if _, err := t.exec(`UPDATE files SET state = 'purging' WHERE owner = ? AND kind = 'avatar'
+		AND (state IN ('ready', 'attached') OR (state = 'pending' AND (completing_until IS NULL OR completing_until < ?)))`, userID, now); err != nil {
+		return nil, err
+	}
 	return t.vers, t.tx.Commit()
 }
 

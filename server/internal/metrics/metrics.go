@@ -89,6 +89,9 @@ type Metrics struct {
 	RefreshReissue     prometheus.Counter
 	RefreshReplay      prometheus.Counter
 	InviteAutoDisabled prometheus.Counter // 邀请码因为探测用户名被自动停用（F-ACC-01 规则 7 的告警）
+	// 文件（PRD-chat 第 14.2 节，F-FILE-04 规则 6）：没有用户标签，按用户的量在 files 包里统计。
+	FileURLsIssued    prometheus.Counter
+	FileUploadedBytes prometheus.Counter // complete 成功的实际字节数
 }
 
 // New 创建并注册全部指标，另外带上 Go 运行时和进程指标。
@@ -161,6 +164,10 @@ func New() *Metrics {
 	m.InviteAutoDisabled = prometheus.NewCounter(prometheus.CounterOpts{
 		Name: "im_invites_auto_disabled_total", Help: "Invite codes automatically disabled after too many taken usernames.",
 	})
+	m.FileURLsIssued = prometheus.NewCounter(prometheus.CounterOpts{Name: "im_file_url_issued_total", Help: "Presigned download URLs issued."})
+	m.FileUploadedBytes = prometheus.NewCounter(prometheus.CounterOpts{Name: "im_file_uploaded_bytes_total", Help: "Bytes of completed uploads (original and thumbnail)."})
+	f(m.FileURLsIssued)
+	f(m.FileUploadedBytes)
 	f(m.AccountLogins)
 	f(m.Registers)
 	f(m.RefreshReissue)

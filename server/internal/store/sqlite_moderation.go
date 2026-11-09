@@ -3,6 +3,7 @@ package store
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"slices"
@@ -151,7 +152,13 @@ func (s *SQLite) DeleteMessages(ctx context.Context, req DeleteMessagesReq) ([]D
 	}
 	out := make([]DeletedMessage, 0, len(todo))
 	for _, m := range todo {
-		nonce, ct, kid, err := req.Seal(m.id, req.ConvID, []byte(m.body))
+		// 文件消息（PRD-chat F-FILE-06 规则 4）：文件名移到隔离加密区（和原文一起加密），files.name 清空，立即停止发放地址（revoked），
+		// 对象保留到隔离期结束后由 file_purge 物理删除。
+		sealed, err := revokeMessageFileTx(ctx, tx, m.id, m.body, req.Now, req.ExpiresAt)
+		if err != nil {
+			return nil, err
+		}
+		nonce, ct, kid, err := req.Seal(m.id, req.ConvID, sealed)
 		if err != nil {
 			return nil, fmt.Errorf("seal message %s: %w", m.id, err)
 		}
@@ -173,6 +180,33 @@ func (s *SQLite) DeleteMessages(ctx context.Context, req DeleteMessagesReq) ([]D
 	}
 	slices.SortFunc(out, func(a, b DeletedMessage) int { return int(a.Seq - b.Seq) })
 	return out, tx.Commit()
+}
+
+// revokeMessageFileTx 把消息绑定的文件改成 revoked，返回要加密保存的原文（文件消息带上文件名）。没有绑定文件时原样返回。
+func revokeMessageFileTx(ctx context.Context, tx *sql.Tx, msgID, body string, now, until int64) ([]byte, error) {
+	var fileID, kind, name string
+	err := tx.QueryRowContext(ctx, `SELECT file_id, kind, name FROM files WHERE msg_id = ? AND state = 'attached'`, msgID).Scan(&fileID, &kind, &name)
+	if errors.Is(err, sql.ErrNoRows) {
+		return []byte(body), nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	out := []byte(body)
+	if kind == KindFile && name != "" {
+		var b map[string]map[string]any
+		if json.Unmarshal([]byte(body), &b) == nil && b["file"] != nil {
+			b["file"]["name"] = name
+			if raw, err := json.Marshal(b); err == nil {
+				out = raw
+			}
+		}
+	}
+	if _, err := tx.ExecContext(ctx, `UPDATE files SET state = 'revoked', name = '', revoked_at = ?, retain_until = ? WHERE file_id = ? AND state = 'attached'`,
+		now, until, fileID); err != nil {
+		return nil, err
+	}
+	return out, nil
 }
 
 func (s *SQLite) ListQuarantined(ctx context.Context, convID string, beforeSeq, now int64, limit int) ([]QuarantinedMessage, bool, error) {

@@ -37,6 +37,8 @@ type Deps struct {
 	Clock   clock.Clock
 	Faults  *Faults // 生产环境为 nil
 	Cleaner Cleaner // account_cleanup 第 ② 步
+	// Avatars 绑定头像（F-ACC-06 规则 4，BE-437）；IM_FILES_ENABLED 关闭时为 nil，带 avatarFileId 返回 404 / 4048。
+	Avatars AvatarBinder
 	Log     *slog.Logger
 	// Logins、Registers 是 im_account_logins_total{result}、im_registers_total{result}（第 14.2 节）；InviteAutoDisabled 是自动停用的告警。
 	Logins, Registers  *prometheus.CounterVec

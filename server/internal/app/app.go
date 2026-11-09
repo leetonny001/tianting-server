@@ -26,10 +26,12 @@ import (
 	"tianting/server/internal/clientip"
 	"tianting/server/internal/clock"
 	"tianting/server/internal/delivery"
+	"tianting/server/internal/files"
 	"tianting/server/internal/gateway"
 	"tianting/server/internal/hub"
 	"tianting/server/internal/logic"
 	"tianting/server/internal/metrics"
+	"tianting/server/internal/objstore"
 	"tianting/server/internal/opsapi"
 	"tianting/server/internal/protocol"
 	"tianting/server/internal/quarantine"
@@ -77,6 +79,10 @@ type Config struct {
 	QuarantineDays int
 	// Account 是账号功能的配置（PRD-chat 第 4.1 节）。
 	Account account.Config
+	// Files 是 C2 图片和文件（PRD-chat 第 4.1 节）；Files.Enabled 关闭时 /v1/files/* 是 404，send 的 image、file 返回 4000。
+	Files files.Config
+	// ObjStore 是对象存储（第 11.3 节），只在 Files.Enabled 时使用。
+	ObjStore objstore.Config
 	// RequireHTTPS：生产环境 /v1/* 只接受 HTTPS（PRD-chat 第 4.2 节第 7 条）。
 	RequireHTTPS bool
 	TestMode     bool // 开启故障注入、时钟注入、短有效期 token（PRD 6.1 节），生产必须关闭
@@ -128,6 +134,7 @@ type App struct {
 	// 测试模式的故障注入（PRD-ops S-OPS-24）：生产环境没有设置它们的路由。
 	opsDelay atomic.Int64
 	pingFail atomic.Bool
+	files    *files.Service // IM_FILES_ENABLED 关闭时为 nil
 }
 
 // SetTestPeers 设置双节点测试环境的广播目标（只在测试模式下有效；TestInvalidationOff 时忽略）。
@@ -216,6 +223,24 @@ func New(cfg Config) (*App, error) {
 		}
 		svc.EnableAdminFeatures()
 	}
+	var fileSvc *files.Service
+	if cfg.Files.Enabled {
+		var hooks *files.Hooks
+		if cfg.TestMode {
+			hooks = files.NewHooks() // complete 的暂停点只在测试模式（第 4.5 节）
+		}
+		fcfg := cfg.Files
+		fcfg.RegisterOpen = cfg.Account.WithDefaults().RegisterMode == "open"
+		if fileSvc, err = files.New(files.Deps{Config: fcfg, Store: st, Obj: objstore.New(cfg.ObjStore), Clock: clk, Hooks: hooks, Log: cfg.Logger, Metrics: m}); err != nil {
+			st.Close()
+			return nil, err
+		}
+		svc.EnableFiles(*fileSvc.Config().RetentionDays)
+	}
+	var avatars account.AvatarBinder
+	if fileSvc != nil {
+		avatars = fileSvc
+	}
 	var accountFaults *account.Faults
 	if cfg.TestMode {
 		accountFaults = account.NewFaults()
@@ -225,7 +250,7 @@ func New(cfg Config) (*App, error) {
 	accounts, err := account.New(account.Deps{
 		Config: cfg.Account, Store: st, Signer: signer, Router: router, Clock: clk, Faults: accountFaults, Log: cfg.Logger,
 		Logins: m.AccountLogins, Registers: m.Registers, InviteAutoDisabled: m.InviteAutoDisabled,
-		RefreshReissue: m.RefreshReissue, RefreshReplay: m.RefreshReplay, Cleaner: svc,
+		RefreshReissue: m.RefreshReissue, RefreshReplay: m.RefreshReplay, Cleaner: svc, Avatars: avatars,
 	})
 	if err != nil {
 		st.Close()
@@ -248,7 +273,7 @@ func New(cfg Config) (*App, error) {
 		st.Close()
 		return nil, err
 	}
-	a := &App{store: st, hub: h, metrics: m, stop: make(chan struct{}), loopback: loopback}
+	a := &App{store: st, hub: h, metrics: m, stop: make(chan struct{}), loopback: loopback, files: fileSvc}
 	a.dynamicChecks = func(ctx context.Context) []DynamicCheck {
 		problems, err := accounts.LedgerProblems(ctx)
 		if err != nil {
@@ -273,6 +298,10 @@ func New(cfg Config) (*App, error) {
 	jobs.Register("auth_throttle_purge", jobPeriod, accounts.PurgeThrottle)
 	jobs.Register("session_purge", 24*time.Hour, accounts.PurgeSessions)
 	jobs.Register("account_cleanup", jobPeriod, accounts.Cleanup)
+	if fileSvc != nil {
+		// 每小时一批（F-FILE-06 规则 7）。和其他定时任务一样只在一个节点运行（集群随 B6）。
+		jobs.Register("file_purge", jobPeriod, fileSvc.Purge)
+	}
 	jobs.Register("invite_purge", 24*time.Hour, func(ctx context.Context) (int, error) {
 		return st.PurgeInvites(ctx, clk.Now().Add(-invitePurgeAfter).UnixMilli())
 	})
@@ -304,8 +333,17 @@ func New(cfg Config) (*App, error) {
 	// /v1/*（PRD-chat 第 4.2 节）：只在对外端口。按 IP 的限制和 /ws 共用可信代理配置（R-CS-35）。
 	v1 := &api.V1{RequireHTTPS: cfg.RequireHTTPS, Proxies: clientip.Resolver{TrustedProxies: gw.Guard.TrustedProxies}, Verifier: signer, Checker: access, Log: cfg.Logger}
 	publicConfig := cfg.Account.PublicConfig(cfg.DemoLogin)
+	if fileSvc != nil {
+		l := fileSvc.Config().Limits()
+		publicConfig.Features.Files = true
+		publicConfig.Limits.ImageMaxBytes, publicConfig.Limits.ThumbMaxBytes, publicConfig.Limits.FileMaxBytes = l.ImageMaxBytes, l.ThumbMaxBytes, l.FileMaxBytes
+		publicConfig.Limits.AvatarMaxBytes, publicConfig.Limits.UploadDailyBytes = l.AvatarMaxBytes, l.UploadDailyBytes
+	}
 	v1.Handle(mux, "GET /v1/config", func(w http.ResponseWriter, r *http.Request) { api.WriteJSON(w, publicConfig) })
 	v1.RegisterAccount(mux, accounts)
+	if fileSvc != nil {
+		v1.RegisterFiles(mux, fileSvc)
+	}
 	m.RegisterNode(cfg.Version, runtime.Version(), gw.NodeID, func() bool {
 		ctx, cancel := context.WithTimeout(context.Background(), time.Second)
 		defer cancel()
@@ -418,6 +456,9 @@ func (a *App) DynamicChecks(ctx context.Context) []DynamicCheck {
 	}
 	return a.dynamicChecks(ctx)
 }
+
+// Files 返回文件服务（测试用：暂停点等故障注入在 Files().Hooks()）；IM_FILES_ENABLED 关闭时为 nil。
+func (a *App) Files() *files.Service { return a.files }
 
 // Handler 是对外端口：/ws、/healthz、/readyz，以及演示环境的 /demo/login。
 func (a *App) Handler() http.Handler { return a.handler }

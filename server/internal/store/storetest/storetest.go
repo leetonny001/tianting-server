@@ -23,6 +23,11 @@ func Run(t *testing.T, open Opener) {
 		name string
 		fn   func(*testing.T, Opener)
 	}{
+		{"FilesUploadLimits", testFilesUploadLimits},
+		{"FilesCompleteLease", testFilesCompleteLease},
+		{"FilesCancelAndPurge", testFilesCancelAndPurge},
+		{"FilesBindAndExpire", testFilesBindAndExpire},
+		{"FilesAvatar", testFilesAvatar},
 		{"PushSeqAndRead", testPushSeqAndRead},
 		{"PushExpiredGaps", testPushExpiredGaps},
 		{"PushIdempotencyRecord", testPushIdempotencyRecord},

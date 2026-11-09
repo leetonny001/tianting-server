@@ -618,9 +618,18 @@ func (a *Admin) readBodies(ctx context.Context, convID string, before int64, lim
 		a.log.Error("list messages for body read", "err", err)
 		return nil, false, protocol.Errorf(protocol.CodeInternal, "internal error")
 	}
+	pm := make([]protocol.Message, len(rows))
+	for i, m := range rows {
+		pm[i] = logic.ToProto(m)
+	}
+	// 文件消息的 body 带文件名（凭正文授权，R-CS-14 / CS-201）；元数据接口不带。
+	if err := logic.EnrichFiles(ctx, a.store, pm); err != nil {
+		a.log.Error("load files for body read", "err", err)
+		return nil, false, protocol.Errorf(protocol.CodeInternal, "internal error")
+	}
 	out := make([]bodyMessageJSON, len(rows))
 	for i, m := range rows {
-		out[i] = bodyMessageJSON{logic.ToProto(m), m.DeletedBy}
+		out[i] = bodyMessageJSON{pm[i], m.DeletedBy}
 	}
 	return out, more, nil
 }

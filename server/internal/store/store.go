@@ -34,6 +34,10 @@ type Message struct {
 	// 对方在这个会话里从未发过消息且我已发 >= StrangerLimit 条时返回 ErrStrangerMsgLimit（不占 seq）。
 	// 是否适用（开放模式、不互为好友、双方都不是官方账号）由调用方判断。
 	StrangerLimit int
+	// AttachFileID 非空时在同一事务里绑定文件（PRD-chat 第 4.3 节第 10 步）：本人、ready 的文件改成 attached，
+	// 影响 0 行返回 ErrFileNotReady，消息不保存。加锁顺序 conv_seq → 文件行。AttachRetainUntil 是保留期到期时间，0 表示不过期。
+	AttachFileID      string
+	AttachRetainUntil int64
 }
 
 // Group 是群（PRD F-GRP-01）。
@@ -82,6 +86,7 @@ type ConvRow struct {
 	// LastVisible 为 false 时没有可展示的最后一条消息（群里没有消息，或者只有入群前、且历史不可见的消息）。
 	LastVisible bool
 	Last        LastMessage
+	ModVer      int64 // 会话内已有消息展示内容的版本（PRD-chat F-RCL-03 规则 2，C2：文件过期）
 }
 
 // LastMessage 是会话最后一条消息的摘要。
@@ -111,6 +116,7 @@ type Store interface {
 	GroupStore
 	ModerationStore
 	PushStore
+	FileStore
 
 	// SaveMessage 为消息分配会话内递增 seq 并保存。
 	// 同一发送者重复提交同一 ClientMsgID 时不新建，返回第一次保存的消息且 dup=true。

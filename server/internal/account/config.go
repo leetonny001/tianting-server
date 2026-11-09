@@ -128,7 +128,7 @@ type ConfigResponse struct {
 	PrivacyNotice *PrivacyNotice `json:"privacyNotice,omitempty"`
 }
 
-// Features 告诉客户端隐藏哪些入口。C2 上线前 files 恒为 false。
+// Features 告诉客户端隐藏哪些入口。files 跟 IM_FILES_ENABLED。
 type Features struct {
 	Files bool `json:"files"`
 }
@@ -141,6 +141,12 @@ type Limits struct {
 	PasswordMaxLen   int `json:"passwordMaxLen"`
 	NicknameMaxLen   int `json:"nicknameMaxLen"`
 	DeviceNameMaxLen int `json:"deviceNameMaxLen"`
+	// 文件的限制（PRD-chat 第 4.1 节）：只在 features.files=true 时出现。
+	ImageMaxBytes    int64 `json:"imageMaxBytes,omitempty"`
+	ThumbMaxBytes    int64 `json:"thumbMaxBytes,omitempty"`
+	FileMaxBytes     int64 `json:"fileMaxBytes,omitempty"`
+	AvatarMaxBytes   int64 `json:"avatarMaxBytes,omitempty"`
+	UploadDailyBytes int64 `json:"uploadDailyBytes,omitempty"`
 }
 
 // PrivacyNotice 是隐私说明（F-ACC-10 规则 1）。配置为空时不出现，客户端隐藏入口。

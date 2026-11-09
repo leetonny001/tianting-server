@@ -23,6 +23,7 @@ import (
 	"tianting/server/internal/adminauth"
 	"tianting/server/internal/app"
 	"tianting/server/internal/auth"
+	"tianting/server/internal/files"
 	"tianting/server/internal/gateway"
 	"tianting/server/internal/opsapi"
 	"tianting/server/internal/social"
@@ -231,6 +232,7 @@ func Load(getenv func(string) string) (cfg Server, warnings []string, err error)
 	}
 
 	loadAccount(getenv, a, bad)
+	loadFiles(getenv, a, prod, bad)
 
 	a.Account.EnforceKeyLedger = prod
 	cfg.AllowTokenIssue = getenv("IM_ALLOW_TOKEN_ISSUE") == "1"
@@ -458,6 +460,83 @@ func loadAccount(getenv func(string) string, a *app.Config, bad func(string, ...
 				c.ExtraReserved = append(c.ExtraReserved, line)
 			}
 		}
+	}
+}
+
+// loadFiles 读取 C2 文件和对象存储的配置（PRD-chat 第 4.1 节、第 11.3 节）。对象存储的变量名（IM_OBJSTORE_*）PRD 没有定义，
+// 按任务单 BE-430 第 3 条实现时加。开关关闭时不检查对象存储配置。
+func loadFiles(getenv func(string) string, a *app.Config, prod bool, bad func(string, ...any)) {
+	f := &a.Files
+	f.Enabled = boolEnv(getenv, "IM_FILES_ENABLED", false, bad)
+	for key, dst := range map[string]*int64{
+		"IM_IMAGE_MAX_BYTES": &f.ImageMaxBytes, "IM_THUMB_MAX_BYTES": &f.ThumbMaxBytes, "IM_FILE_MAX_BYTES": &f.FileMaxBytes,
+		"IM_AVATAR_MAX_BYTES": &f.AvatarMaxBytes, "IM_UPLOAD_DAILY_BYTES": &f.DailyBytes, "IM_UPLOAD_DAILY_DECLARED": &f.DailyDeclared,
+	} {
+		if v := getenv(key); v != "" {
+			n, err := strconv.ParseInt(v, 10, 64)
+			if err != nil || n < 1 {
+				bad("%s: must be a positive integer (bytes), got %q", key, v)
+				continue
+			}
+			*dst = n
+		}
+	}
+	for key, dst := range map[string]*int{"IM_UPLOAD_RATE": &f.UploadRate, "IM_UPLOAD_PENDING_MAX": &f.PendingMax, "IM_UPLOAD_ORPHAN_HOURS": &f.OrphanHours} {
+		if v := getenv(key); v != "" {
+			n, err := strconv.Atoi(v)
+			if err != nil || n < 1 {
+				bad("%s: must be a positive integer, got %q", key, v)
+				continue
+			}
+			*dst = n
+		}
+	}
+	// 时长：整数按秒（AC-FILE-04-4 的写法 IM_FILE_URL_TTL_IMAGE=5），也接受 Go 时长（15m）。
+	for key, dst := range map[string]*time.Duration{
+		"IM_UPLOAD_PUT_TTL": &f.PutTTL, "IM_UPLOAD_COMPLETE_LEASE": &f.CompleteLease, "IM_FILE_URL_TTL_IMAGE": &f.URLTTLImage, "IM_FILE_URL_TTL_FILE": &f.URLTTLFile,
+	} {
+		if v := getenv(key); v != "" {
+			d, err := time.ParseDuration(v)
+			if n, nerr := strconv.Atoi(v); nerr == nil {
+				d, err = time.Duration(n)*time.Second, nil
+			}
+			if err != nil || d < time.Second || d > 7*24*time.Hour {
+				bad("%s: invalid duration %q (1s..7d)", key, v)
+				continue
+			}
+			*dst = d
+		}
+	}
+	if v := getenv("IM_FILE_RETENTION_DAYS"); v != "" {
+		n, err := strconv.Atoi(v)
+		if err != nil || n < 0 {
+			bad("IM_FILE_RETENTION_DAYS: must be 0 (never) or a positive integer, got %q", v)
+		} else {
+			f.RetentionDays = &n
+		}
+	}
+	f.BlocklistPath = getenv("IM_FILE_BLOCKLIST")
+	o := &a.ObjStore
+	o.Endpoint, o.Region, o.Bucket, o.PublicBucket = getenv("IM_OBJSTORE_ENDPOINT"), getenv("IM_OBJSTORE_REGION"), getenv("IM_OBJSTORE_BUCKET"), getenv("IM_OBJSTORE_PUBLIC_BUCKET")
+	o.PublicBaseURL, o.AccessKey, o.SecretKey = getenv("IM_OBJSTORE_PUBLIC_BASE_URL"), getenv("IM_OBJSTORE_ACCESS_KEY"), getenv("IM_OBJSTORE_SECRET_KEY")
+	if !f.Enabled {
+		return
+	}
+	if _, err := files.LoadBlocklist(f.BlocklistPath); err != nil {
+		bad("%v", err)
+	}
+	if o.Endpoint == "" || o.Bucket == "" || o.PublicBucket == "" || o.AccessKey == "" || o.SecretKey == "" {
+		bad("IM_FILES_ENABLED=1 requires IM_OBJSTORE_ENDPOINT, IM_OBJSTORE_BUCKET, IM_OBJSTORE_PUBLIC_BUCKET, IM_OBJSTORE_ACCESS_KEY and IM_OBJSTORE_SECRET_KEY")
+	}
+	if o.Bucket != "" && o.Bucket == o.PublicBucket {
+		bad("IM_OBJSTORE_PUBLIC_BUCKET must be a separate bucket (F-ACC-06 rule 4)")
+	}
+	// 生产只接受 HTTPS（ARCH S2）：上传、下载地址都指向对象存储，头像地址写进 users.avatar 必须是 https（F-ACC-06 规则 4）。
+	if prod && (!strings.HasPrefix(o.Endpoint, "https://") || (o.PublicBaseURL != "" && !strings.HasPrefix(o.PublicBaseURL, "https://"))) {
+		bad("IM_OBJSTORE_ENDPOINT and IM_OBJSTORE_PUBLIC_BASE_URL must be https in production")
+	}
+	if prod && o.PublicBaseURL == "" {
+		bad("IM_OBJSTORE_PUBLIC_BASE_URL is required in production: avatars use a separate domain (F-ACC-06 rule 4)")
 	}
 }
 

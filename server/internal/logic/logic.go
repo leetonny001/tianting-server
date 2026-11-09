@@ -36,6 +36,7 @@ type Service struct {
 	changed *groupChangedMerger
 	mutes   *muteCache // 第二批开启时非 nil（IM_V13_ADMIN_FEATURES）
 	push    *pushState // 系统推送开启时非 nil（IM_PUSH_ENABLED）
+	files   filesConfig
 }
 
 // New 创建 Service。limiter 按用户限制发送速率（所有连接合计，PRD F-MSG-07）。
@@ -108,6 +109,11 @@ func (s *Service) send(ctx context.Context, c delivery.Session, raw json.RawMess
 	if perr := req.Validate(); perr != nil {
 		return nil, false, perr
 	}
+	isFile := req.Type == protocol.MsgImage || req.Type == protocol.MsgFile
+	if isFile && !s.files.enabled {
+		// IM_FILES_ENABLED 关闭：4000，不是共同规则的 4030（F-FILE 的写法，AC-FILE-01-14）。
+		return nil, false, protocol.Errorf(protocol.CodeBadRequest, "file messages are disabled")
+	}
 	uid := c.UserID()
 
 	// 先识别重发（IMP-3）：命中时直接返回第一次的结果，不扣令牌、不重复投递。
@@ -130,14 +136,14 @@ func (s *Service) send(ctx context.Context, c delivery.Session, raw json.RawMess
 
 	var convID string
 	var recipients, convUsers []string
-	strangerLimit, onSaved := 0, func() {}
+	strangerLimit, onSaved, onReject := 0, func() {}, func() {}
 	switch req.ConvType {
 	case protocol.ConvC2C:
 		convID = protocol.C2CConvID(uid, req.To)
 		// 单聊权限（PRD-social F-SOC-08 规则 7）：新对象配额 → 对方存在（D5）→ 好友制 → 拉黑；给自己发永远允许。
 		if req.To != uid {
 			var perr *protocol.Error
-			if strangerLimit, onSaved, perr = s.c2cPermission(ctx, uid, req.To, convID); perr != nil {
+			if strangerLimit, onSaved, onReject, perr = s.c2cPermission(ctx, uid, req.To, convID); perr != nil {
 				return nil, false, perr
 			}
 		}
@@ -157,7 +163,18 @@ func (s *Service) send(ctx context.Context, c delivery.Session, raw json.RawMess
 		return nil, false, protocol.Errorf(protocol.CodeBadRequest, "rooms are not available yet")
 	}
 
-	body, err := json.Marshal(req.Body)
+	// 第 6 步附件预检（PRD-chat 第 4.3 节）。第 6～10 步失败退还新对象配额（R-CB-20）。
+	stored := req.Body
+	var attach string
+	if isFile {
+		if perr := s.precheckFile(ctx, uid, req); perr != nil {
+			onReject()
+			return nil, false, perr
+		}
+		stored, attach = storedFileBody(req), req.Body.FileID()
+	}
+	now := s.clock.Now()
+	body, err := json.Marshal(stored)
 	if err != nil {
 		return nil, false, s.internal("marshal body", err)
 	}
@@ -168,13 +185,21 @@ func (s *Service) send(ctx context.Context, c delivery.Session, raw json.RawMess
 		From:          uid,
 		Type:          req.Type,
 		Body:          body,
-		TS:            s.clock.Now().UnixMilli(),
-		Summary:       protocol.Summary(req.Body.Text), // custom 消息没有文本摘要，客户端按 type 显示
+		TS:            now.UnixMilli(),
+		Summary:       protocol.Summary(req.Body.Text), // custom、image、file 没有文本摘要（lastMsg.text=""，不含文件名），客户端按 type 显示
 		ConvUsers:     convUsers,
 		StrangerLimit: strangerLimit,
+		// 第 10 步：同一事务里绑定文件，影响 0 行 4096，消息不保存，文件保持 ready（AC-FILE-07-8）。
+		AttachFileID:      attach,
+		AttachRetainUntil: s.retainUntil(now),
 	})
 	if errors.Is(err, store.ErrStrangerMsgLimit) {
+		onReject()
 		return nil, false, protocol.Errorf(protocol.CodeStrangerMsgLimit, "stranger message limit reached")
+	}
+	if errors.Is(err, store.ErrFileNotReady) {
+		onReject()
+		return nil, false, protocol.Errorf(protocol.CodeFileNotReady, "file not ready")
 	}
 	if err != nil {
 		return nil, false, s.internal("save message", err)
@@ -188,7 +213,7 @@ func (s *Service) send(ctx context.Context, c delivery.Session, raw json.RawMess
 		s.metrics.Messages.WithLabelValues(req.ConvType).Inc()
 	}
 	if !dup && !s.faults.takeSkipDelivery(req.ClientMsgID) {
-		s.fanout(saved, recipients, c.ConnID())
+		s.fanout(ctx, saved, recipients, c.ConnID())
 		// 发言即已读：存储层已经把发送者的已读位置推进到这条消息，通知发送者的其他端（BE-042）。
 		s.pushReadUpdated(uid, saved.ConvID, saved.Seq, c.ConnID())
 	}
@@ -225,8 +250,12 @@ func (s *Service) groupMembersFor(ctx context.Context, gid, uid string) ([]strin
 }
 
 // fanout 投递给在线的接收者，以及发送者自己的其他设备。离线用户不处理，上线后 sync。
-func (s *Service) fanout(m store.Message, recipients []string, senderConn string) {
-	frame, err := json.Marshal(protocol.OutFrame{Cmd: protocol.CmdMsg, Data: toProto(m)})
+func (s *Service) fanout(ctx context.Context, m store.Message, recipients []string, senderConn string) {
+	pm := []protocol.Message{toProto(m)}
+	if err := EnrichFiles(ctx, s.store, pm); err != nil {
+		s.log.Error("load files for msg frame", "err", err)
+	}
+	frame, err := json.Marshal(protocol.OutFrame{Cmd: protocol.CmdMsg, Data: pm[0]})
 	if err != nil {
 		s.log.Error("marshal msg frame", "err", err)
 		return
@@ -268,6 +297,9 @@ func (s *Service) sync(ctx context.Context, c delivery.Session, raw json.RawMess
 	out := protocol.SyncAck{Messages: make([]protocol.Message, 0, len(msgs)), HasMore: hasMore}
 	for _, m := range msgs {
 		out.Messages = append(out.Messages, toProto(m))
+	}
+	if err := EnrichFiles(ctx, s.store, out.Messages); err != nil {
+		return nil, s.internal("load files", err)
 	}
 	return out, nil
 }
@@ -322,6 +354,7 @@ func toConversation(r store.ConvRow) protocol.Conversation {
 		ReadSeq:   r.ReadSeq,
 		MinSeq:    1,
 		UpdatedAt: r.UpdatedAt,
+		ModVer:    r.ModVer,
 	}
 	switch conv.Type {
 	case protocol.ConvGroup:

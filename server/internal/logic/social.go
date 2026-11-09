@@ -727,43 +727,50 @@ func (s *Service) myGroups(ctx context.Context, c delivery.Session, raw json.Raw
 
 // c2cPermission 在发送限流之后、保存之前判定单聊权限，返回 SaveMessage 的陌生人限额参数，
 // 以及保存成功后要调用的 onSaved（退还 newPeerReject 预扣的令牌）。to == uid 时不调用。
-func (s *Service) c2cPermission(ctx context.Context, uid, to, convID string) (strangerLimit int, onSaved func(), perr *protocol.Error) {
+//
+// onReject 是 PRD-chat 第 4.3 节第 6～10 步失败时调用的（R-CB-20）：对方的存在性已经过了判定、这些失败和探测无关，
+// 退还第 5 步预扣的 newPeerReject，newPeerHour 同样不扣（退还）。
+func (s *Service) c2cPermission(ctx context.Context, uid, to, convID string) (strangerLimit int, onSaved, onReject func(), perr *protocol.Error) {
 	cfg, perr := s.socialSettings(ctx)
 	if perr != nil {
-		return 0, nil, perr
+		return 0, nil, nil, perr
 	}
 	rel, err := s.store.Relation(ctx, uid, to, convID) // L7：普通读、不缓存
 	if err != nil {
-		return 0, nil, s.internal("load relation", err)
+		return 0, nil, nil, s.internal("load relation", err)
 	}
 	newPeer := !rel.HasMessages
-	onSaved = func() {}
+	onSaved, onReject = func() {}, func() {}
 	if newPeer {
 		// 4：预扣 1 个 newPeerReject，扣不到 4292；保存成功后退还，静默失败（4042 / 4035 / 4036）不退。
 		if !s.social.newPeerReject.Allow(uid) {
-			return 0, nil, quotaExceeded()
+			return 0, nil, nil, quotaExceeded()
 		}
 		onSaved = func() { s.social.newPeerReject.Refund(uid) }
+		onReject = onSaved
 		// 5：newPeerHour（官方账号作为发送方豁免）；被它拒绝不是静默失败，退还第 4 步的预扣。
-		if cfg.NewPeerHourlyLimit > 0 && !rel.MeOfficial && !s.social.newPeerHour.Allow(uid) {
-			s.social.newPeerReject.Refund(uid)
-			return 0, nil, quotaExceeded()
+		if cfg.NewPeerHourlyLimit > 0 && !rel.MeOfficial {
+			if !s.social.newPeerHour.Allow(uid) {
+				s.social.newPeerReject.Refund(uid)
+				return 0, nil, nil, quotaExceeded()
+			}
+			onReject = func() { s.social.newPeerReject.Refund(uid); s.social.newPeerHour.Refund(uid) }
 		}
 	}
 	mutual := rel.MeToPeer && rel.PeerToMe
 	official := rel.MeOfficial || rel.PeerOfficial
 	switch {
 	case !rel.PeerExists: // 6（D5）
-		return 0, nil, protocol.Errorf(protocol.CodeUserNotFound, "user not found")
+		return 0, nil, nil, protocol.Errorf(protocol.CodeUserNotFound, "user not found")
 	case cfg.Mode == social.ModeFriends && !mutual && !official: // 7
-		return 0, nil, protocol.Errorf(protocol.CodeNotFriend, "not friends")
+		return 0, nil, nil, protocol.Errorf(protocol.CodeNotFriend, "not friends")
 	case rel.PeerBlocksMe: // 8
-		return 0, nil, protocol.Errorf(protocol.CodeRejectedByPeer, "rejected by peer")
+		return 0, nil, nil, protocol.Errorf(protocol.CodeRejectedByPeer, "rejected by peer")
 	}
 	if cfg.Mode == social.ModeOpen && cfg.StrangerMsgLimit > 0 && !mutual && !official {
 		strangerLimit = cfg.StrangerMsgLimit // 9：在 SaveMessage 事务内判定
 	}
-	return strangerLimit, onSaved, nil
+	return strangerLimit, onSaved, onReject, nil
 }
 
 // ---- 管理接口与测试接口用（admin 包经接口调用） ----

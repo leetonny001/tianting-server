@@ -1,0 +1,51 @@
+# 文件消息禁止的扩展名（PRD-chat F-FILE-05 规则 1）。一行一个，不区分大小写。
+# IM_FILE_BLOCKLIST 指向的配置文件里的条目会并进来（只能加，不能减），改了要重启。
+# 可执行和脚本类
+exe
+msi
+bat
+cmd
+com
+scr
+ps1
+vbs
+js
+jar
+apk
+ipa
+dmg
+pkg
+deb
+rpm
+sh
+hta
+lnk
+chm
+iso
+# 会被浏览器或系统执行的文档类
+html
+htm
+xhtml
+svg
+docm
+xlsm
+pptm
+# RS4-25 补充
+xlsb
+dotm
+xlam
+ppsm
+pif
+cpl
+wsf
+vbe
+jse
+reg
+msp
+mht
+mhtml
+url
+desktop
+command
+svgz
+xht
