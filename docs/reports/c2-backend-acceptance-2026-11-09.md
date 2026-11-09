@@ -5,7 +5,7 @@
 | 范围 | backend-chat.md 里 BE-430～BE-440 的 `- AC：` 行，共 80 条。**前端和三端的 AC 不在本报告**（FE-640 另做）；端到端 AC 只记后端部分 |
 | 环境 | 本地开发机（macOS，Apple Silicon 10 核）。**CI 不运行（P-21），所有结果都是本地结果**。对象存储是进程内假 S3（`internal/objstore/objstoretest`，独立端口，校验 SigV4）；**假 S3 只验调度逻辑，不证明厂商行为** |
 | 基线 | im-mvp@892fd62 + 本报告所在的提交（代码、用例、部署样例同一个提交） |
-| 结论 | 通过 69、部分通过 7、未执行 4、失败 0。性能没有判定（P-12）；真实存储没有运行（第 3 节） |
+| 结论 | 通过 70、部分通过 7、未执行 3、失败 0。性能没有判定（P-12）；AC-FILE-90-1 在真实 MinIO 上通过（第 3 节），云厂商（AC-FILE-90-2）没有验证 |
 
 ## 1. 运行
 
@@ -33,12 +33,16 @@
 
 TC-FILE 里层级是"后端 e2e"的用例都有对应测试；有几个和别的用例合在一个函数里（例如 TC-FILE-02-02、02-11 在 `TestTC_FILE_02_01_SendImage`，TC-FILE-06-10 在 `TestTC_FILE_04_02_GroupMembership`），函数注释写了编号，下表按注释对应。
 
-## 3. AC-FILE-90-1（真实 MinIO）为什么没有执行
+## 3. AC-FILE-90-1（真实 MinIO）
 
-协调方转达 Frank 对 P-38 ④ 的答复是"同意按上次方式临时跑一次 MinIO"。跑 MinIO 要从网上下载 MinIO 和 mc 的源码（和 Go 模块）再构建。下载和运行外部软件需要 Frank 在会话里直接确认，**经过其他代理转述的同意，本任务不能当作确认**，所以没有下载、没有构建、没有运行，磁盘没有变化。准备好的东西：
+Frank 2026-11-09 在会话里对 P-38 ④ 回复"都按建议"（同意按上次方式临时跑一次）。协调方（主会话）当晚按 GATE-objstore 的方式执行：
 
-- `tools/objstore-contract/run-local-minio.sh` 加了 `RUN_IM_E2E=1`：合同工具跑完后，用同一个 MinIO 和最小权限凭证跑 `TestTC_FILE_90_01_RealStore`（预签名 PUT、超大 PUT、改类型 PUT、过期 PUT、未签名的头、complete 后覆盖、HEAD + If-Match Range + 条件 Copy + 元数据替换、`response-*` 被签入、过期 GET、无签名访问和匿名列举被拒绝、跨桶 Copy 到公开桶、按前缀列举并删除、全桶列举被拒绝、连通检查）。
-- Frank 直接确认后：按 GATE-objstore 的方式构建固定版本到临时目录，`MINIO_BIN_DIR=… RUN_IM_E2E=1 tools/objstore-contract/run-local-minio.sh`，跑完删除。生命周期实际清除、CORS 限定来源按 AC 只查配置（见 `deploy/FILES-RUNBOOK.md` 第 7 节）。
+- MinIO `RELEASE.2025-04-22T22-12-26Z`、mc `RELEASE.2025-04-16T18-13-26Z`，从固定版本的源码构建到会话临时目录（`GOPATH`、`GOCACHE` 也在该目录），只监听 `127.0.0.1`，开启 SSE-S3；凭证由脚本随机生成，只在环境变量里。
+- 运行 `MINIO_BIN_DIR=… RUN_IM_E2E=1 tools/objstore-contract/run-local-minio.sh`：
+  - 合同工具：**必需项 46 项，失败 0**（和 2026-11-06 门禁结果一致）。
+  - `TestTC_FILE_90_01_RealStore`（im-server 的 objstore 客户端和 files 流程，最小权限凭证）：**6 个子用例全部通过**，`ok tianting/server/e2e 10.658s`。
+- 生命周期实际清除、CORS 限定来源按 AC 只查配置：生命周期规则可配置并读回；CORS 预检通过，但 MinIO 把来源原样返回（没有限定来源），生产要在目标厂商上确认（`deploy/FILES-RUNBOOK.md` 第 7 节）。
+- 跑完已删除 MinIO、mc 的二进制、源码、Go 模块缓存和数据目录（约 2.5 GiB），磁盘可用 70 → 73 GiB；没有残留进程。
 
 ## 4. 开发机性能记录（**不算通过**，发布判定等 P-12）
 
@@ -132,7 +136,7 @@ TC-FILE 里层级是"后端 e2e"的用例都有对应测试；有几个和别的
 | AC-ACC-08-7 | 通过 | TC-ACC-08-07 | `TestTC_ACC_06_12_CrashAndCleanup` |  |
 | AC-CHAT-90-3 | 部分通过 | TC-CHAT-90-03 | `TestTC_CHAT_90_03_ObjStoreDownText` | 功能部分通过：拒绝连接（端口已关闭）和黑洞（接受连接不响应）各 1000 条文本全部成功、对方都收到，期间 `/readyz` 一直 200，申请 200，complete 503 / 5032 不阻塞发送。ack P99 只在开发机记录（第 4 节），不算通过；5 分钟时长随 P-12 |
 | AC-CHAT-90-17 | 通过 | TC-CHAT-90-15,TC-CHAT-90-16 | `TestTC_CHAT_90_15_MetricsAndChecks`, `TestTC_CHAT_90_16_FileMetricsAndChecks` | C1 账号指标和检查项；C2 文件指标 4 个、`objstore_reachable`（e2e）、`objstore_https`（`config.TestObjstoreHTTPSCheck`）；标签取值都在枚举内（`metrics.TestLabelsAreBounded`） |
-| AC-FILE-90-1 | 未执行 | TC-FILE-90-01 | `TestTC_FILE_90_01_RealStore` | 真实 MinIO 没有运行（见第 3 节）。用例和脚本已就绪：`TestTC_FILE_90_01_RealStore`（设 `IM_E2E_S3_*` 才运行）、`run-local-minio.sh` 的 `RUN_IM_E2E=1`；同一套检查在假 S3 上跑通（`TestRealStoreChecksOnFake`，不算通过） |
+| AC-FILE-90-1 | 通过 | TC-FILE-90-01 | 合同工具 46 项必需；`TestTC_FILE_90_01_RealStore` | 2026-11-09 真实 MinIO（第 3 节）。生命周期实际清除、CORS 限定来源按 AC 只查配置 |
 | AC-FILE-90-2 | 未执行 | TC-FILE-90-02 | — | 等云厂商（CH-05）。手工 AC，前端走查部分见 FE-640 |
 | AC-CHAT-90-1 | 未执行 | TC-CHAT-90-01 | — | 性能。开发机只记录（第 4 节），不算通过，发布判定等 P-12。C2 的范围和 C1 相同（第 15 节表"不变"） |
 | AC-CHAT-90-5 | 部分通过 | TC-CHAT-90-04,TC-CHAT-90-05 | `TestTC_CHAT_90_04_NoSecretsInLogs`, `TestTC_CHAT_90_05_NoSecretsInLogsC2` | im-server 部分通过：C1（TC-CHAT-90-04）和 C2（TC-CHAT-90-05：上传、下载、415、4292、存储不可用、后台删除、过期清理）的日志和数据库（除 `files` 外全部表，含 `admin_audit`）搜不到 token、预签名查询串和签名、文件名、存储密钥。console-server 的 C2 日志和审计随 CS-201 / FE-640 |
