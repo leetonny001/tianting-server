@@ -50,7 +50,8 @@
 | BE-438 | ✅ 完成（部署样例和检查；厂商生效未验证） | `deploy/FILES-RUNBOOK.md`（桶、凭证、生命周期、CORS、Android 开发例外、访问日志、备份不含文件、恢复后手动对账、配置检查、指标、告警）；`deploy/objstore/` 样例只有占位符（`policy-im-server.json` 只给 `final/` 前缀列举、`policy-public-read.json` 没有列举、`lifecycle-private.json` `tmp/` 1 天、`cors-private.json` 限定来源、`im-files.example.env` 凭证留空），`test_samples.py` 11 项静态检查。服务端：配置检查 `objstore_https`（生产 http 本来就拒绝启动，补了单测 `TestObjstoreHTTPSCheck`）、`objstore_reachable`（按 `final/` 列举 1 个键）；指标 `im_file_uploads_total{kind,result}`、`im_objstore_errors_total{op}`、`im_objstore_requests_total{op}`，**`im_file_uploaded_bytes_total` 改名为第 14.2 节的 `im_file_bytes_total`**。告警只写在部署说明（第一批不发页面告警，`alerts.yml` 是 F-OPS-07 的 11 条）。**本地结果，CI 不运行**：AC-CHAT-90-17（C2 部分，TC-CHAT-90-16）通过；AC-CHAT-90-3 见 BE-440 |
 | BE-439 | 🟡 第 1、2 条完成；第 3 条等云厂商 | 第 2 条：生命周期实际清除、CORS 限定来源写进 `FILES-RUNBOOK.md` 第 7 节，另记了"无列举权限时不存在的键返回 403 还是 404"。第 1 条：`server/e2e/file_realstore_test.go`（`TestTC_FILE_90_01_RealStore`，设 `IM_E2E_S3_*` 才运行，默认跳过；同一套检查在假 S3 上跑通 `TestRealStoreChecksOnFake`，不算 AC 通过），`run-local-minio.sh` 加 `RUN_IM_E2E=1`。**2026-11-09 Frank 同意（P-38 ④）后由主会话在真实 MinIO 上运行：合同工具 46 项必需全过，`TestTC_FILE_90_01_RealStore` 6 个子用例全过，AC-FILE-90-1 通过；跑完已删除 MinIO**。AC-FILE-90-2 等 CH-05 |
 | BE-440 | 🟡 后端用例完成，AC-FILE-90-1、90-2 未执行，性能未判定 | 报告 [c2-backend-acceptance-2026-11-09.md](../reports/c2-backend-acceptance-2026-11-09.md)。`e2e/file_acceptance_test.go`：F-FILE-01 攻击序列对应表（22 条，`TestFileAttackSequencesHaveTests`）、TC-CHAT-90-03（拒绝连接和黑洞各 1000 条文本）、TC-CHAT-90-05（C2 流程日志和除 `files` 外全部表含 `admin_audit`，用 `scan-logs`）、TC-CHAT-90-16。`TestTC_CHAT_90_12_UploadRequestLatency` 按 TC 编号改名为 `TestTC_CHAT_90_11_…`。**本地结果，CI 不运行**。性能（90-1、90-2 的 TC-PERF、90-3、90-12）开发机只记录，不算通过，等 P-12 |
-| BE-406、BE-450～BE-460 | ⬜ 未开始 | 2026-11-10 分发 C3（任务、TC-APN、`trace.py` 加【C3】）。BE-406 在 C2 期间没有做，随 C3 第一波做。官方文档核对见文末第 34～46 条，PENDING P-40 |
+| BE-450 | ✅ 协议部分完成（提交号见本行所在提交） | **本地结果，CI 不运行**。`frame.schema.json` 加 `DeviceNotificationRegisterReq`、`DeviceNotificationUnregisterReq`、`DeviceNotificationSettingsReq`、`PresenceReq`（令牌上限 4096），ack 加 `showDetail`；`frames.json` 加 11 个合法、11 个非法；`server/internal/protocol/device.go`（命令名、请求结构、`Validate`）；`logic.TestTC_CHAT_90_24_DeviceFrameVectorsServerParse` 用服务端真实解析跑全部新用例（AC-CHAT-90-10 的 C3 服务端部分，TC-CHAT-90-24）；`README.md` 命令表、`ERRORS.md` 的 4030 `featureDisabled` 和注册的 4290 / 4000 文案（不新增错误码，`errors.json` 不变）。变异 4 条（令牌上限、空令牌、`env` 取值、`state` 取值）都被发现。**AC-APN-01-13、02-17 的行为（429 / 400 / 4030）要等 BE-451、BE-452 的服务端处理，没有验**；三套 SDK 副本随 FE-650、651 |
+| BE-406、BE-451～BE-460 | ⏸ 暂停（Frank 2026-11-10：推送后续做） | C3 第一波开工后 Frank 决定先做 C4。这几项**没有提交任何代码**（做到一半的改动已从工作区撤掉，见文末"C3 暂停时的状态"）。P-40 ①～④ 已定（PRD v1.5），恢复时 BE-457 可以一起做 |
 | 全部 | 🟡 C1、C2 已校准 | 见 [c1-acceptance-2026-11-07.md](../reports/c1-acceptance-2026-11-07.md) 第 9 节、[c2-calibration-2026-11-10.md](../reports/c2-calibration-2026-11-10.md)：人日不能直接换算成 AI 用时，瓶颈是本机资源和待决定项。C3 已分发；C4 起的部分等 Frank 决定 |
 
 ## 总览
@@ -799,3 +800,19 @@ C3 开工时按 PRD 第 21 节第 2 条核对官方文档（2026-11-10，**只�
 | 46 | F-APN-01 规则 5、5a | Android 13 以上要 `POST_NOTIFICATIONS`；每次回到前台对比授权和令牌 | 一致：Android 13（API 33）起是运行时权限，新安装的 App 默认关闭，被拒后系统不会再自动弹。FCM 建议每月刷新一次令牌，安卓令牌 270 天不活跃会失效（iOS 走 APNs，没有这个规则） | [notification-permission](https://developer.android.com/develop/ui/views/notifications/notification-permission)、[manage-tokens](https://firebase.google.com/docs/cloud-messaging/manage-tokens) | 确认。小补充：回到前台时如果距上次注册超过 30 天，即使令牌没变也重新注册一次（在每小时 10 次的限额内），让服务端知道令牌还活着；不改 AC。**2026-11-10 已写进 PRD-chat v1.5**（P-40，Frank"都按建议"） |
 
 没有查到官方说法、仍是"未核实"的：Apple Developer 费用和 App 内注销条款（第 21 节第 2 条前半，和推送实现无关，没有查）；FCM access token 的有效期；OAuth token 端点主机；中国大陆到 FCM 的连通性（第 21 节第 5 条，要部署地实测）；iOS 进入后台时 `presence` 那一帧能否发出（第 21 节第 6 条，FE-651、FE-654 实现时记录）。
+
+C3 第一波实现时发现的（PRD 冻结，没有改；C3 已暂停，**都没有落地**，恢复时按"建议"一列做，Frank 不同意再改）。**需要 Frank 定的是第 47、48 条**：
+
+| # | 位置 | 问题 | 建议 |
+|---|---|---|---|
+| 47 | 第 12.1 节、BE-451 第 2 条 | 令牌字段级加密和详情模式 collapse id 的"服务端密钥"没有定义变量名；"复用现有字段级加密的做法"没说复用哪把密钥。另外 F-APN-05 规则 2 的"项目 ID"也没有变量名 | 新增 `IM_PUSH_TOKEN_KEY`（≥ 32 字节，开关打开时生产必填，和其他密钥不同），令牌 AES-256-GCM（AAD = 令牌哈希）和 collapse id 的 HMAC 用它按用途派生，不复用 `IM_QUARANTINE_KEY`；项目 ID 默认取服务账号 JSON 的 `project_id`，`IM_FCM_PROJECT_ID` 可以覆盖。**要 Frank 定**变量名 |
+| 48 | F-APN-01 规则 1、4 | 没有 `sid` 的令牌（演示、管理接口 token）在强制下线、封禁、改密、找回、注销时删不删没写（不变量只说 `sid`）；无 `sid` 又没有令牌时 `deviceNotificationSettings` 无处保存 | 这些操作同时让无 `sid` 的旧 token 失效（版本号、`credentials_changed_at`），所以在吊销全部会话的同一事务里把这个用户的令牌（含无 `sid` 的）全删；退出、refresh 重放只删那条 `sid` 的，`sessions revoke-all` 只删有 `sid` 的。无 `sid` 无令牌时 ack 返回 `false`、不保存。**要 Frank 定** |
+| 49 | F-APN-04 规则 3、v1.5 规则 9 | `channel_id`"消息"：Android 渠道 ID 和显示名是两个东西，PRD 只写了名字 | 服务端发 `channel_id: "messages"`，App 建渠道时 ID 用 `messages`、显示名"消息"（和 FE-652 对齐，不需要 Frank 定） |
+| 50 | 任务单 BE-451 第 1 条、BE-459 第 1 条 | `store.PushStore`、`push_*_test.go` 这两个名字已被系统推送（PRD-live）占用（`store.PushStore` 是收件箱，`e2e/push_test.go` 已存在） | 存储接口叫 `store.DevicePushStore`，e2e 文件用 `apn_*_test.go`（记录，不需要 Frank 定） |
+
+### C3 暂停时的状态（2026-11-10）
+
+- **已提交**：BE-450 的协议部分（见进度表）。
+- **没有提交、已从工作区撤掉**：BE-451（`0018_device_push.sql`、`store.DevicePushStore` 和契约用例 5 个、配置和开关、`features.offlinePush`）、BE-453 的存储部分（全部吊销入口同一事务删令牌、改密复制 `show_detail`、`session_purge` 清令牌）、BE-454（`delivery.Presence`、hub 实现、连接的收帧时间和前后台、`IM_TEST_DISABLE_IDLE`、关闭回调）、BE-455、456（`push` 包：队列、合并、延迟队列重试、断线补推、角标缓存、内容和 collapse id）、BE-406（`push/pushtest` 假 APNs、假 FCM、假 OAuth）、BE-457（`push/apns`、`push/fcm` 客户端）、app 和 admin 的接线。其中存储契约用例当时已经通过；`push` 包、假通道、客户端只编译过，**没有 e2e，也没有单测**。这份草稿只留在当时会话的临时目录里，不在仓库，**恢复时按任务单重新做，不要假设草稿存在**。
+- **恢复时从这里接着做**：按依赖顺序 BE-451（迁移 `0018`，`DevicePushStore`，`IM_OFFLINE_PUSH_ENABLED` 等第 4.1 节配置，4030，`features.offlinePush` 同时改 `http-client.schema.json`）→ BE-406、BE-452、BE-454 → BE-453、BE-455 → BE-456、BE-457 → BE-458 → BE-459。第 47、48 条 Frank 定了再落地；BE-455 的重试按 v1.5 的间隔（延迟队列 + [IM 钟]）。
+

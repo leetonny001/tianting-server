@@ -56,6 +56,10 @@ ws(s)://{host}/ws?platform={android|ios|web|pc}
 | `joinRoom` / `leaveRoom` | — | 二期（聊天室） | — |
 | `push` | 下行 | 系统推送：`{pushId, type, data, ts, target, pushSeq?, roomId?}`。`pushSeq` 只在进收件箱的推送上出现（`target=user` 且 `ttlSeconds` ≠ 0）；`target=all` 和 `ttlSeconds=0` 只投当前在线连接，不补收（[PRD-live v1.0](../docs/prd/PRD-live-v1.0.md) 第 4 节）。SDK 行为用例 `vectors/push-sync.json` | — |
 | `pushSync` | 上行 | 按用户推送的离线补收：`{afterSeq, limit?}`（`limit` 1～100，默认 50，SDK 固定用 100）或 `{fromLatest: true}`（只取最新序号建立游标，不回放），二选一。只能拉自己的收件箱，只返回未过期的。`IM_PUSH_ENABLED` 关闭时 4001，SDK 静默忽略；每用户默认 120 次/分钟，超出 4290 | `{pushes, hasMore, latestSeq}`，三者在同一读事务内取得；`hasMore=true` 时 `pushes` 非空 |
+| `deviceNotificationRegister` | 上行 | **C3 离线推送（PRD-chat F-APN-01，BE-450；服务端处理随 BE-451、BE-452，C3 已暂停）**。`{provider: "apns"\|"fcm", token, env?: "sandbox"\|"production", appId}`，`env` 缺省 production；令牌为空或超过 4096 字节 4000；每账号每小时 10 次，超出 4290；`IM_OFFLINE_PUSH_ENABLED` 关闭时 4030 `featureDisabled`。令牌绑定当前 `sid`，没有 `sid` 的 token 只绑定 `userId`。名字避开系统通知的 `push`、`pushSync` | `{}` |
+| `deviceNotificationUnregister` | 上行 | C3：`{}`，删除当前 `sid` 绑定的令牌（没有 `sid` 时删除这个用户没有 `sid` 的令牌）；开关关闭 4030 `featureDisabled` | `{}` |
+| `deviceNotificationSettings` | 上行 | C3：`{showDetail?}`，不带 `showDetail` 只读取；没有令牌也能设置（F-APN-03 规则 2）；开关关闭 4030 `featureDisabled` | `{showDetail}`（当前值） |
+| `presence` | 上行 | C3：`{state: "foreground"\|"background"}`，普通带 `id` 的命令（R-CB-26）。android、ios 的连接在 `auth` 之后第一帧上报当前状态，收到之前按后台；web、pc 默认前台，不上报（F-APN-02 规则 3） | `{}` |
 
 ## 3. 交互规则
 

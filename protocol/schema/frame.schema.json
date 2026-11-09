@@ -198,6 +198,18 @@
         },
         {
           "$ref": "#/$defs/PushSyncReq"
+        },
+        {
+          "$ref": "#/$defs/DeviceNotificationRegisterReq"
+        },
+        {
+          "$ref": "#/$defs/DeviceNotificationUnregisterReq"
+        },
+        {
+          "$ref": "#/$defs/DeviceNotificationSettingsReq"
+        },
+        {
+          "$ref": "#/$defs/PresenceReq"
         }
       ]
     },
@@ -1824,7 +1836,7 @@
         },
         "data": {
           "type": "object",
-          "description": "按请求类型不同：auth → {userId, serverTime}；send → {msgId, convId, seq?, ts}；sync → {messages, hasMore}；convs → {convs, truncated}；joinRoom → {online, recent}；其余为空对象；社交命令（PRD-social 9.1 节）：修改类 → {status?, ver, changed, items}；friendRequestsSeen → {requestSeenVer, ver, changed}；setPrivacy → {ver, changed}；socialSync → {full, untilVer, latestVer, hasMore, cursor, restart?, friends, requests, blocks, requestSeenVer, settings, mode, strangerMsgLimit, official}；userSearch → {user}；users → {users}；myGroups → {groups, nextCursor}；pushSync → {pushes, hasMore, latestSeq}",
+          "description": "按请求类型不同：auth → {userId, serverTime}；send → {msgId, convId, seq?, ts}；sync → {messages, hasMore}；convs → {convs, truncated}；joinRoom → {online, recent}；其余为空对象；社交命令（PRD-social 9.1 节）：修改类 → {status?, ver, changed, items}；friendRequestsSeen → {requestSeenVer, ver, changed}；setPrivacy → {ver, changed}；socialSync → {full, untilVer, latestVer, hasMore, cursor, restart?, friends, requests, blocks, requestSeenVer, settings, mode, strangerMsgLimit, official}；userSearch → {user}；users → {users}；myGroups → {groups, nextCursor}；pushSync → {pushes, hasMore, latestSeq}；deviceNotificationSettings → {showDetail}；deviceNotificationRegister、deviceNotificationUnregister、presence → {}",
           "properties": {
             "userId": {
               "$ref": "#/$defs/UserId"
@@ -2209,6 +2221,10 @@
             "recoveryCodeUnacked": {
               "type": "boolean",
               "description": "auth：账号最新一代恢复码没有确认时才出现（PRD-chat F-ACC-05 规则 1）"
+            },
+            "showDetail": {
+              "type": "boolean",
+              "description": "deviceNotificationSettings：这台设备当前的\"显示发送者和内容\"（PRD-chat F-APN-03 规则 2）"
             }
           },
           "additionalProperties": false
@@ -2749,6 +2765,142 @@
               }
             }
           ],
+          "additionalProperties": false
+        }
+      },
+      "additionalProperties": false
+    },
+    "DeviceNotificationRegisterReq": {
+      "type": "object",
+      "description": "PRD-chat F-APN-01 规则 1（C3）：令牌绑定当前 sid；没有 sid 的 token 只绑定 userId。每账号每小时 10 次（4290）；令牌为空或超长 4000；开关关闭 4030 featureDisabled。ack data 为空对象",
+      "required": [
+        "id",
+        "cmd",
+        "data"
+      ],
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/ReqId"
+        },
+        "cmd": {
+          "const": "deviceNotificationRegister"
+        },
+        "data": {
+          "type": "object",
+          "required": [
+            "provider",
+            "token",
+            "appId"
+          ],
+          "properties": {
+            "provider": {
+              "enum": [
+                "apns",
+                "fcm"
+              ]
+            },
+            "token": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 4096,
+              "description": "设备令牌。上限 4096（按 UTF-8 字节，服务端按字节判断；APNs 十六进制令牌和 FCM 令牌都放得下，BE-450 第 1 条）"
+            },
+            "env": {
+              "enum": [
+                "sandbox",
+                "production"
+              ],
+              "description": "缺省为 production；FCM 不区分环境"
+            },
+            "appId": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 255,
+              "description": "bundle id 或包名"
+            }
+          },
+          "additionalProperties": false
+        }
+      },
+      "additionalProperties": false
+    },
+    "DeviceNotificationUnregisterReq": {
+      "type": "object",
+      "description": "PRD-chat F-APN-01 规则 1（C3）：删除当前 sid 绑定的令牌；没有 sid 时删除这个用户没有 sid 的令牌。ack data 为空对象",
+      "required": [
+        "id",
+        "cmd",
+        "data"
+      ],
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/ReqId"
+        },
+        "cmd": {
+          "const": "deviceNotificationUnregister"
+        },
+        "data": {
+          "type": "object",
+          "maxProperties": 0
+        }
+      },
+      "additionalProperties": false
+    },
+    "DeviceNotificationSettingsReq": {
+      "type": "object",
+      "description": "PRD-chat F-APN-03 规则 2（C3）：不带 showDetail 只读取；没有令牌也能设置。ack → {showDetail}",
+      "required": [
+        "id",
+        "cmd",
+        "data"
+      ],
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/ReqId"
+        },
+        "cmd": {
+          "const": "deviceNotificationSettings"
+        },
+        "data": {
+          "type": "object",
+          "properties": {
+            "showDetail": {
+              "type": "boolean"
+            }
+          },
+          "additionalProperties": false
+        }
+      },
+      "additionalProperties": false
+    },
+    "PresenceReq": {
+      "type": "object",
+      "description": "PRD-chat F-APN-02 规则 3（C3）：普通带 id 的命令（R-CB-26）。android、ios 的连接 auth 之后第一帧上报当前状态，收到之前按后台；web、pc 默认前台不上报。ack data 为空对象",
+      "required": [
+        "id",
+        "cmd",
+        "data"
+      ],
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/ReqId"
+        },
+        "cmd": {
+          "const": "presence"
+        },
+        "data": {
+          "type": "object",
+          "required": [
+            "state"
+          ],
+          "properties": {
+            "state": {
+              "enum": [
+                "foreground",
+                "background"
+              ]
+            }
+          },
           "additionalProperties": false
         }
       },

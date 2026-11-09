@@ -41,6 +41,8 @@
 |---|---|---|
 | `send` | 4290 | 发送太频繁，请稍后再试 |
 | 其他命令 | 4290 | 操作太频繁，请稍后再试 |
+| `deviceNotificationRegister` | 4290 | 不提示（每账号每小时 10 次，下次回到前台再注册，C3） |
+| `deviceNotificationRegister` | 4000 | 不提示（令牌为空或超过 4096 字节，开发期缺陷） |
 | `send` | 4035 | 对方开启了好友验证，你还不是他的好友（附"发送好友申请"入口） |
 | `send` | 4036 | 消息已发出，但被对方拒收了 |
 | `send` | 4137 | 对方回复之前，最多只能发送 N 条消息（N 取最近一次同步 / 事件中的 `strangerMsgLimit`） |
@@ -149,7 +151,7 @@
 | 4030 | `accountSessionRequired` | 没有 `sid` 的 token 调用账号接口 |
 | 4030 | `accountExists` | 有账号的用户调用 `/demo/login` |
 | 4030 | `accountDeletionPending` | 注销冷静期内密码正确（`details.deleteAt`） |
-| 4030 | `featureDisabled` | 新命令的开关关闭（C2 起用） |
+| 4030 | `featureDisabled` | 新命令的开关关闭（C2 起用；C3 的 `deviceNotificationRegister`、`deviceNotificationUnregister`、`deviceNotificationSettings`、`presence` 同样） |
 | 4290 | `recoverLimited` | 用最新一代恢复码成功 `recover` 超过每小时次数（**PRD 第 11.5 节有列，F-ACC-05 规则 2**） |
 | 4290 | `uploadPendingLimit` | 未完成上传数超限（C2），SDK 不自动重试，提示"上传任务太多，请稍后再试" |
 | 5032 | `completeInProgress` | 同一上传的 `complete` 正在进行（租约），可以重试（C2） |
