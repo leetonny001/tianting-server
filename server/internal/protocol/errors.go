@@ -22,7 +22,8 @@ const (
 	CodeAdminSignatureInvalid    = 4017
 	CodeAccountCredentials       = 4018 // 用户名、密码或恢复码错误，不区分（PRD-chat F-ACC-02 规则 2）
 	CodeRefreshTokenInvalid      = 4019 // PRD-chat F-ACC-03
-	CodeFileNotFound             = 4048 // PRD-chat F-FILE-04，C1 只有头像字段用到
+	CodeFileNotFound             = 4048 // PRD-chat F-FILE-04：不存在、无权访问、已过期或已撤回，不区分
+	CodeFileNotReady             = 4096 // 文件未完成上传，或已绑定其他消息（PRD-chat 第 11.5 节）
 	CodeUserBanned               = 4034
 	CodeMessageNotFound          = 4044
 	CodeMsgReadGrantRequired     = 4039
@@ -50,11 +51,14 @@ const (
 	CodeJoinedGroupLimitExceeded = 4135
 	CodeGroupAdminLimitExceeded  = 4136
 	CodeStrangerMsgLimit         = 4137
+	CodeFileTooLarge             = 4139 // details.maxBytes
+	CodeFileTypeNotAllowed       = 4150
 	CodeRateLimited              = 4290
 	CodeQuotaExceeded            = 4292
 	CodeAccountLocked            = 4294 // details.retryAfterSeconds，不自动重试
 	CodeInternal                 = 5000
 	CodeServiceUnavailable       = 5030
+	CodeObjectStoreUnavailable   = 5032
 )
 
 type codeInfo struct {
@@ -81,6 +85,7 @@ var codes = map[int]codeInfo{
 	CodeAccountCredentials:       {"ACCOUNT_CREDENTIALS_INVALID", 401},
 	CodeRefreshTokenInvalid:      {"REFRESH_TOKEN_INVALID", 401},
 	CodeFileNotFound:             {"FILE_NOT_FOUND", 404},
+	CodeFileNotReady:             {"FILE_NOT_READY", 409},
 	CodeUserBanned:               {"USER_BANNED", 403},
 	CodeMessageNotFound:          {"MESSAGE_NOT_FOUND", 404},
 	CodeMsgReadGrantRequired:     {"MSG_READ_GRANT_REQUIRED", 403},
@@ -108,11 +113,14 @@ var codes = map[int]codeInfo{
 	CodeJoinedGroupLimitExceeded: {"JOINED_GROUP_LIMIT_EXCEEDED", 0},
 	CodeGroupAdminLimitExceeded:  {"GROUP_ADMIN_LIMIT_EXCEEDED", 0},
 	CodeStrangerMsgLimit:         {"STRANGER_MSG_LIMIT", 0},
+	CodeFileTooLarge:             {"FILE_TOO_LARGE", 413},
+	CodeFileTypeNotAllowed:       {"FILE_TYPE_NOT_ALLOWED", 415},
 	CodeRateLimited:              {"RATE_LIMITED", 429},
 	CodeQuotaExceeded:            {"QUOTA_EXCEEDED", 429},
 	CodeAccountLocked:            {"ACCOUNT_LOGIN_LOCKED", 429},
 	CodeInternal:                 {"INTERNAL", 500},
 	CodeServiceUnavailable:       {"SERVICE_UNAVAILABLE", 503},
+	CodeObjectStoreUnavailable:   {"OBJECT_STORE_UNAVAILABLE", 503},
 }
 
 // HTTPStatus 返回错误码在管理接口上对应的 HTTP 状态码；未定义时按前三位推断。
@@ -219,15 +227,22 @@ const (
 	ReasonAccountDeletionPending = "accountDeletionPending"
 	ReasonFeatureDisabled        = "featureDisabled"
 	ReasonRecoverLimited         = "recoverLimited"
+	// C2 文件（PRD-chat F-FILE-01、02）。
+	ReasonFileKindMismatch   = "fileKindMismatch"
+	ReasonUploadMismatch     = "uploadMismatch"
+	ReasonFileNameTooLong    = "fileNameTooLong"
+	ReasonUploadPendingLimit = "uploadPendingLimit"
+	ReasonCompleteInProgress = "completeInProgress"
 )
 
 // reasons 按错误码列出 reason，只给一致性测试用。
 var reasons = map[int][]string{
-	CodeBadRequest:          {ReasonPasswordWeak, ReasonRecoveryCodeStale},
-	CodeTokenExpired:        {ReasonTokenSuperseded},
-	CodeRefreshTokenInvalid: {ReasonRefreshInvalid, ReasonRefreshExpired, ReasonRefreshRevoked, ReasonRefreshSuperseded, ReasonReplayDetected, ReasonCredentialsChanged, ReasonLoggedOutOthers, ReasonAccountDeleted},
-	CodeForbidden:           {ReasonRegisterClosed, ReasonInviteInvalid, ReasonAccountSessionRequired, ReasonAccountExists, ReasonAccountDeletionPending, ReasonFeatureDisabled},
-	CodeRateLimited:         {ReasonRecoverLimited},
+	CodeBadRequest:             {ReasonPasswordWeak, ReasonRecoveryCodeStale, ReasonFileKindMismatch, ReasonUploadMismatch, ReasonFileNameTooLong},
+	CodeTokenExpired:           {ReasonTokenSuperseded},
+	CodeRefreshTokenInvalid:    {ReasonRefreshInvalid, ReasonRefreshExpired, ReasonRefreshRevoked, ReasonRefreshSuperseded, ReasonReplayDetected, ReasonCredentialsChanged, ReasonLoggedOutOthers, ReasonAccountDeleted},
+	CodeForbidden:              {ReasonRegisterClosed, ReasonInviteInvalid, ReasonAccountSessionRequired, ReasonAccountExists, ReasonAccountDeletionPending, ReasonFeatureDisabled},
+	CodeRateLimited:            {ReasonRecoverLimited, ReasonUploadPendingLimit},
+	CodeObjectStoreUnavailable: {ReasonCompleteInProgress},
 }
 
 // WithReason 构造带 reason 的协议错误。
