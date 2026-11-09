@@ -2,7 +2,7 @@
 
 | 项 | 内容 |
 |---|---|
-| 依据 | [PRD-chat v1.4](../prd/PRD-chat-v1.4.md)（冻结）第 11.6、14 节、F-ACC-09 和 F-APN-01 规则 4；[PRD-admin v1.2](../prd/PRD-admin-v1.3.md) 基座（权限点、两阶段审计、错误码）；[errors.json](../../protocol/errors.json) |
+| 依据 | [PRD-chat v1.5](../prd/PRD-chat-v1.5.md)（冻结）第 11.6、14 节、F-ACC-09 和 F-APN-01 规则 4；[PRD-admin v1.2](../prd/PRD-admin-v1.3.md) 基座（权限点、两阶段审计、错误码）；[errors.json](../../protocol/errors.json) |
 | 范围 | **C1、C2、C3**（CH-27；C3 是 Frank 2026-11-10 决定按顺序继续的）。词库、举报（`moderation.words`、`report.*`、`console-msgread` 增加 `report.evidence`）属于 C6，这里不做 |
 | 负责 | 后端（AI） |
 | 仓库 | tianting-console-server（Go）。管理后台页面在 tianting-admin，见 [frontend-chat.md](frontend-chat.md)；im-server 接口见 [backend-chat.md](backend-chat.md) |

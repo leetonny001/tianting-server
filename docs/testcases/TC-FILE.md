@@ -1,6 +1,6 @@
 # 测试用例：图片和文件消息（FILE，C2）
 
-> 依据：[PRD-chat v1.4](../prd/PRD-chat-v1.4.md)（冻结）第 4、6 节、第 15 节 AC-FILE-90；[GATE-objstore](../review/GATE-objstore-2026-11-06.md)；[tools/objstore-contract](../../tools/objstore-contract/README.md)。任务单：[backend-chat](../tasks/backend-chat.md)、[console-chat](../tasks/console-chat.md)、[frontend-chat](../tasks/frontend-chat.md)。
+> 依据：[PRD-chat v1.5](../prd/PRD-chat-v1.5.md)（冻结）第 4、6 节、第 15 节 AC-FILE-90；[GATE-objstore](../review/GATE-objstore-2026-11-06.md)；[tools/objstore-contract](../../tools/objstore-contract/README.md)。任务单：[backend-chat](../tasks/backend-chat.md)、[console-chat](../tasks/console-chat.md)、[frontend-chat](../tasks/frontend-chat.md)。
 > 范围：标了【C2】的 AC-FILE（CH-27）。依赖撤回、清空、举报的 AC 随 C4～C6。
 >
 > 通用约定：

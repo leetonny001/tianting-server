@@ -2,7 +2,7 @@
 
 | 项 | 内容 |
 |---|---|
-| 依据 | [PRD-chat v1.4](../prd/PRD-chat-v1.4.md)（冻结）第 5～7、13、14.1、15、20.3 节；[PRD-ui v1.2](../prd/PRD-ui-v1.3.md)（界面规则 B-1～B-8，第 6 节视觉）；[SDK 设计说明](../sdk/README.md)；[errors.json](../../protocol/errors.json) |
+| 依据 | [PRD-chat v1.5](../prd/PRD-chat-v1.5.md)（冻结）第 5～7、13、14.1、15、20.3 节；[PRD-ui v1.2](../prd/PRD-ui-v1.3.md)（界面规则 B-1～B-8，第 6 节视觉）；[SDK 设计说明](../sdk/README.md)；[errors.json](../../protocol/errors.json) |
 | 范围 | **C1、C2、C3 和公共部分**（CH-27；C3 是 Frank 2026-11-10 决定按顺序继续的）。撤回、引用、@、置顶、举报的接口和界面不做；设备通知（C3）只有原生端，H5 没有离线通知（第 13.2 节）；【全部】的 AC 验证到 C3 为止的页面（第 15 节累计表） |
 | 负责 | 前端（AI） |
 | 仓库 | tianting-sdk-ts、tianting-sdk-kotlin（`sdk-core` 纯 JVM）、tianting-sdk-swift、tianting-web（H5）、tianting-android、tianting-ios、tianting-admin |
