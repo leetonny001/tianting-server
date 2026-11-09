@@ -1,6 +1,6 @@
 # 测试用例：账号注册和登录（ACC，C1；头像部分 C2）
 
-> 依据：[PRD-chat v1.1](../prd/PRD-chat-v1.1.md)（冻结）第 4、5 节；[ERRORS.md](../../protocol/ERRORS.md)。任务单：[backend-chat](../tasks/backend-chat.md)、[console-chat](../tasks/console-chat.md)、[frontend-chat](../tasks/frontend-chat.md)。
+> 依据：[PRD-chat v1.2](../prd/PRD-chat-v1.2.md)（冻结）第 4、5 节；[ERRORS.md](../../protocol/ERRORS.md)。任务单：[backend-chat](../tasks/backend-chat.md)、[console-chat](../tasks/console-chat.md)、[frontend-chat](../tasks/frontend-chat.md)。
 > 范围：标了【C1】【C2】的 AC-ACC（CH-27）。C3～C6 的 AC-ACC 不在这里。
 >
 > 通用约定：
@@ -794,7 +794,7 @@
 - 步骤：
   1. 冷启动 App
 - 预期结果：
-  1. 回登录页，提示"登录已失效，请重新登录"；本地 token 被清除
+  1. 回登录页，本地 token 被清除。提示"登录已失效，请重新登录"（本地认为 access 已到期、先刷新得到 4019）或"账号已被下线"（access 未到期、先连上被 `kicked`），两种都算通过（v1.2，I3）。用例要断言实际走的是哪条路径，并核对对应文案
 
 ### TC-ACC-03-09 H5 刷新页面仍登录，新标签页要重新登录，localStorage 没有 token
 - 关联 AC：AC-ACC-03-9
@@ -1395,6 +1395,22 @@
   3. 第 3 步通过
 
 ## F-ACC-04 退出、改密与下线
+
+### TC-ACC-03-51 距绝对上限不足 1 秒的刷新按到期处理，不再签发
+- 关联 AC：AC-ACC-03-15、AC-ACC-03-43
+- 优先级：P0
+- 批次：C1
+- 层级：Go e2e（[IM 钟]）
+- 环境：E1 单节点
+- 前置条件：登录得到 R1，记下 `absoluteExpiresAt`（PRD-chat v1.2 第 4 节 `IM_REFRESH_ABSOLUTE`，F2）
+- 步骤：
+  1. [IM 钟] 推进到距上限 1.5 秒，用 R1 刷新
+  2. 推进到距上限 0.5 秒，用上一步拿到的值刷新
+  3. 推进到上限的同一秒内，再刷新一次
+- 预期结果：
+  1. 200，新 access 到期不超过 `absoluteExpiresAt`
+  2. 401 / 4019，`reason=expired`；没有新的 refresh 签发，会话不前进
+  3. 同 2
 
 ### TC-ACC-04-01 D1 退出：D1 的 refresh、access 都失效，D2 不受影响
 - 关联 AC：AC-ACC-04-1
@@ -2740,7 +2756,7 @@
 
 ## 说明
 
-分发时发现的矛盾已在 [PRD-chat v1.1](../prd/PRD-chat-v1.1.md) 第 22 节修正，用例和 AC 一致。
+分发时发现的矛盾已在 [PRD-chat v1.1](../prd/PRD-chat-v1.1.md) 第 22 节修正；C1 验收发现的口径问题在 [v1.2](../prd/PRD-chat-v1.2.md) 第 22 节修正（TC-ACC-03-08 两种文案、新增 TC-ACC-03-51）。用例和 AC 一致。
 
 - AC-ACC-04-29 只有 Postgres 实现后才能跑，C1 验收记未执行。
 - AC-ACC-03-19、03-27、04-6 的推送令牌部分 C3 上线时验。

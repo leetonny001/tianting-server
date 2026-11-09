@@ -138,6 +138,40 @@ func TestTC_ACC_03_15_WebAbsolute(t *testing.T) {
 	e.wantRefreshErr("over absolute", cur.RefreshToken, protocol.ReasonRefreshExpired)
 }
 
+// TC-ACC-03-51（AC-ACC-03-15、AC-ACC-03-43，PRD-chat v1.2 F2）：距绝对上限 1.5 秒还能刷新；不足 1 秒、同一秒内都按到期处理，不再签发。
+func TestTC_ACC_03_51_LastSecondBeforeAbsolute(t *testing.T) {
+	e := openEnv(t, nil)
+	clk := e.freeze()
+	e.register("alice_1", nil)
+	r := e.mustLogin("alice_1", goodPassword, "android")
+	abs := r.AbsoluteExpiresAt
+	at := func(before time.Duration) {
+		clk.now = time.UnixMilli(abs).Add(-before)
+		e.setClock(clk.now)
+	}
+	// 滑动有效期 90 天：每 80 天刷新并转正一次，续到距上限不足 80 天，这时到期时间被截到上限。
+	cur := r
+	for clk.now.Add(80*oneDay).UnixMilli() < abs {
+		clk.advance(80 * oneDay)
+		cur = e.mustRefresh(cur.RefreshToken)
+		if code, b := e.get("/v1/account/events", cur.AccessToken); code != http.StatusOK {
+			t.Fatalf("promote: %d %s", code, b)
+		}
+	}
+	at(1500 * time.Millisecond)
+	next := e.mustRefresh(cur.RefreshToken)
+	if next.AccessExpiresAt > abs || next.RefreshExpiresAt > abs {
+		t.Fatalf("over the absolute limit: %+v", next)
+	}
+	at(500 * time.Millisecond)
+	e.wantRefreshErr("0.5s before absolute", next.RefreshToken, protocol.ReasonRefreshExpired)
+	at(time.Millisecond)
+	e.wantRefreshErr("same second as absolute", next.RefreshToken, protocol.ReasonRefreshExpired)
+	// 没有签发新值：回到 1.5 秒前，上一次拿到的值仍是当前值，还能用（会话没有前进）。
+	at(1500 * time.Millisecond)
+	e.mustRefresh(next.RefreshToken)
+}
+
 // TC-ACC-03-19（AC-ACC-03-19）：响应丢失，5 分钟、1 小时、3 天后用旧值都成功，指标增加。推送令牌部分 C3 上线时验。
 func TestTC_ACC_03_19_ResponseLost(t *testing.T) {
 	e := openEnv(t, nil)

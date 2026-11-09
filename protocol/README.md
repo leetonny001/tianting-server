@@ -1,6 +1,6 @@
 # IM 协议（v1）
 
-协议的唯一真相源，对应 [PRD v1.2](../docs/prd/PRD-core-v1.2.md) 和 [PRD-chat v1.1](../docs/prd/PRD-chat-v1.1.md)。服务端和三套 SDK（[tianting-sdk-ts](https://github.com/leetonny001/tianting-sdk-ts)、tianting-sdk-kotlin、tianting-sdk-swift）都以这里为准，并跑同一批用例。SDK 仓库里放的是副本，协议只在这里改，改完通知各 SDK 仓库运行 `scripts/sync-protocol.sh`。
+协议的唯一真相源，对应 [PRD v1.2](../docs/prd/PRD-core-v1.2.md) 和 [PRD-chat v1.2](../docs/prd/PRD-chat-v1.2.md)。服务端和三套 SDK（[tianting-sdk-ts](https://github.com/leetonny001/tianting-sdk-ts)、tianting-sdk-kotlin、tianting-sdk-swift）都以这里为准，并跑同一批用例。SDK 仓库里放的是副本，协议只在这里改，改完通知各 SDK 仓库运行 `scripts/sync-protocol.sh`。
 
 | 文件 | 内容 |
 |---|---|

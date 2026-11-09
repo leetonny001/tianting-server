@@ -32,6 +32,9 @@ type RefreshInput struct {
 }
 
 // refreshInvalid：mac 错、格式不对、kid 不认识。不吊销，不计重放，不带 recoverBefore（RS4-05）。
+// absoluteGraceMs：距绝对上限不足这么久的刷新按到期处理（F2）。
+const absoluteGraceMs = 1000
+
 func refreshInvalid() *protocol.Error {
 	return protocol.WithReason(protocol.CodeRefreshTokenInvalid, protocol.ReasonRefreshInvalid, "refresh token is invalid")
 }
@@ -89,7 +92,9 @@ func (s *Service) Refresh(ctx context.Context, in RefreshInput, ip string) (*Aut
 		}
 		now := s.Clock.Now()
 		ms := now.UnixMilli()
-		if ms >= d.ExpiresAt {
+		// 距绝对上限不足 1 秒（含同一秒）按到期处理，不再签发（PRD-chat v1.2 IM_REFRESH_ABSOLUTE，F2）：
+		// JWT 的 exp 只到秒，这一秒里服务端已经踢 tokenExpired，再签发只会让客户端多刷新、重连几次。
+		if ms >= d.ExpiresAt || (d.AbsoluteExpiresAt > 0 && d.AbsoluteExpiresAt-ms < absoluteGraceMs) {
 			return nil, s.refreshErr(ctx, d.UserID, protocol.ReasonRefreshExpired)
 		}
 		pendingIdx := slices.IndexFunc(d.Pendings, func(p store.PendingGen) bool { return p.Gen == claims.Gen && p.Hash == hash })

@@ -5,7 +5,7 @@
       python3 tools/trace.py --check    # 只检查，有缺口时退出码为 1（可用于 CI）
 
 规则：
-- PRD：PRD-core v1.5 和它的组成部分（PRD-social v1.1、PRD-ui v1.3、PRD-admin v1.3、PRD-ops v1.4），PRD-live v1.2 已冻结的部分，PRD-chat v1.1 的 C1、C2。
+- PRD：PRD-core v1.5 和它的组成部分（PRD-social v1.1、PRD-ui v1.3、PRD-admin v1.3、PRD-ops v1.4），PRD-live v1.2 已冻结的部分，PRD-chat v1.2 的 C1、C2。
 - PRD-live v1.0 只统计 3.3 节冻结、且归属 L1 或“随 CS-044”的 AC-PUSH（FROZEN_PUSH_EXCLUDE 排除 L2、L3）；聊天室和迁移仍是草稿，随里程碑定稿后再纳入。
 - 任务单：docs/tasks/*.md 里的 `### BE-xxx`（im-server）、`### CS-xxx`（console-server）、`### FE-xxx`（SDK、H5、两个后台前端）。
 - 带【后端】的 AC 必须有 BE 或 CS 任务；带【前端】的 AC 必须有 FE 任务；
@@ -20,7 +20,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 PRDS = [ROOT / "docs/prd" / n for n in (
     "PRD-core-v1.5.md", "PRD-social-v1.1.md", "PRD-ui-v1.3.md", "PRD-admin-v1.3.md", "PRD-ops-v1.4.md",
-    "PRD-live-v1.2.md", "PRD-chat-v1.1.md")]
+    "PRD-live-v1.2.md", "PRD-chat-v1.2.md")]
 # PRD-chat CH-27：现在只排 C1、C2 和公共部分。C3～C6 决定继续时把里程碑加进来
 CHAT_MILESTONES = ("【C1】", "【C2】", "【全部】")
 # PRD-live v1.0 3.2 节：L2、L3 的 AC 随对应里程碑分发任务和用例
@@ -47,7 +47,7 @@ def load_acs():
             rest = m.group(2)
             if name == "live-v1.2" and (not m.group(1).startswith("AC-PUSH-") or m.group(1) in FROZEN_PUSH_EXCLUDE):
                 continue
-            if name == "chat-v1.1" and not any(m_ in rest[:16] for m_ in CHAT_MILESTONES):
+            if name.startswith("chat-") and not any(m_ in rest[:16] for m_ in CHAT_MILESTONES):
                 continue
             layer = "后端" if "【后端】" in rest[:8] else "前端" if "【前端】" in rest[:8] else "手工" if "（手工）" in rest[:8] else "端到端"
             acs.append((m.group(1), layer, name))
