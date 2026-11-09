@@ -66,3 +66,68 @@ func TestFilesConfigProduction(t *testing.T) {
 		t.Fatalf("err = %v", err)
 	}
 }
+
+// BE-438 第 3 条（PRD-chat 第 14.2 节、F-FILE-01 规则 10）：配置检查有 objstore_https；生产环境只要有一个地址不是 https 就拒绝启动，
+// 报错和检查项都不带地址和凭证。
+func TestObjstoreHTTPSCheck(t *testing.T) {
+	files := map[string]string{
+		"IM_FILES_ENABLED": "1", "IM_OBJSTORE_ENDPOINT": "https://s3.internal.example", "IM_OBJSTORE_BUCKET": "chat",
+		"IM_OBJSTORE_PUBLIC_BUCKET": "avatars", "IM_OBJSTORE_PUBLIC_BASE_URL": "https://avatars.example.com",
+		"IM_OBJSTORE_ACCESS_KEY": "ak-placeholder", "IM_OBJSTORE_SECRET_KEY": "sk-test-only-value",
+	}
+	find := func(cfg Server) Check {
+		t.Helper()
+		for _, c := range productionChecks(cfg) {
+			if c.ID == "objstore_https" {
+				return c
+			}
+		}
+		t.Fatal("no objstore_https check")
+		return Check{}
+	}
+	cfg, err := prodOps(t, files)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if c := find(cfg); !c.Passed || !strings.Contains(c.Detail, "https") || strings.Contains(c.Detail, "s3.internal.example") || strings.Contains(c.Detail, "sk-test-only-value") {
+		t.Errorf("check = %+v", c)
+	}
+	off, err := prodOps(t, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if c := find(off); !c.Passed || !strings.Contains(c.Detail, "关闭") {
+		t.Errorf("files off: %+v", c)
+	}
+	for name, change := range map[string]map[string]string{
+		"http endpoint":       {"IM_OBJSTORE_ENDPOINT": "http://s3.internal.example"},
+		"http public domain":  {"IM_OBJSTORE_PUBLIC_BASE_URL": "http://avatars.example.com"},
+		"no public domain":    {"IM_OBJSTORE_PUBLIC_BASE_URL": ""},
+		"scheme-less address": {"IM_OBJSTORE_ENDPOINT": "s3.internal.example"},
+	} {
+		env := map[string]string{}
+		for k, v := range files {
+			env[k] = v
+		}
+		for k, v := range change {
+			env[k] = v
+		}
+		_, err := prodOps(t, env)
+		if err == nil {
+			t.Errorf("%s: production must refuse to start", name)
+			continue
+		}
+		if strings.Contains(err.Error(), "sk-test-only-value") || strings.Contains(err.Error(), "s3.internal.example") {
+			t.Errorf("%s: address or secret in error: %v", name, err)
+		}
+	}
+	// 开发环境允许 http（MinIO 开发环境，F-FILE-01 规则 10 的客户端例外见部署说明），检查项照实显示。
+	dev, _, err := Load(envOf(map[string]string{"IM_FILES_ENABLED": "1", "IM_OBJSTORE_ENDPOINT": "http://127.0.0.1:9000", "IM_OBJSTORE_BUCKET": "chat",
+		"IM_OBJSTORE_PUBLIC_BUCKET": "avatars", "IM_OBJSTORE_ACCESS_KEY": "ak", "IM_OBJSTORE_SECRET_KEY": "sk"}))
+	if err != nil {
+		t.Fatalf("development http: %v", err)
+	}
+	if c := find(dev); c.Passed || !strings.Contains(c.Detail, "不是 https") {
+		t.Errorf("development check = %+v", c)
+	}
+}

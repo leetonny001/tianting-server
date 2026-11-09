@@ -3,9 +3,11 @@ package files
 import (
 	"context"
 	"errors"
+	"slices"
 	"strings"
 	"time"
 
+	"tianting/server/internal/metrics"
 	"tianting/server/internal/objstore"
 	"tianting/server/internal/protocol"
 	"tianting/server/internal/store"
@@ -81,6 +83,7 @@ func (s *Service) Complete(ctx context.Context, uid, fileID string) (*CompleteRe
 		return s.reread(ctx, f, protocol.WithReason(protocol.CodeObjectStoreUnavailable, protocol.ReasonCompleteInProgress, "complete in progress"))
 	}
 	resp, perr := s.runAttempt(ctx, f, a)
+	s.countUpload(f.Kind, perr)
 	if perr == errCrashErr {
 		return nil, protocol.Errorf(protocol.CodeInternal, "internal error") // 模拟崩溃：不释放租约、不清理
 	}
@@ -89,6 +92,37 @@ func (s *Service) Complete(ctx context.Context, uid, fileID string) (*CompleteRe
 		s.log.Error("release complete lease", "fileId", fileID, "err", err)
 	}
 	return resp, perr
+}
+
+// countUpload 记一次 complete 尝试的结果（im_file_uploads_total{kind,result}，PRD-chat 第 14.2 节）。
+// 只统计拿到租约的尝试；已 ready 的幂等返回和租约冲突不算。
+func (s *Service) countUpload(kind string, perr *protocol.Error) {
+	if s.metrics == nil {
+		return
+	}
+	result := metrics.FileOK
+	if perr != nil {
+		switch perr.Code {
+		case protocol.CodeBadRequest:
+			result = metrics.FileMismatch
+		case protocol.CodeFileTypeNotAllowed:
+			result = metrics.FileTypeDenied
+		case protocol.CodeFileNotReady:
+			result = metrics.FileNotReady
+		case protocol.CodeQuotaExceeded:
+			result = metrics.FileQuota
+		case protocol.CodeObjectStoreUnavailable:
+			result = metrics.FileUnavailable
+		case protocol.CodeFileNotFound:
+			result = metrics.FileGone
+		default:
+			result = metrics.FileError
+		}
+	}
+	if !slices.Contains(metrics.FileKinds, kind) {
+		kind = "unknown"
+	}
+	s.metrics.FileUploads.WithLabelValues(kind, result).Inc()
 }
 
 // errCrashErr 是 errCrash 在协议错误层的标记。

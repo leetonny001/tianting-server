@@ -1,0 +1,24 @@
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Sid": "TmpAndFinalObjects",
+      "Effect": "Allow",
+      "Action": ["s3:GetObject", "s3:PutObject", "s3:DeleteObject"],
+      "Resource": ["arn:aws:s3:::tianting-chat-private/tmp/*", "arn:aws:s3:::tianting-chat-private/final/*"]
+    },
+    {
+      "Sid": "ListFinalPrefixOnly",
+      "Effect": "Allow",
+      "Action": ["s3:ListBucket"],
+      "Resource": ["arn:aws:s3:::tianting-chat-private"],
+      "Condition": {"StringLike": {"s3:prefix": ["final/*"]}}
+    },
+    {
+      "Sid": "PublicAvatars",
+      "Effect": "Allow",
+      "Action": ["s3:PutObject", "s3:DeleteObject"],
+      "Resource": ["arn:aws:s3:::tianting-chat-public/avatars/*"]
+    }
+  ]
+}

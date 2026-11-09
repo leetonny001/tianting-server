@@ -206,3 +206,50 @@ func TestUnavailableClassification(t *testing.T) {
 		t.Errorf("404 = %v", err)
 	}
 }
+
+// BE-438 第 3 条：Observe 给指标用（op 有界，404 / 412 不算错误）；Probe 是配置检查的"对象存储连通"。
+func TestObserveAndProbe(t *testing.T) {
+	fs := objstoretest.New(t)
+	cfg := fs.Config()
+	cfg.Timeout = 300 * time.Millisecond
+	var ops, errs []string
+	cfg.Observe = func(op string, err error) {
+		ops = append(ops, op)
+		if objstore.IsError(err) {
+			errs = append(errs, op)
+		}
+	}
+	c := objstore.New(cfg)
+	ctx := context.Background()
+	if err := c.Probe(ctx); err != nil {
+		t.Fatalf("probe: %v", err)
+	}
+	if _, err := c.Head(ctx, "tmp/missing"); !errors.Is(err, objstore.ErrNotFound) {
+		t.Fatalf("head = %v", err)
+	}
+	fs.Put(fs.Private, "tmp/a", []byte("hello"), "text/plain")
+	if _, err := c.Copy(ctx, "tmp/a", fs.Private, "final/f1/a1/original", `"wrong-etag"`, "text/plain"); !errors.Is(err, objstore.ErrPrecondition) {
+		t.Fatalf("copy = %v", err)
+	}
+	if err := c.Delete(ctx, fs.Private, "tmp/a"); err != nil {
+		t.Fatal(err)
+	}
+	if want := []string{"list", "head", "copy", "delete"}; strings.Join(ops, ",") != strings.Join(want, ",") || len(errs) != 0 {
+		t.Fatalf("ops = %v, errors = %v", ops, errs)
+	}
+	for _, mode := range []string{objstoretest.DownRefuse, objstoretest.DownBlack, objstoretest.Down503} {
+		fs.SetDown(mode)
+		errs = nil
+		err := c.Probe(ctx)
+		if err == nil || !objstore.IsUnavailable(err) || len(errs) != 1 || errs[0] != "list" {
+			t.Errorf("%s: probe = %v, errors = %v", mode, err, errs)
+		}
+	}
+	fs.SetDown(objstoretest.UpNormal)
+	// 凭证错误：能连通但 403，算错误，不算不可用。
+	bad := fs.Config()
+	bad.SecretKey = "wrong-secret"
+	if err := objstore.New(bad).Probe(ctx); err == nil || objstore.IsUnavailable(err) || !objstore.IsError(err) {
+		t.Errorf("bad credentials: %v", err)
+	}
+}

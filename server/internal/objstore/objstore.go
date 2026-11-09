@@ -40,6 +40,9 @@ type Config struct {
 	// Timeout 是单次请求的超时（不含预签名，预签名不访问存储）。默认 30 秒。
 	Timeout time.Duration
 	HTTP    *http.Client
+	// Observe 在每次请求（不含预签名）结束后调用：op 是 head / get / list / put / copy / delete，err 是这次的结果
+	// （ErrNotFound、ErrPrecondition 是正常结果）。给指标用（im_objstore_errors_total，PRD-chat 第 14.2 节），可以为空。
+	Observe func(op string, err error)
 }
 
 // Client 是对象存储客户端。
@@ -302,7 +305,7 @@ const UnsignedPayload = "UNSIGNED-PAYLOAD"
 const emptySHA256 = "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
 
 // do 发一个用请求头签名的请求。2xx 返回响应（调用方关闭）；404 → ErrNotFound；412 → ErrPrecondition；其他 → *Error；网络错误 → *UnavailableError。
-func (c *Client) do(ctx context.Context, method, bucket, key string, query url.Values, headers map[string]string, body []byte) (*http.Response, error) {
+func (c *Client) do(ctx context.Context, method, bucket, key string, query url.Values, headers map[string]string, body []byte) (_ *http.Response, outErr error) {
 	path := "/" + bucket
 	if key != "" {
 		path += "/" + key
@@ -339,6 +342,11 @@ func (c *Client) do(ctx context.Context, method, bucket, key string, query url.V
 		Region: c.c.Region, Service: "s3", AccessKey: c.c.AccessKey, SecretKey: []byte(c.c.SecretKey), Time: now,
 	}))
 	resp, err := c.http.Do(req)
+	defer func() {
+		if c.c.Observe != nil {
+			c.c.Observe(opOf(method, query, headers), outErr)
+		}
+	}()
 	if err != nil {
 		// 只留原因，不带地址（url.Error 的字符串里有完整地址）。
 		var ue *url.Error
@@ -371,6 +379,43 @@ func (c *Client) do(ctx context.Context, method, bucket, key string, query url.V
 	}
 	_ = xml.Unmarshal(data, &e)
 	return nil, &Error{Status: resp.StatusCode, Code: e.Code}
+}
+
+// opOf 是 Observe 的 op（有界取值，可以做指标标签）。
+func opOf(method string, query url.Values, headers map[string]string) string {
+	switch {
+	case method == http.MethodHead:
+		return "head"
+	case method == http.MethodGet && query.Has("list-type"):
+		return "list"
+	case method == http.MethodGet:
+		return "get"
+	case method == http.MethodPut && headers["x-amz-copy-source"] != "":
+		return "copy"
+	case method == http.MethodDelete:
+		return "delete"
+	}
+	return "put"
+}
+
+// IsError 判断 Observe 收到的 err 是否算对象存储错误：网络错误和对象存储返回的错误；不存在、条件不满足是正常结果。
+func IsError(err error) bool {
+	if err == nil || errors.Is(err, ErrNotFound) || errors.Is(err, ErrPrecondition) {
+		return false
+	}
+	var u *UnavailableError
+	var e *Error
+	return errors.As(err, &u) || errors.As(err, &e)
+}
+
+// Probe 检查对象存储能否连通、服务端凭证是否有效（配置检查 objstore_reachable，PRD-chat 第 14.2 节）：
+// 按最终前缀列举 1 个键。用列举不用 HEAD：没有全桶列举权限时，有的厂商对不存在的键返回 403 而不是 404。
+func (c *Client) Probe(ctx context.Context) error {
+	resp, err := c.do(ctx, http.MethodGet, c.c.Bucket, "", url.Values{"list-type": {"2"}, "prefix": {"final/"}, "max-keys": {"1"}}, nil, nil)
+	if err != nil {
+		return err
+	}
+	return resp.Body.Close()
 }
 
 func cmpOr(a, b string) string {

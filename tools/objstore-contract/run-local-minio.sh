@@ -62,3 +62,13 @@ OC_ACCESS_KEY="$ROOT_USER" OC_SECRET_KEY="$ROOT_PW" \
 OC_SCOPED_ACCESS_KEY="$SCOPED_USER" OC_SCOPED_SECRET_KEY="$SCOPED_PW" \
 OC_BUCKET=chat-private OC_PUBLIC_BUCKET=chat-public \
   go run .
+
+# 可选：把 im-server 的实现（objstore 客户端和 files 流程）也跑到这个 MinIO 上（AC-FILE-90-1 的实现部分，BE-439）。
+# 用最小权限的服务端凭证；凭证只在环境变量里，不打印。
+if [ "${RUN_IM_E2E:-0}" = 1 ]; then
+  cd "$HERE/../../server"
+  IM_E2E_S3_ENDPOINT="http://127.0.0.1:$PORT" IM_E2E_S3_REGION=us-east-1 \
+  IM_E2E_S3_BUCKET=chat-private IM_E2E_S3_PUBLIC_BUCKET=chat-public \
+  IM_E2E_S3_ACCESS_KEY="$SCOPED_USER" IM_E2E_S3_SECRET_KEY="$SCOPED_PW" \
+    go test -count=1 -v -run 'TestTC_FILE_90_01_RealStore' ./e2e/
+fi

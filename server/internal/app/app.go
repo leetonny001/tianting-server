@@ -224,6 +224,7 @@ func New(cfg Config) (*App, error) {
 		svc.EnableAdminFeatures()
 	}
 	var fileSvc *files.Service
+	var obj *objstore.Client
 	if cfg.Files.Enabled {
 		var hooks *files.Hooks
 		if cfg.TestMode {
@@ -231,7 +232,15 @@ func New(cfg Config) (*App, error) {
 		}
 		fcfg := cfg.Files
 		fcfg.RegisterOpen = cfg.Account.WithDefaults().RegisterMode == "open"
-		if fileSvc, err = files.New(files.Deps{Config: fcfg, Store: st, Obj: objstore.New(cfg.ObjStore), Clock: clk, Hooks: hooks, Log: cfg.Logger, Metrics: m}); err != nil {
+		ocfg := cfg.ObjStore
+		ocfg.Observe = func(op string, err error) {
+			m.ObjStoreRequests.WithLabelValues(op).Inc()
+			if objstore.IsError(err) {
+				m.ObjStoreErrors.WithLabelValues(op).Inc()
+			}
+		}
+		obj = objstore.New(ocfg)
+		if fileSvc, err = files.New(files.Deps{Config: fcfg, Store: st, Obj: obj, Clock: clk, Hooks: hooks, Log: cfg.Logger, Metrics: m}); err != nil {
 			st.Close()
 			return nil, err
 		}
@@ -288,9 +297,11 @@ func New(cfg Config) (*App, error) {
 		warnTotal := int64(cmp.Or(cfg.Account.InviteWarnTotal, defaultInviteWarnTotal))
 		total, err := st.InviteRemainingTotal(ctx, clk.Now().UnixMilli())
 		if err != nil {
-			return append(checks, DynamicCheck{ID: "invite_total", Detail: "邀请码总量：查询失败"})
+			checks = append(checks, DynamicCheck{ID: "invite_total", Detail: "邀请码总量：查询失败"})
+		} else {
+			checks = append(checks, DynamicCheck{ID: "invite_total", Passed: total <= warnTotal, Detail: fmt.Sprintf("有效邀请码剩余 %d 次，告警线 %d（IM_INVITE_WARN_TOTAL）", total, warnTotal)})
 		}
-		return append(checks, DynamicCheck{ID: "invite_total", Passed: total <= warnTotal, Detail: fmt.Sprintf("有效邀请码剩余 %d 次，告警线 %d（IM_INVITE_WARN_TOTAL）", total, warnTotal)})
+		return append(checks, objstoreCheck(ctx, obj))
 	}
 	jobs := scheduler.New(clk, nil, m.JobRuns, m.JobDuration, cfg.Logger)
 	registerJobs(jobs, st, svc, clk, cmp.Or(cfg.Push.PurgeBatch, defaultPushPurgeBatch))
@@ -447,6 +458,25 @@ type DynamicCheck struct {
 	ID     string
 	Passed bool
 	Detail string
+}
+
+// objstoreCheck 是配置检查的"对象存储连通"（PRD-chat 第 14.2 节）：按最终前缀列举 1 个键，最多等 5 秒。
+// 只是检查项，不是 /readyz 的条件（第 15 节"可用性"：对象存储不可用不影响文本消息）。Detail 不含地址和凭证。
+func objstoreCheck(ctx context.Context, obj *objstore.Client) DynamicCheck {
+	if obj == nil {
+		return DynamicCheck{ID: "objstore_reachable", Passed: true, Detail: "IM_FILES_ENABLED 关闭，不检查对象存储"}
+	}
+	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
+	defer cancel()
+	if err := obj.Probe(ctx); err != nil {
+		detail := "对象存储：不可达（" + err.Error() + "）"
+		var se *objstore.Error
+		if errors.As(err, &se) && se.Status/100 == 4 {
+			detail = fmt.Sprintf("对象存储：可以连通，但按最终前缀列举返回 HTTP %d（凭证或权限，见 deploy/FILES-RUNBOOK.md 第 2 节）", se.Status)
+		}
+		return DynamicCheck{ID: "objstore_reachable", Detail: detail}
+	}
+	return DynamicCheck{ID: "objstore_reachable", Passed: true, Detail: "对象存储：可以连通，服务端凭证能按最终前缀列举"}
 }
 
 // DynamicChecks 算一遍。查询失败算没通过，不当成通过。

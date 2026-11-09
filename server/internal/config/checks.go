@@ -141,6 +141,18 @@ func productionChecks(cfg Server) []Check {
 		add("token_issue_caller", "没有调用方带 token.issue")
 	}
 
+	// 对象存储 HTTPS（PRD-chat 第 14.2 节、F-FILE-01 规则 10）：上传、下载地址都指向对象存储，头像地址写进 users.avatar。
+	// 生产 http 或缺公开桶独立域名时 Load 已经拒绝启动（loadFiles），这里给配置检查页面显示结果，不重复报错。
+	o := a.ObjStore
+	switch {
+	case !a.Files.Enabled:
+		add("objstore_https", "IM_FILES_ENABLED 关闭，不检查对象存储")
+	default:
+		ok := strings.HasPrefix(o.Endpoint, "https://") && strings.HasPrefix(o.PublicBaseURL, "https://")
+		out = append(out, Check{ID: "objstore_https", Passed: ok, Applicable: true,
+			Detail: "IM_OBJSTORE_ENDPOINT：" + schemeText(o.Endpoint) + "；IM_OBJSTORE_PUBLIC_BASE_URL（头像独立域名）：" + schemeText(o.PublicBaseURL)})
+	}
+
 	var tls []string
 	// 管理端口只有绑定回环地址（同机部署的业务服务端）时允许明文（PRD-admin F-KEY-01 规则 2）。
 	if cfg.AdminAddr != "" && cfg.AdminTLSCert == "" && !isLoopback(cfg.AdminAddr) {
@@ -226,6 +238,17 @@ func productionProblems(cfg Server) []string {
 		out = append(out, c.problems...)
 	}
 	return out
+}
+
+// schemeText 只报协议，不报地址。
+func schemeText(u string) string {
+	switch {
+	case u == "":
+		return "未配置"
+	case strings.HasPrefix(u, "https://"):
+		return "https"
+	}
+	return "不是 https"
 }
 
 func enabledText(on bool) string { return cmpText(on, "开启", "关闭") }

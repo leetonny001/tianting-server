@@ -1,0 +1,11 @@
+{
+  "Rules": [
+    {
+      "ID": "tmp-prefix-1-day",
+      "Status": "Enabled",
+      "Filter": {"Prefix": "tmp/"},
+      "Expiration": {"Days": 1},
+      "AbortIncompleteMultipartUpload": {"DaysAfterInitiation": 1}
+    }
+  ]
+}

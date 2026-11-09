@@ -10,7 +10,7 @@ Frank 2026-11-06 同意，技术验证门作为"不在本机安装软件"的一�
 MINIO_BIN_DIR=/path/with/minio-and-mc tools/objstore-contract/run-local-minio.sh
 ```
 
-凭证每次随机生成，数据目录结束时删除。
+凭证每次随机生成，数据目录结束时删除。加 `RUN_IM_E2E=1` 时，跑完合同工具再用同一个 MinIO 跑 im-server 的 `TestTC_FILE_90_01_RealStore`（`server/e2e/file_realstore_test.go`，用最小权限凭证），验 im-server 的实现在真实存储上的行为。
 
 ## 跑云厂商（AC-FILE-90-2，上线前）
 

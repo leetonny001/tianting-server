@@ -364,9 +364,9 @@ func TestTC_FILE_01_05_StoreDown(t *testing.T) {
 
 func writeFile(path, s string) error { return os.WriteFile(path, []byte(s), 0o600) }
 
-// TC-CHAT-90-12（AC-CHAT-90-12）开发机参考：≥ 1000 次申请上传的耗时。只记录，**不算通过**（未校准，发布判定等 P-12 目标机）。
+// TC-CHAT-90-11（AC-CHAT-90-12）开发机参考：≥ 1000 次申请上传的耗时。只记录，**不算通过**（未校准，发布判定等 P-12 目标机）。
 // 频率和未完成数调大，只测申请本身（只签名，不访问存储）。
-func TestTC_CHAT_90_12_UploadRequestLatency(t *testing.T) {
+func TestTC_CHAT_90_11_UploadRequestLatency(t *testing.T) {
 	if testing.Short() {
 		t.Skip("perf reference")
 	}

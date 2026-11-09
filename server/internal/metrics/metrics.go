@@ -47,6 +47,24 @@ const (
 	AccountTaken         = "taken"
 )
 
+// complete 的结果（im_file_uploads_total 的 result 标签，PRD-chat 第 14.2 节）。按错误码归类，取值有限。
+const (
+	FileOK          = "ok"
+	FileMismatch    = "mismatch"    // 4000 uploadMismatch 等
+	FileTypeDenied  = "type_denied" // 4150
+	FileNotReady    = "not_ready"   // 4096
+	FileQuota       = "quota"       // 4292
+	FileUnavailable = "unavailable" // 5032
+	FileGone        = "gone"        // 4048（取消、清理中）
+	FileError       = "error"
+)
+
+// 文件种类和对象存储操作（im_file_uploads_total 的 kind、im_objstore_* 的 op 标签）。
+var (
+	FileKinds   = []string{"image", "file", "avatar"}
+	ObjStoreOps = []string{"head", "get", "list", "put", "copy", "delete"}
+)
+
 // 运维接口的结果（im_ops_requests_total 的 result 标签，PRD-ops S-OPS-06）。
 const (
 	OpsOK           = "ok"
@@ -91,7 +109,10 @@ type Metrics struct {
 	InviteAutoDisabled prometheus.Counter // 邀请码因为探测用户名被自动停用（F-ACC-01 规则 7 的告警）
 	// 文件（PRD-chat 第 14.2 节，F-FILE-04 规则 6）：没有用户标签，按用户的量在 files 包里统计。
 	FileURLsIssued    prometheus.Counter
-	FileUploadedBytes prometheus.Counter // complete 成功的实际字节数
+	FileUploadedBytes prometheus.Counter     // im_file_bytes_total：complete 成功的实际字节数
+	FileUploads       *prometheus.CounterVec // complete 尝试的结果，kind × result 都是有界取值
+	ObjStoreRequests  *prometheus.CounterVec // 按 op
+	ObjStoreErrors    *prometheus.CounterVec // 按 op：网络错误和对象存储返回的错误（不含 404、412）
 }
 
 // New 创建并注册全部指标，另外带上 Go 运行时和进程指标。
@@ -165,9 +186,16 @@ func New() *Metrics {
 		Name: "im_invites_auto_disabled_total", Help: "Invite codes automatically disabled after too many taken usernames.",
 	})
 	m.FileURLsIssued = prometheus.NewCounter(prometheus.CounterOpts{Name: "im_file_url_issued_total", Help: "Presigned download URLs issued."})
-	m.FileUploadedBytes = prometheus.NewCounter(prometheus.CounterOpts{Name: "im_file_uploaded_bytes_total", Help: "Bytes of completed uploads (original and thumbnail)."})
+	// 第 14.2 节的文件指标（AC-CHAT-90-17）。标签没有 userId、fileId、文件名（AC-OPS-90-4）。
+	m.FileUploadedBytes = prometheus.NewCounter(prometheus.CounterOpts{Name: "im_file_bytes_total", Help: "Bytes of completed uploads (original and thumbnail)."})
+	m.FileUploads = prometheus.NewCounterVec(prometheus.CounterOpts{Name: "im_file_uploads_total", Help: "Upload complete attempts by kind and result."}, []string{"kind", "result"})
+	m.ObjStoreRequests = prometheus.NewCounterVec(prometheus.CounterOpts{Name: "im_objstore_requests_total", Help: "Object store requests (not presigned) by operation."}, []string{"op"})
+	m.ObjStoreErrors = prometheus.NewCounterVec(prometheus.CounterOpts{Name: "im_objstore_errors_total", Help: "Object store requests that failed (network errors and store errors; not found and precondition failures excluded) by operation."}, []string{"op"})
 	f(m.FileURLsIssued)
 	f(m.FileUploadedBytes)
+	f(m.FileUploads)
+	f(m.ObjStoreRequests)
+	f(m.ObjStoreErrors)
 	f(m.AccountLogins)
 	f(m.Registers)
 	f(m.RefreshReissue)
@@ -257,7 +285,10 @@ var allowedLabelValues = map[string]map[string]bool{
 	"result": set(AccountOK, AccountInvalid, AccountLocked, AccountRateLimited, AccountBusy, AccountBanned, AccountPending,
 		AccountError, AccountBadRequest, AccountClosed, AccountInviteInvalid, AccountTaken,
 		HandshakeOK, HandshakeRateLimited, HandshakeBadPlatform, HandshakeAuthRequired, HandshakeTokenInvalid,
-		HandshakeTokenRevoked, HandshakeTokenExpired, HandshakeError, HandshakeOriginDenied, OpsOK, OpsUnauthorized, OpsForbidden, OpsThrottled, OpsError, "unknown"),
+		HandshakeTokenRevoked, HandshakeTokenExpired, HandshakeError, HandshakeOriginDenied, OpsOK, OpsUnauthorized, OpsForbidden, OpsThrottled, OpsError,
+		FileOK, FileMismatch, FileTypeDenied, FileNotReady, FileQuota, FileUnavailable, FileGone, FileError, "unknown"),
+	"kind": set(append(FileKinds, "unknown")...),
+	"op":   set(ObjStoreOps...),
 	"reason": set("tokenInvalid", "tokenExpired", "banned", "suspended", "replaced", "tooManyConnections", "serverShutdown", "passwordChanged", "sessionRevoked", "accountDeleted",
 		"missing", "caller", "signature", "window", "nonce", "node", "unknown"),
 	"endpoint": set("node", "connections", "disconnects", "config", "db", "unknown"),

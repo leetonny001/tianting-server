@@ -46,6 +46,9 @@
 | BE-435 | ✅ 完成（本任务 AC 都有用例） | `a71a634`。`POST /v1/files/urls`：≤ 50（4131）、120 批 / 分钟（4290）、逐项 `code=4048`（和不存在完全相同）；单聊参与者、群成员 + `seq ≥ minSeq`、消息没删、文件没过期、上传者绑定前；签入 `response-content-type` 和 RFC 5987 / 6266 的 `response-content-disposition`（图片 inline、文件 attachment）；`im_file_url_issued_total`（无用户标签）。**本地结果，CI 不运行**：AC-FILE-01-25（后端部分）、04-1、04-2、04-3、04-4、04-5、04-7、04-8、04-9、05-5 通过。清空位置、撤回随 C4、C5 |
 | BE-436 | ✅ 完成（本任务 AC 都有用例） | `a71a634`。`file_purge`（每小时一批）：24 小时未绑定 → purging（租约条件）；换头像 7 天 → purging；保留期到 → expired（清空文件名、递增 `mod_ver`）后按前缀删对象；后台删除 → revoked（同一事务，文件名随原文进隔离加密区），30 天后删对象；purging 先删公开对象再删前缀和行；删除失败保留、下次重试。**本地结果，CI 不运行**：AC-FILE-01-24、01-26、06-1、06-2、06-5、06-7、06-9、06-10、06-11、06-13 通过；AC-FILE-06-12 只验了服务端（`modVer` 递增），SDK 重拉随 FE |
 | BE-437 | ✅ 完成（本任务 AC 都有用例） | `a71a634`。`PATCH profile` 的 `avatarFileId`：先写 `public_key` 再 Copy 到公开桶，重试复用；绑定事务写 `users.avatar`、旧头像 `avatar_replaced_at`，绑回清零；注销清理把头像改 purging；先改昵称再绑头像（存储不可用时昵称成功、头像 5032）。**本地结果，CI 不运行**：AC-ACC-06-3、06-7（`nosniff` 是厂商能力没有验）、06-8、06-9、06-10、06-11、06-12、06-13、08-7 通过 |
+| BE-438 | ✅ 完成（部署样例和检查；厂商生效未验证） | `deploy/FILES-RUNBOOK.md`（桶、凭证、生命周期、CORS、Android 开发例外、访问日志、备份不含文件、恢复后手动对账、配置检查、指标、告警）；`deploy/objstore/` 样例只有占位符（`policy-im-server.json` 只给 `final/` 前缀列举、`policy-public-read.json` 没有列举、`lifecycle-private.json` `tmp/` 1 天、`cors-private.json` 限定来源、`im-files.example.env` 凭证留空），`test_samples.py` 11 项静态检查。服务端：配置检查 `objstore_https`（生产 http 本来就拒绝启动，补了单测 `TestObjstoreHTTPSCheck`）、`objstore_reachable`（按 `final/` 列举 1 个键）；指标 `im_file_uploads_total{kind,result}`、`im_objstore_errors_total{op}`、`im_objstore_requests_total{op}`，**`im_file_uploaded_bytes_total` 改名为第 14.2 节的 `im_file_bytes_total`**。告警只写在部署说明（第一批不发页面告警，`alerts.yml` 是 F-OPS-07 的 11 条）。**本地结果，CI 不运行**：AC-CHAT-90-17（C2 部分，TC-CHAT-90-16）通过；AC-CHAT-90-3 见 BE-440 |
+| BE-439 | 🟡 第 2 条完成；第 1 条未执行；第 3 条等云厂商 | 第 2 条：生命周期实际清除、CORS 限定来源写进 `FILES-RUNBOOK.md` 第 7 节，另记了"无列举权限时不存在的键返回 403 还是 404"。第 1 条：`server/e2e/file_realstore_test.go`（`TestTC_FILE_90_01_RealStore`，设 `IM_E2E_S3_*` 才运行，默认跳过；同一套检查在假 S3 上跑通 `TestRealStoreChecksOnFake`，不算 AC 通过），`run-local-minio.sh` 加 `RUN_IM_E2E=1`。**真实 MinIO 没有运行：要下载并构建 MinIO 源码，本次没有得到 Frank 在会话里的直接确认，AC-FILE-90-1 未执行**。AC-FILE-90-2 等 CH-05 |
+| BE-440 | 🟡 后端用例完成，AC-FILE-90-1、90-2 未执行，性能未判定 | 报告 [c2-backend-acceptance-2026-11-09.md](../reports/c2-backend-acceptance-2026-11-09.md)。`e2e/file_acceptance_test.go`：F-FILE-01 攻击序列对应表（22 条，`TestFileAttackSequencesHaveTests`）、TC-CHAT-90-03（拒绝连接和黑洞各 1000 条文本）、TC-CHAT-90-05（C2 流程日志和除 `files` 外全部表含 `admin_audit`，用 `scan-logs`）、TC-CHAT-90-16。`TestTC_CHAT_90_12_UploadRequestLatency` 按 TC 编号改名为 `TestTC_CHAT_90_11_…`。**本地结果，CI 不运行**。性能（90-1、90-2 的 TC-PERF、90-3、90-12）开发机只记录，不算通过，等 P-12 |
 | 全部 | 🟡 C1 已校准 | 见 [c1-acceptance-2026-11-07.md](../reports/c1-acceptance-2026-11-07.md) 第 9 节：人日不能直接换算成 AI 用时，瓶颈是本机资源和待决定项。C3 起的部分等 Frank 决定 |
 
 ## 总览
@@ -591,4 +594,17 @@
 | 21 | 第 11.3 节、BE-430 第 3 条 | 对象存储的环境变量名、禁止名单配置文件的变量名 PRD 没有定义 | `IM_OBJSTORE_ENDPOINT/REGION/BUCKET/PUBLIC_BUCKET/PUBLIC_BASE_URL/ACCESS_KEY/SECRET_KEY`、`IM_FILE_BLOCKLIST`（只能加不能减）；生产要求 https 和公开桶独立域名 |
 | 22 | F-FILE-01 规则 3b | GIF 帧数上限"未校准"没有数值 | 前 64 KB 内超过 300 帧拒绝 |
 | 23 | F-FILE-01 规则 3 ② | "与声明矛盾"对图片的判断粒度没写 | 图片、缩略图、头像的嗅探类型必须和声明完全相同（`image/jpg` 按 `image/jpeg`）；文件只拒绝禁止的真实类型，认不出的按 octet-stream |
+
+C2 部署和验收（BE-438～440）时发现的（PRD 冻结，没有改；按"实现"一列做）。**需要 Frank 定的是第 28 条**，其余是记录：
+
+| # | 位置 | 问题 | 现在的实现 |
+|---|---|---|---|
+| 24 | 第 14.2 节告警、F-FILE-01 规则 6 | "当天全局上传量（含临时前缀）"：申请后不 `complete` 的对象只在 `tmp/`，im-server 看不到 | im-server 只有 `im_file_bytes_total`（complete 成功的字节）；含临时前缀的量要用对象存储自己的用量指标，部署说明写明，选定厂商后补 |
+| 25 | 第 14.2 节 | 告警要"对象存储错误率"，指标只列了 `im_objstore_errors_total`，没有分母 | 加 `im_objstore_requests_total{op}`，两个都带有界的 `op` 标签（head / get / list / put / copy / delete）；404、412 不算错误 |
+| 26 | 第 14.2 节 | `im_file_uploads_total{kind,result}` 的 `result` 取值没写 | 按错误码归类：ok / mismatch / type_denied / not_ready / quota / unavailable / gone / error；只统计拿到租约的 complete 尝试 |
+| 27 | F-FILE-06 规则 8 | "多余对象按前缀对账，手动运行"没有要求工具 | 第一批只在部署说明写步骤（全桶列举用单独凭证，宽限 1 小时），没有工具 |
+| 28 | 第 11.3 节、F-FILE-01 规则 3 | 服务端凭证没有全桶列举权限。AWS 风格的存储对这种凭证 HEAD 不存在的键可能返回 403 而不是 404；实现把 404 当"临时对象不存在"（4096），403 会变成 500 | 没有改；MinIO 上这份权限能列 `tmp/`，没有这个问题。**要 Frank 在 AC-FILE-90-2 选定厂商时确认**：若是 403，改判断（403 也按不存在）或给 `tmp/` 列举权限 |
+| 29 | 第 4.1 节 | 对象存储单次请求超时没有配置项 | 代码默认 30 秒；黑洞时 `complete` 最长等 30 秒 503，文本不受影响（TC-CHAT-90-03） |
+| 30 | AC-CHAT-90-3 | "文本收发 5 分钟" | 开发机每种方式顺序 1000 条（约 1 秒），5 分钟随 P-12 |
+| 31 | TC-CHAT-90-05 | 环境写"ES + console-server"，C2 的 console 日志和审计（CS-201） | 只扫了 im-server 的日志和库；console-server 部分随 CS-201 / FE-640 |
 
