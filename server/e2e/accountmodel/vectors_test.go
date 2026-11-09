@@ -50,6 +50,9 @@ type file struct {
 	Scope       string       `json:"scope"`
 	Cases       []vcase      `json:"cases"`
 	ServerCases []ServerCase `json:"serverCases"`
+	// 附件发送状态机（PRD-chat F-FILE-07 规则 1、3、4，BE-403）。
+	AttachmentFormat map[string]string `json:"attachmentFormat"`
+	AttachmentCases  []attachCase      `json:"attachmentCases"`
 }
 
 func rf(gen int64) ServerStep         { return ServerStep{Op: "refresh", Gen: gen} }
@@ -171,14 +174,18 @@ func run(c vcase) vcase {
 // TC-CHAT-90-13（AC-CHAT-90-15，服务端产出期望值的部分）；TC-CHAT-90-09（AC-CHAT-90-10）。
 func TestAccountSessionVectors(t *testing.T) {
 	f := file{
-		Description: "账号会话共享行为用例（PRD-chat F-ACC-03 规则 4、5、6、6a、7）。cases：按顺序执行 steps，每步之后断言 expect、localGen、inflight。serverCases：规则 4 的判定表，从登录后的状态开始，每步之后断言 result、current、pendings。期望结果由服务端的 Go 参考客户端（server/e2e/accountmodel）生成。",
-		Scope:       "cases 是客户端判断：刷新单飞、迟到响应丢弃、失败分类、4011 比较代号，三套 SDK 跑。serverCases 由真实服务端跑（server/e2e/account_vectors_test.go），三套 SDK 用它搭假服务端。附件状态机随 BE-403。",
+		Description:      "账号会话共享行为用例（PRD-chat F-ACC-03 规则 4、5、6、6a、7）。cases：按顺序执行 steps，每步之后断言 expect、localGen、inflight。serverCases：规则 4 的判定表，从登录后的状态开始，每步之后断言 result、current、pendings。attachmentCases：附件发送状态机（F-FILE-07 规则 1、3、4），每步之后断言 expect，格式见 attachmentFormat。期望结果由服务端的 Go 参考客户端（server/e2e/accountmodel）生成。",
+		Scope:            "cases 是客户端判断：刷新单飞、迟到响应丢弃、失败分类、4011 比较代号，三套 SDK 跑。serverCases 由真实服务端跑（server/e2e/account_vectors_test.go），三套 SDK 用它搭假服务端。attachmentCases 是附件发送状态机（PRD-chat F-FILE-07 规则 1、3、4），三套 SDK 用假 HTTP、假对象存储、假传输层跑真实的客户端；persistence=true 的只有带持久化的 SDK 跑（sdk-ts 跳过，H5 刷新后消息不在，AC-FILE-07-3）。",
+		AttachmentFormat: attachmentFormat,
 	}
 	for _, c := range cases {
 		f.Cases = append(f.Cases, run(c))
 	}
 	for _, c := range serverCases {
 		f.ServerCases = append(f.ServerCases, runServer(c))
+	}
+	for _, c := range attachCases {
+		f.AttachmentCases = append(f.AttachmentCases, runAttach(c))
 	}
 	var buf bytes.Buffer
 	enc := json.NewEncoder(&buf)

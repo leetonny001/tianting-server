@@ -2,7 +2,7 @@
 // protocol/vectors/account-session.json 的期望结果由它生成，三套 SDK 以它为基准（FE-600～602）。
 //
 // model.go 是客户端的判断：刷新单飞、迟到响应丢弃、失败分类、4011 比较代号。server.go 是规则 4 的服务端判定表，真实服务端跑同一份用例。
-// 附件状态机随 BE-403。
+// attach.go 是附件发送状态机（PRD-chat F-FILE-07 规则 1、3、4，BE-403）。
 package accountmodel
 
 // 客户端的处理结果。

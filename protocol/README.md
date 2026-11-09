@@ -6,8 +6,9 @@
 |---|---|
 | `schema/frame.schema.json` | WebSocket 帧的 JSON Schema（2020-12） |
 | `schema/http-client.schema.json` | 客户端 HTTP 接口 `/v1/*` 的 Schema（PRD-chat 第 11.2 节） |
-| `vectors/frames.json` | 单帧校验用例：`valid` 必须通过，`invalid` 必须拒绝 |
-| `vectors/account-session.json` | 账号会话共享用例（PRD-chat F-ACC-03），期望结果由 `server/e2e/accountmodel` 生成 |
+| `vectors/frames.json` | 单帧校验用例：`valid` 必须通过，`invalid` 必须拒绝；`send` 的用例服务端还用真实的帧解析跑（`server/internal/logic`） |
+| `vectors/account-session.json` | 账号会话共享用例（PRD-chat F-ACC-03）和附件发送状态机（`attachmentCases`，F-FILE-07 规则 1、3、4），期望结果由 `server/e2e/accountmodel` 生成 |
+| `vectors/chat-sync.json` | 消息同步共享用例（PRD-chat F-RCL-03 规则 2、2a）：C2 只有 `expired` 单调合并和 `modVer` 重拉，期望结果由 `server/e2e/chatmodel` 生成 |
 | `errors.json` / [ERRORS.md](ERRORS.md) | 错误码、关闭码、被踢原因 |
 | [ADMIN.md](ADMIN.md) | 管理接口（只在管理端口） |
 
