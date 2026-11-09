@@ -1,6 +1,6 @@
 # 统一 SDK 设计说明
 
-> 适用于 [tianting-sdk-ts](https://github.com/leetonny001/tianting-sdk-ts)（H5、PC）、[tianting-sdk-kotlin](https://github.com/leetonny001/tianting-sdk-kotlin)（Android）和 [tianting-sdk-swift](https://github.com/leetonny001/tianting-sdk-swift)（iOS），各自一个仓库。账号（C1）的 SDK 部分三套都做完了（FE-600～602、FE-610～612，第 6 节的语义已经统一，结果都是本地的，CI 不运行）；界面（FE-613～618）还没开工，SDK 部分里没有验收的项见[任务单](../tasks/frontend-chat.md)的进度表。**三套 SDK 必须遵守同样的行为规则**，这份文档就是对照基准（Q7）。
+> 适用于 [tianting-sdk-ts](https://github.com/leetonny001/tianting-sdk-ts)（H5、PC）、[tianting-sdk-kotlin](https://github.com/leetonny001/tianting-sdk-kotlin)（Android）和 [tianting-sdk-swift](https://github.com/leetonny001/tianting-sdk-swift)（iOS），各自一个仓库。账号（C1）三套 SDK 和三端界面都做完了（FE-600～602、FE-610～618，第 6 节的语义已经统一）。结果都是本地的，CI 不运行，真机（P-13）未执行；逐条结果见 [C1 验收报告](../reports/c1-acceptance-2026-11-07.md)。**三套 SDK 必须遵守同样的行为规则**，这份文档就是对照基准（Q7）。
 > 依据：[PRD v1.2](../prd/PRD-core-v1.2.md)、[协议](../../protocol/README.md)、[错误码](../../protocol/ERRORS.md)、[前端任务单](../tasks/frontend.md)。
 
 ## 1. 分层
@@ -40,6 +40,20 @@ im.disconnect();                            // 退出登录
 工具：`c2cConvId(a, b)`、`groupConvId(gid)`、`checkText`、`trimText`、`countCodePoints`、`describeError(code)`、`ErrorCode`。
 测试替身：`@tianting/sdk/testing` 导出 `FakeTransport`、`FakeClock`，界面的测试也可以用。
 
+账号模式（第 6 节）用 `AccountClient` 和 token 提供者，三套名字相同，下面是 sdk-ts：
+
+```ts
+const account = new AccountClient({ baseUrl, platform: 'web', store });   // store：SessionStore，H5 放 sessionStorage，原生放 Keystore / Keychain
+await account.start();                                                    // 启动：读存储，已过期先刷新
+const r = await account.login(username, password);                        // 还有 register、recover；响应带 recoveryCode 时确认前不落盘
+await account.ackRecoveryCode(r.recoveryCodeGen);                         // 只在响应带恢复码时
+im.connect(account.tokenProvider);                                        // 账号模式。im.connect(token) 仍是演示模式，行为不变
+im.on('securityNotice', (n) => …);                                        // { kind, at, platform }，七种，见第 6 节"其他"
+account.on('ended', (end) => …);                                          // 会话结束：dialog、reason、recoverBefore 交给界面
+```
+
+其余接口：`refresh`、`changePassword`、`logoutOthers`、`logout`、`regenerateRecoveryCode`、`updateProfile`、`getConfig`、`listEvents`、`requestDelete`、`cancelDelete`、`foreground`。Kotlin 是 `suspend` 函数，还有 `networkOnline`、`pendingLogoutStore`（待退出）、`SystemTokenRevoker`；Swift 是 `async` 函数，`AccountSessionStore` 同时存待退出，`unregisterSystemPushToken` 是回调。系统令牌注销的调用点有，FCM、APNs 接入随 C3。
+
 ## 3. 行为规则（三套 SDK 必须一致）
 
 ### 连接（FE-003）
@@ -51,7 +65,7 @@ im.disconnect();                            // 退出登录
 | 重连退避 1、2、4、8、16、30 秒，上限 30 秒是加抖动**之前**的值，再加 ±20% 抖动；鉴权成功后重置 | F-CONN-01、C-22 |
 | 网络恢复（浏览器 `online`）时立即重连 | F-CONN-01 规则 3 |
 | 收到 `kicked` 后不重连，例外 `serverShutdown` 按退避重连 | F-AUTH-03、C-55 |
-| 关闭码 1000、4009～4012、4429 不重连；其他（含 1006、4401、4408、4400、1001）按退避重连 | ERRORS.md 第 4 节 |
+| 关闭码 1000、4009～4012、4429 不重连；其他（含 1006、4401、4408、4400、1001）按退避重连。**账号模式例外**：4011 走第 6 节规则 7，4010、4012 由账号会话决定（改密时要缓存） | ERRORS.md 第 4 节，F-ACC-03 规则 7 |
 | 断开持续超过 1 秒才显示连接提示，恢复后立即消失 | F-CONN-02 |
 | **WebSocket 客户端不能限制下行帧大小**（很多库默认 32KB；500 个会话的 convs 约 125KB） | C-07 |
 
@@ -93,6 +107,8 @@ im.disconnect();                            // 退出登录
 
 三套 SDK 和服务端跑同一批数据，保证规则一致：
 
+各 SDK 用同名文件的副本（`scripts/sync-protocol.sh`，`protocol/SOURCE` 记提交号）。下表最后一列是 sdk-ts 的用例，sdk-kotlin 是 `VectorsTest`、`AccountVectorsTest`、`AccountHttpSchemaTest`，sdk-swift 同样有对应用例（`swift test`）。C1 没有 `chat-sync.json`，随 FE-630。
+
 | 文件 | 内容 | 服务端 | sdk-ts |
 |---|---|---|---|
 | `protocol/errors.json` | 错误码、关闭码、被踢原因 | 一致性测试 | 生成 `errors.gen.ts` + 一致性测试 |
@@ -104,7 +120,8 @@ im.disconnect();                            // 退出登录
 ## 5. 测试
 
 - 单元测试（`npm test`）：只用 `FakeTransport` + `FakeHttp` + `FakeClock`，毫秒级、结果确定；覆盖 FE-002～008、FE-600、FE-610 的 AC。
-- 集成测试（tianting-sdk-ts 仓库的 `npm run test:integration`）：编译并启动真实的 im-server（测试模式），用标准 WebSocket 验证收发、未读已读、丢 ack 后重发、convAdded、强制下线、被服务端断开后的重连补拉。
+- 集成测试：编译并启动真实的 im-server（测试模式），验证收发、未读已读、丢 ack 后重发、convAdded、强制下线、被服务端断开后的重连补拉，账号的注册、刷新、改密、踢线、提醒。命令：sdk-ts `npm run test:integration`，sdk-kotlin `./gradlew :sdk-core:integrationTest`，sdk-swift `swift test`（macOS 上和单测一起跑）。
+- **`@tianting/sdk` 是 `file:` 依赖，用的是 git 忽略的 `dist/`**：H5 和其他依赖方测试之前先在 tianting-sdk-ts 跑 `npm run build`，否则测到旧代码（问题 H8）。
 
 ## 6. 账号会话语义（FE-610～612，三套 SDK 一致）
 
@@ -122,7 +139,7 @@ im.disconnect();                            // 退出登录
 | 落盘 | 响应到达 → 写存储 → 再比一次序号 → 才换 token。写存储失败按退避处理，继续用旧值（旧值还有效）。存储回调可以挂起，所以调用要按顺序执行，结束时的清除不能被更早的保存超过（S3） |
 | 换 token | 已连接：断开前先让旧连接的回调失效，`close(1000)`，立即重连，状态不足 1 秒不提示。已断开在等退避：立即拨号 |
 | 启动已过期 | 先刷新，`auth` 不发。拨号在等 token，状态是连接中 |
-| 绝对上限 | `accessExpiresAt == absoluteExpiresAt`：不主动刷新，定时器定在到期时刻，到期回登录页。`kicked` 和 4011 仍然可以刷新（`model.go` 如此） |
+| 绝对上限 | `accessExpiresAt == absoluteExpiresAt`：不主动刷新，定时器定在到期时刻，到期回登录页。`kicked` 和 4011 仍然可以刷新（`model.go` 如此）。所以到期前最后不足 1 秒会多几次无用的刷新（JWT 的 `exp` 只到秒，见问题 F2），结果一样是回登录页 |
 | 本地时钟 | 过期判断用本地时钟。偏慢：服务端回 4011，走规则 7（向量没有） |
 | 刷新回来已不足 6 小时（S1） | 时钟偏快或 TTL 配得短时，**刷新刚返回的** token 按本地时钟已经不足 6 小时：这个 token 不再主动刷新（`start`、`foreground`、`timer` 都不刷新，定时器不定），也不按本地时间当成过期（拨号和 HTTP 直接用它），等服务端的 4011。否则每次拨号和连接后的定时器都再刷新一次，换 token 又重连，一直循环到服务端限流。4011、`refresh()` 还是刷新，每个 4011 最多一次；下一个时间正常的 token 恢复。只看刷新的响应：登录、改密的响应不足 6 小时可以再刷新一次。这个标记不落盘，重启后从头判断，每次启动最多多一次刷新。启动已过期的主路径不变。到绝对上限的 token 不适用（向量没有） |
 
@@ -192,7 +209,7 @@ im.disconnect();                            // 退出登录
   - App 不再等退出结束才能登录。旧 `IMClient` 要在新会话开始前关掉：它还绑着 `tokenProvider`，会用新 token 重连；它的 `disconnect` 清的本地库和新会话共用。H5 每次退出换一个 `AccountClient` 实例，本来就不等。
 - **踢线的会话结束**：关闭码 4010、4012 的踢线清掉本地 token；`tooManyConnections` 不清（账号本身没问题）。`serverShutdown` 按退避重连。
 - **不认识的踢线原因**：关闭码说可以重连就忽略；否则按关闭码结束，原因原样告诉界面（`moderation.test.ts` 已有用例）。
-- **securityNotice**：放行服务端实际发的七种（`server/internal/account` 的 `notify` 调用）：`newDeviceLogin`、`passwordChanged`、`passwordRecovered`、`recoveryCodeRegenerated`、`refreshReplay`、`refreshRateLimited`、`newIpPrefix`。不认识的 `kind` 不发给 App。`loggedOutOthers`、注销等只写 `account_events`，不发这个帧。发起方所在的 `sid` 不提醒。改密、找回时其他设备先收到提醒，再收到 `kicked`。真实服务端的集成测试：`recoveryCodeRegenerated` 三套都有，`passwordChanged` 三套都有；`refreshReplay`、`refreshRateLimited`、`newIpPrefix`、`passwordRecovered` 只有 sdk-ts（`test/integration/security-notice.test.ts`）。
+- **securityNotice**：放行服务端实际发的七种（`server/internal/account` 的 `notify` 调用）：`newDeviceLogin`、`passwordChanged`、`passwordRecovered`、`recoveryCodeRegenerated`、`refreshReplay`、`refreshRateLimited`、`newIpPrefix`。不认识的 `kind` 不发给 App。`loggedOutOthers`、注销等只写 `account_events`，不发这个帧。发起方所在的 `sid` 不提醒。改密、找回时其他设备先收到提醒，再收到 `kicked`。真实服务端的集成测试：除 `newDeviceLogin` 在账号集成用例里，其余六种三套都在同一组用例（sdk-ts `test/integration/security-notice.test.ts`、sdk-kotlin `SecurityNoticeIntegrationTest`、sdk-swift `SecurityNoticeIntegrationTests`）。
 - **日志**：只有方法、路径、状态码、错误码、动作。token、refresh、恢复码、密码不进 URL、日志、事件和错误信息；传输层的原始错误不带进异常（错误信息可能有 URL）。
 
 ### HTTP 客户端不能隐式重发（S2、K4，第 21 节 16）
@@ -209,6 +226,7 @@ im.disconnect();                            // 退出登录
 | 内容 | 位置 |
 |---|---|
 | 向量 | `protocol/vectors/account-session.json`（各 SDK 用 `scripts/sync-protocol.sh` 同步副本，`protocol/SOURCE` 记提交号） |
+| 三套的账号实现 | sdk-ts `src/account.ts`；sdk-kotlin `sdk-core/.../Account.kt`、`AccountPolicy.kt`；sdk-swift `Sources/TiantingIM/AccountClient.swift`、`TokenProvider.swift` |
 | Schema | `protocol/schema/http-client.schema.json`、`frame.schema.json` |
 | 判断的基准 | `server/e2e/accountmodel/model.go`（客户端）、`server.go`（服务端判定表） |
 | sdk-ts 的执行器 | `test/account-vectors.test.ts`、`test/support/fake-account-server.ts` |

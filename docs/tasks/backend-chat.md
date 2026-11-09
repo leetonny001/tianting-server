@@ -35,7 +35,7 @@
 | BE-421 | ✅ 完成（本任务 AC 都有用例） | AC-ACC-05-9（服务端路由和 scope；console 路由随 CS-200）、09-1（后端部分）、09-2、09-5、09-7、09-9、09-10、09-12、09-13、09-14 通过；AC-ACC-03-33 的后台响应部分通过。配置检查项 `invite_total` 查库现算。AC-ACC-09-6 的 console 角色随 CS-200，这里验了 scope 和旧密钥拒绝 |
 | BE-424 | ✅ 完成（文档） | `docs/reports/privacy-notice-checklist-draft.md`：规则 3 的告知项、C1 和 C2 相关的事实和法务问题。**只是清单草稿，不代替法律文本** |
 | BE-423 | ✅ 完成 | `deploy/ACCOUNT-RUNBOOK.md`：配置、`GOMEMLIMIT`、配置检查和指标、密钥台账和泄露应急、数据库恢复、NAT。`IM_TRUSTED_EGRESS_CIDRS`、`IM_TRUSTED_EGRESS_FACTOR`（PRD 没有定义名字，任务单要求实现时加）。AC-CHAT-90-17（TC-CHAT-90-15）的用例在 BE-422 的提交里 |
-| BE-422 | 🟡 后端用例完成，AC-ACC-04-29 未执行，性能未判定 | 报告 `docs/reports/account-c1-acceptance-2026-11-06.md`。攻击序列对应表 `e2e/account_acceptance_test.go`；变异确认 `tools/account-mutation/run.py`，{len(rows)} 条全部被发现。AC-CHAT-90-5（im-server 部分）、90-17 通过；AC-CHAT-90-2 现有 e2e 全过，TC-PERF 等 P-12。**AC-ACC-04-29 未执行不算通过；AC-CHAT-90-1、90-11 开发机只记录；CS-200 还没做，依赖它的部分没验** |
+| BE-422 | 🟡 后端用例完成，AC-ACC-04-29 未执行，性能未判定 | 报告 `docs/reports/account-c1-acceptance-2026-11-06.md`。攻击序列对应表 `e2e/account_acceptance_test.go`；变异确认 `tools/account-mutation/run.py`，26 条全部被发现。AC-CHAT-90-5（im-server 部分）、90-17 通过；AC-CHAT-90-2 现有 e2e 全过，TC-PERF 等 P-12。**AC-ACC-04-29 未执行不算通过；AC-CHAT-90-1、90-11 开发机只记录；CS-200 还没做，依赖它的部分没验** |
 | 全部 | ⬜ 未开始 | C1 结束后按实际用时校准工作量（CH-27），再由 Frank 决定 C3 起的部分 |
 
 ## 总览
