@@ -159,7 +159,7 @@
 | AC-ACC-03-40 | C1 | 后端 | 03-42 | 通过 | Go e2e / 单测（`go test -race`，SQLite，本地） |
 | AC-ACC-03-41 | C1 | 后端 | 03-43 | 通过 | Go e2e / 单测（`go test -race`，SQLite，本地） |
 | AC-ACC-03-42 | C1 | 前端 | 03-44 | 部分通过 | `/v1/files/urls` 随 C2，用 `/v1/account/events` 代替：SDK 三套、H5 Vitest、Android 假服务端；**iOS App 层没有跑** |
-| AC-ACC-03-43 | C1 | 前端 | 03-45 | 部分通过 | [SDK 钟] 假接口用例三端通过。真实服务端（F2 已修，im-mvp@ce4ee6b；H5 `IM_REFRESH_ABSOLUTE=25s`，原生 40s）：上限前没有刷新、没有重连；**到期后没有成功的刷新、没有重连**，回登录页。**缺口**：服务端在上限那一秒（JWT 的 `exp` 只到秒）踢 `tokenExpired`，三端 SDK 收到后都会发 1 次刷新，服务端按到期回 401 / 4019（三端实测都是 `401/4019` 一次）。用例断言"最多这 1 次且被拒绝"，不是"请求数为 0"；要不要让 SDK 在 access 到期等于上限时收到 `tokenExpired` 直接回登录页，待 Frank 决定（见第 10 节）。Chrome，本地；模拟器，本地 |
+| AC-ACC-03-43 | C1 | 前端 | 03-45 | 通过 | [SDK 钟] 假接口用例三端通过。真实服务端（F2 已修；P-35 L1 三套 SDK 已改，tianting-sdk-ts@32ba99f、tianting-sdk-kotlin@c4d7fa1、tianting-sdk-swift@2f8501c；H5 `IM_REFRESH_ABSOLUTE=25s`，原生 40s）：上限前、到期后都**没有刷新请求**、没有重连，回登录页"登录已失效，请重新登录"。三端各连跑 2 次过（tianting-web@f7b76a8、tianting-android@fd32318、tianting-ios@bf7374e），见第 11 节。Chrome，本地；模拟器，本地 |
 | AC-ACC-03-44 | C1 | 后端 | 03-46 | 通过 | Go e2e / 单测（`go test -race`，SQLite，本地） |
 | AC-ACC-03-45 | C1 | 后端 | 03-47 | 通过 | Go e2e / 单测（`go test -race`，SQLite，本地） |
 | AC-ACC-03-46 | C1 | 后端 | 03-48 | 通过 | Go e2e / 单测（`go test -race`，SQLite，本地） |
@@ -262,12 +262,12 @@
 
 | 状态 | 数量 |
 |---|---|
-| 通过 | 155 |
-| 部分通过 | 18 |
+| 通过 | 156 |
+| 部分通过 | 17 |
 | 未执行 | 4 |
 | 合计 | 177 |
 
-"部分通过"都写了缺什么；"未执行"都写了原因。没有"基本通过"。第 10 节复测后：AC-ACC-03-8、AC-ACC-03-12 由部分通过改为通过；AC-ACC-03-43 仍是部分通过（原因换成第 10 节写的那 1 次被拒绝的刷新）。
+"部分通过"都写了缺什么；"未执行"都写了原因。没有"基本通过"。第 10 节复测后：AC-ACC-03-8、AC-ACC-03-12 由部分通过改为通过；AC-ACC-03-43 仍是部分通过（原因换成第 10 节写的那 1 次被拒绝的刷新）。第 11 节（P-35 L1）之后 AC-ACC-03-43 改为通过，合计 156 / 17 / 4。
 
 ## 9. 工作量校准（CH-27，协调方写）
 
@@ -334,3 +334,22 @@ Frank 2026-11-09 对 C1 待决定项回复"都按建议"（PRD-chat v1.2）。�
 
 1. **03-45 那 1 次被拒绝的刷新**：要不要改三套 SDK，在 access 到期等于 `absoluteExpiresAt` 时收到 `kicked/tokenExpired` 直接回登录页（不再发刷新），让 AC-ACC-03-43 在真实服务端上也是"请求数为 0"。不改的话，建议 AC 写明"上限那一秒服务端踢线后的 1 次刷新被 4019 拒绝"可以接受。
 2. **组合内协程的其他 SDK 调用**：这次只改了聊天页、发起单聊、`rememberRelation`。其他页面（群资料、通讯录等约 30 处）是同一种写法，正式运行没有问题，只在测试调度器下会在 SDK 线程上恢复。要不要统一改，由 Frank 定。
+
+**第 10.4 节第 1 条已由 Frank 决定（P-35，2026-11-09"都按建议"）**，处理见第 11 节。
+
+## 11. P-35 L1 之后的复测（2026-11-09，随 FE-630～632）
+
+决定：access 到期等于 `absoluteExpiresAt` 时收到 `kicked/tokenExpired`，SDK 直接走登录失效，不再发刷新；三端 TC-ACC-03-45 到期后的断言改回"刷新请求数为 0、不重连"。逐端顺序跑，没有并行。**本地结果，CI 不运行**；WebKit、真机没有验证。
+
+| 端 | 提交 | 命令 | 结果 |
+|---|---|---|---|
+| sdk-ts | tianting-sdk-ts@32ba99f | `npx vitest run --project unit`、`--project integration` | 单测 603、集成 57 全过；L1 的 3 个用例去掉实现后 2 个失败 |
+| sdk-kotlin | tianting-sdk-kotlin@c4d7fa1 | `:sdk-core:test`、`:sdk-core:integrationTest` | 单测 803、集成 76 全过 |
+| sdk-swift | tianting-sdk-swift@2f8501c | `swift test` | 单测 423、集成 76 全过；原来断言"上限前被踢还会刷新 1 次"的单测按决定换成 L1 的断言 |
+| H5 | tianting-web@f7b76a8 | `IM_REFRESH_ABSOLUTE=25s npx playwright test e2e/account-real.spec.ts -g TC-ACC-03-45` | 连跑 2 次过：刷新响应 `[]`，1 个 WebSocket，回登录页 |
+| Android | tianting-android@fd32318 | `IM_REFRESH_ABSOLUTE=40s scripts/run-tests.sh e2e com.tianting.app.AccountE2eTest#tc_acc_03_45_real_absolute_limit`（emulator-5556）；默认服务端 `e2e com.tianting.app.AccountE2eTest,com.tianting.app.ServerE2eTest` | 03-45 连跑 2 次过（`refresh answers []`，状态只有 CONNECTED → DISCONNECTED）；回归 36 个 OK（03-45 在默认服务端按设计跳过） |
+| iOS | tianting-ios@bf7374e | `IM_REFRESH_ABSOLUTE=40s scripts/run-e2e.sh --device 46E6F7B9-… --only AccountE2ETests/testTC_ACC_03_45_realAbsoluteLimit`；默认服务端 `--only AccountE2ETests` | 03-45 连跑 2 次过（代理记下的刷新请求 0 个，WebSocket 升级次数不变）；默认服务端 AccountE2ETests 35 个：0 失败、3 跳过（就是要配服务端单独跑的 03-10、03-12、03-45） |
+
+结论：AC-ACC-03-43 由部分通过改为通过。汇总变为通过 156、部分通过 17、未执行 4（合计 177）。
+
+改动说明：三端用例只把到期后的"最多 1 次且被 401/4019 拒绝"改回"0 次"，是收紧，没有删除或放宽断言。tianting-ios 为了能和新 SDK 一起编译，补了 `MessageStatus.processing`、`.uploading` 的显示（"处理中""上传中"，和发送中一样转圈）和 `IMEvent.filesExpired` 的空分支，页面在 FE-637、FE-638 再做。
