@@ -2,7 +2,7 @@
 
 | 项 | 内容 |
 |---|---|
-| 依据 | [PRD-chat v1.3](../prd/PRD-chat-v1.3.md)（冻结）第 5、6、13、14.1、15 节；[PRD-ui v1.2](../prd/PRD-ui-v1.3.md)（界面规则 B-1～B-8，第 6 节视觉）；[SDK 设计说明](../sdk/README.md)；[errors.json](../../protocol/errors.json) |
+| 依据 | [PRD-chat v1.4](../prd/PRD-chat-v1.4.md)（冻结）第 5、6、13、14.1、15 节；[PRD-ui v1.2](../prd/PRD-ui-v1.3.md)（界面规则 B-1～B-8，第 6 节视觉）；[SDK 设计说明](../sdk/README.md)；[errors.json](../../protocol/errors.json) |
 | 范围 | **只有 C1、C2 和公共部分**（CH-27）。撤回、引用、@、置顶、举报、设备通知的接口和界面不做；【全部】的 AC 只验证到 C2 为止的页面（第 15 节累计表） |
 | 负责 | 前端（AI） |
 | 仓库 | tianting-sdk-ts、tianting-sdk-kotlin（`sdk-core` 纯 JVM）、tianting-sdk-swift、tianting-web（H5）、tianting-android、tianting-ios、tianting-admin |
@@ -239,6 +239,12 @@
 
 ## C2 图片和文件
 
+### P-37 落实（Frank 2026-11-09 "都按建议"，PRD-chat v1.4）
+- ① 4048 按已清理处理（三套 SDK）：只对**这台设备自己上传得到的** `fileId`（SDK 记录过 `complete` 成功的），`send` 回 4048 时和 4096 一样：有源（沙盒副本 / H5 内存里的 File）回到"上传中"重新上传，不算自动重发次数；没有源转失败，`sourceMissing`。别人的 `fileId`（转发等）收到 4048 照常失败。各补单测（含"别人的 fileId 不重传"），Android A28、H5 H15 的预期失败用例改回正常断言。iOS 随 FE-637 那一波一起改。
+- ③ 后台元数据页显示文件大小：im-server `/admin/convs/messages/query` 已加 `fileSize`（原文件字节数，已删除的不出现；TC-FILE-91-01 加了断言）；console 透传，tianting-admin 元数据页的"大小"对图片、文件显示 `fileSize`（人类可读），其他消息仍显示正文长度。
+- ④ CS-202、FE-639 里"经代理查看内容"挪到 C4，随 `POST /admin/files/{fileId}/fetch`（AC-RCL-04-9）。
+- ②⑤ 只改 PRD 和用例，不改代码。
+
 ### C1 遗留（P-35，Frank 2026-11-09 "都按建议"）
 - L1（随 FE-630、FE-631、FE-632）：access 到期等于 `absoluteExpiresAt` 时收到 `kicked/tokenExpired`，SDK 直接走登录失效、**不再发刷新**。三端 TC-ACC-03-45 到期后的断言改回"刷新请求数为 0、不重连"（AC-ACC-03-43），通过后验收报告里 03-43 改为通过。
   - **L1 处理结果（2026-11-09）**：三套 SDK 收到 `kicked/tokenExpired`（或只有关闭码 4011）、本地 token 的到期等于 `absoluteExpiresAt` 时直接按登录失效结束（`sessionExpired`），不发刷新：tianting-sdk-ts@32ba99f、tianting-sdk-kotlin@c4d7fa1、tianting-sdk-swift@2f8501c，三套都有"上限前最后一秒被踢""只有 4011""普通 token 仍刷新 1 次"的用例，去掉实现后前两个失败。三端 TC-ACC-03-45 到期后改回"刷新请求数为 0、不重连"：tianting-web@f7b76a8（`IM_REFRESH_ABSOLUTE=25s`，Chrome，连跑 2 次过，刷新响应 `[]`，1 个 WebSocket）、tianting-android@fd32318（`40s`，emulator-5556，连跑 2 次过，`refresh answers []`，状态只有 CONNECTED → DISCONNECTED）、tianting-ios@bf7374e（`40s`，iPhone 16 Pro，连跑 2 次过）。验收报告 AC-ACC-03-43 改为通过。边界见 D14。本地结果，CI 不运行
@@ -461,7 +467,7 @@ C2 三套 SDK（FE-630～632）实现时发现的。PRD 冻结，没有改；按
 | # | 位置 | 问题 | 现在的实现 |
 |---|---|---|---|
 | D1 | F-RCL-03 规则 2（server，已修） | 规则 2 写"撤回、后台删除、文件过期时递增 `mod_ver`"，服务端现在只在文件过期时递增（`sqlite_files.go`），后台删除（`DeleteMessages`）不递增。SDK 按任务单改成只重拉 `modVer` 变了的会话后，**断线期间被后台删除的、不是最后一条的消息，重连后不再被清掉**（原来每次重连全部重拉能清掉；最后一条仍靠 `convs` 的 `lastMsg.deleted`）。后台删除要 `IM_V13_ADMIN_FEATURES=1`，默认关闭 | 三套 SDK 都按规则 2 做了；`convs` 没有 `modVer`（老服务端）时仍全部重拉。建议 BE 在 `DeleteMessages` 同一事务递增 `mod_ver`（撤回随 C4 本来就要递增），这是后端改动，本次没有做。**2026-11-09 已修（照 PRD 补实现，不是新决定）**：`DeleteMessages` 同一事务先递增 `conv_seq.mod_ver`（已删除的重复删除不再递增）；TC-FILE-06-12 的 e2e 加了断言（删的不是最后一条，modVer +1；重复删除不变），去掉修复时该用例失败 |
-| D2 | AC-FILE-07-10 H5 一侧、F-FILE-07 规则 4 | AC 写 H5 同样场景（页面没刷新）提示"原文件已不可用"；规则 4 说"有沙盒副本的回到上传中"，源文件没了的例子是"H5 刷新后"。sdk-ts 在内存里留着 File 直到发出，没刷新时 4096 会重新上传；刷新后整条消息已经不在（D4，AC-FILE-07-3），所以 `sourceMissing` 在 H5 上实际碰不到 | sdk-ts 有源就重新上传，没有源时 `error='sourceMissing'`。H5 页面怎么对 AC 由 FE-633、FE-634 定 |
+| D2 | AC-FILE-07-10 H5 一侧、F-FILE-07 规则 4 | AC 写 H5 同样场景（页面没刷新）提示"原文件已不可用"；规则 4 说"有沙盒副本的回到上传中"，源文件没了的例子是"H5 刷新后"。sdk-ts 在内存里留着 File 直到发出，没刷新时 4096 会重新上传；刷新后整条消息已经不在（D4，AC-FILE-07-3），所以 `sourceMissing` 在 H5 上实际碰不到 | sdk-ts 有源就重新上传，没有源时 `error='sourceMissing'`。H5 页面怎么对 AC 由 FE-633、FE-634 定。**P-37 ②（2026-11-09）已定**：H5 未刷新时重新上传后成功，提示只要求原生 |
 | D3 | F-FILE-07 规则 3（按 PRD 字面统一） | "待发送的按现有规则自动发 1 次"：三套 SDK 的"现有规则"不同。sdk-kotlin 冷启动时 QUEUED、SENDING 一律转失败（原有规则，不在用户不知情时发旧消息），所以冷启动后的待发送附件也转失败；sdk-swift 冷启动时待发送的、以及已有 `fileId` 的发送中，按排队自动发 1 次（服务端按 `clientMsgId` 去重）。同一进程里断线重连三套都自动发 1 次 | 各自按原有规则，没有统一。**2026-11-09 处理**：PRD 规则 3 明写"待发送的……自动发 1 次"，第 820 行也说现有 QUEUED 重连后自动发，所以按字面统一成 Swift 的做法：sdk-kotlin 冷启动时**待发送的附件**（以及已有 `fileId` 的发送中）自动发 1 次，其他 QUEUED、SENDING 的原有规则不动。随 FE-635 做 |
 | D4 | F-FILE-07 规则 3 | 冷启动时处理中、上传中"转为失败"没有给原因 | sdk-kotlin 记 `SendError.Network`，sdk-swift 记 `.interrupted`（sdk-ts 只在内存，没有这个场景）。名字不同，App 文案都是"发送失败"一类，三端页面时再统一 |
 | D5 | F-FILE-07、第 13.2 节 | 上传的 PUT 没有规定超时 | 三套 SDK 都没有 SDK 层的超时（OkHttp 读写各 60 秒没有进展才失败，URLSession 每段 60 秒、整体 3600 秒，fetch / XHR 没有）；卡住时一直显示"上传中"，用户可以取消 |
@@ -471,7 +477,7 @@ C2 三套 SDK（FE-630～632）实现时发现的。PRD 冻结，没有改；按
 | D9 | 第 21 节 16（sdk-swift，接着 S2） | 实测 URLSession 对没有响应的 GET 会自己重发（2 次 GET 到达 4 次）；PUT 每次用新的会话，断在半路只到达 1 次 | 下载不阻止重发：只读、同一个预签名地址、只有 2xx 才写文件。只在 macOS、回环、HTTP/1.1 测过 |
 | D10 | BE-403、第 13.1 节共享用例 | `protocol/vectors/chat-sync.json` 还没有（BE-403 负责） | 单调合并、`modVer` 只重拉变了的会话只有三套 SDK 各自的单测，没有共享向量；frames.json 的 image、file 用例同样等 BE-403。本次没有加 |
 | D11 | F-FILE-01 规则 6a | 只说用户取消时发 `DELETE`；上传失败（PUT 失败、complete 报错）后留下的 `pending` 要等 PUT 地址过期才释放名额 | 三套 SDK 在没完成的上传失败时也尽力发一次 `DELETE`（幂等，失败只记日志），重发时从头申请新的 `fileId` |
-| D12 | F-FILE-07、F-FILE-02 规则 2 | 失败原因里只有部分有 PRD 文案（4292、`uploadPendingLimit`、处理失败、存储空间不足、原文件不可用），网络或对象存储失败没有 | SDK 给出 `error`（错误码，或 `network`、`process`、`storage`、`sourceMissing` 等）和 `errorReason`，文案由页面任务定 |
+| D12 | F-FILE-07、F-FILE-02 规则 2 | 失败原因里只有部分有 PRD 文案（4292、`uploadPendingLimit`、处理失败、存储空间不足、原文件不可用），网络或对象存储失败没有 | SDK 给出 `error`（错误码，或 `network`、`process`、`storage`、`sourceMissing` 等）和 `errorReason`，文案由页面任务定。**P-37 ⑤ 已定**：文案写进 PRD v1.4 F-FILE-07 规则 9 |
 | D13 | tianting-web Vitest（FE-633、FE-634） | 协议副本同步后 `errors.json` 的 4096 是 `ws` 通道，H5 的错误文案表没有 4096，用例"errors.json 里每个 ws 通道的错误码都有文案"失败 1 个（Vitest 260 个，259 过） | 没有改 H5 页面（不在这次范围），FE-633 补文案（候选是 PRD 的"原文件已不可用，请重新选择"） **已处理**：tianting-web@b3b2a03，4096 用"原文件已不可用，请重新选择"（SDK 有源就重新上传，走到界面的只有没有源的情况），没有改用例 |
 | D14 | P-35 L1 的边界 | L1 只看本地 token 的到期是否等于 `absoluteExpiresAt`，不看时间：最后一段 access（被上限截短的那个）有效期内，如果收到的 `kicked/tokenExpired` 不是到期而是被替换的代（不是自己刷新造成的），也直接回登录页 | 按决定实现。这种情况下刷新最多也只能换来同一个上限的 token；自己刷新造成的被替换仍按"本地更新"用本地值。三套 SDK 都有"普通 token 被踢仍刷新 1 次"的用例 |
 
@@ -480,15 +486,15 @@ C2 H5 和后台页面（FE-633、FE-634、FE-639）实现时发现的。PRD 冻�
 | # | 位置 | 问题 | 现在的实现 |
 |---|---|---|---|
 | H13 | F-ACC-06、AC-ACC-06-6（sdk-ts） | `AccountClient.updateProfile` 只把新昵称同步进 `IMClient` 的资料缓存，头像地址（服务端写的公开桶地址）要等 10 分钟缓存过期或刷新页面才拿到；`PATCH profile` 的响应也没有地址 | H5 这次登录里用上传的那张（`blob:`）显示自己的头像（"我"页、编辑页、自己的消息）；刷新后用服务端地址。SDK 没有改，建议 SDK 改资料后重新拉自己的资料。另：H5 的头像只显示 https 地址，测试环境的假 S3 是 http，所以刷新后在测试环境不显示，生产要求 https（`config.go` 第 535 行） |
-| H14 | AC-FILE-07-10 H5 一侧（接着 D2） | AC 写 H5"同样场景"提示"原文件已不可用"；页面没刷新时 File 还在内存里，按规则 4"有源的回到上传中"重新上传；刷新后整条消息不在了（AC-FILE-07-3），所以这句提示在 H5 上实际碰不到 | 按规则 4：有源就重新上传（和原生一样）。SDK 报 `sourceMissing` 时显示"原文件已不可用，请重新选择"，点失败图标只能删除（Vitest 只测了文案，界面状态造不出来）。AC-FILE-07-10 的 H5 部分要 Frank 定口径 |
-| H15 | F-FILE-07 规则 4、AC-FILE-07-10（**server**） | 实测（tianting-web `zz-im-clock.spec.ts` 的 TC-FILE-07-10）：待发送的图片（`complete` 过，`send` 没有 ack），IM 钟推进 25 小时、跑 `file_purge` 之后重发，`send` 回 **4048**，不是规则 4 写的 4096。`file_purge` 把超过 24 小时没绑定的文件整行删掉，`precheckFile`（`logic/files.go` 第 36～39 行）找不到行就回 4048。SDK 只对 4096 重新上传，4048 直接失败，再重发还是 4048，消息只能删除 | 没有改服务端和 SDK（不在范围）。用例按 PRD 断言 4096 并重新上传成功，标成预期失败（`test.fail`），日志里只有错误码 `[4048]`。建议服务端对"自己的、已清理的上传"回 4096，或 PRD 改口径，由 Frank 定 |
-| H16 | F-FILE-07 规则 6 | "一次最多选 9 个"：多选了怎么办没写 | 提示"一次最多选择 9 个"，这一批都不发（不替用户挑前 9 个）。文案是实现时加的 |
-| H17 | F-FILE-05 规则 3 | "每个会话首次"提示来源：记在哪里没写 | 只在内存（按会话），刷新或重新登录后再提示一次（偏保守）；自己发的文件和图片不提示 |
+| H14 | AC-FILE-07-10 H5 一侧（接着 D2） | AC 写 H5"同样场景"提示"原文件已不可用"；页面没刷新时 File 还在内存里，按规则 4"有源的回到上传中"重新上传；刷新后整条消息不在了（AC-FILE-07-3），所以这句提示在 H5 上实际碰不到 | 按规则 4：有源就重新上传（和原生一样）。SDK 报 `sourceMissing` 时显示"原文件已不可用，请重新选择"，点失败图标只能删除（Vitest 只测了文案，界面状态造不出来）。AC-FILE-07-10 的 H5 部分要 Frank 定口径。**P-37 ② 已定**：AC-FILE-07-10 H5 一侧改为重新上传后成功（PRD v1.4） |
+| H15 | F-FILE-07 规则 4、AC-FILE-07-10（**server**） | 实测（tianting-web `zz-im-clock.spec.ts` 的 TC-FILE-07-10）：待发送的图片（`complete` 过，`send` 没有 ack），IM 钟推进 25 小时、跑 `file_purge` 之后重发，`send` 回 **4048**，不是规则 4 写的 4096。`file_purge` 把超过 24 小时没绑定的文件整行删掉，`precheckFile`（`logic/files.go` 第 36～39 行）找不到行就回 4048。SDK 只对 4096 重新上传，4048 直接失败，再重发还是 4048，消息只能删除 | 没有改服务端和 SDK（不在范围）。用例按 PRD 断言 4096 并重新上传成功，标成预期失败（`test.fail`），日志里只有错误码 `[4048]`。建议服务端对"自己的、已清理的上传"回 4096，或 PRD 改口径，由 Frank 定。**P-37 ① 已定**：SDK 对自己上传的 `fileId` 收到 4048 也按已清理处理，服务端不改（PRD v1.4 F-FILE-07 规则 4）；落实见"P-37 落实" |
+| H16 | F-FILE-07 规则 6 | "一次最多选 9 个"：多选了怎么办没写 | 提示"一次最多选择 9 个"，这一批都不发（不替用户挑前 9 个）。文案是实现时加的。**P-37 ⑤ 已定**（PRD v1.4 F-FILE-07 规则 6） |
+| H17 | F-FILE-05 规则 3 | "每个会话首次"提示来源：记在哪里没写 | 只在内存（按会话），刷新或重新登录后再提示一次（偏保守）；自己发的文件和图片不提示。**P-37 ⑤ 已定**（PRD v1.4 F-FILE-05 规则 3） |
 | H18 | AC-FILE-02-4、TC-FILE-02-04 | 用例要求 exiftool 读 EXIF、环境 ES（MinIO 复跑）。本机没有 exiftool，不装软件；不跑 MinIO | 用假 S3 上的最终对象检查：JPEG 没有 APP1 段、搜不到 `Exif`、型号特征串；方向用像素验证（Orientation=6 的 40×20 左红右蓝，转正后 20×40 上红下蓝）。exiftool 和 MinIO 复跑没有执行 |
 | H19 | AC-FILE-07-7 | "查当天额度"：客户端没有查额度的接口 | 弱网用 Playwright 让 PUT 连接重置 5 次：5 次申请、5 次 `DELETE`、0 次 `complete`。额度只在 `complete` 成功时扣（F-FILE-01 规则 6，服务端 TC-FILE-01-11 验过），所以按这个推断没有扣，不是直接读额度 |
 | H20 | F-ACC-03 规则 9（H5，L3 发现，**已修**） | 登录（或改密、找回）换了 `sid` 之后，标签页锁的 claim 是异步的；如果拿到的 access 已经不足 6 小时（`IM_ACCESS_TTL` 配得短，或本机时钟快了 18 小时以上），SDK 马上刷新，刷新前的确认在 claim 完成之前执行，返回"没有占着"，本地按 4019 `revoked` 结束：一登录就弹"登录已失效" | tianting-web@47db681：确认先等进行中的 claim（`locksGuard`、`broadcastGuard` 都改了），Vitest 加了用例（交锁延迟 5 毫秒，去掉修复时失败）。默认 24 小时的 access 碰不到 |
 | H21 | NF-UI-14、第 13.2 节（`deploy/nginx.conf`） | nginx 的 `add_header` 只在当前层没有 `add_header` 时继承上一层；示例里 `location /` 有自己的 `Cache-Control`，所以 `index.html` 的响应没有 CSP、`Referrer-Policy` 等头（meta 里有 CSP，`frame-ancestors` 和 `Referrer-Policy` 只能靠头，页面里有 `<meta name="referrer">`） | 安全头放进 `deploy/tianting-headers.conf`，每个带 `add_header` 的 location 都 include；Vitest 检查每个带 `add_header` 的 location 都 include 了，CSP 和构建的一致。没有在真实 nginx 上跑 |
-| H22 | 第 13.4 节（H5） | "下载中""保存权限被拒""存储空间不足"在 H5 没有对应：浏览器下载没有进度（第 13.2 节），保存走浏览器 | 不显示这些状态。文案是实现时加的："图片无法显示"（解码失败、超像素上限）、"加载失败，点击重试"、"下载失败"、"等待发送""处理中""上传中 N%"、"头像已更新"、头像的错误提示、网络失败"图片上传失败，请检查网络后重发"/"文件上传失败，请检查网络后重发"（D12） |
+| H22 | 第 13.4 节（H5） | "下载中""保存权限被拒""存储空间不足"在 H5 没有对应：浏览器下载没有进度（第 13.2 节），保存走浏览器 | 不显示这些状态。文案是实现时加的："图片无法显示"（解码失败、超像素上限）、"加载失败，点击重试"、"下载失败"、"等待发送""处理中""上传中 N%"、"头像已更新"、头像的错误提示、网络失败"图片上传失败，请检查网络后重发"/"文件上传失败，请检查网络后重发"（D12）。**P-37 ⑤ 已定**（PRD v1.4 F-FILE-07 规则 9） |
 
 C2 Android（FE-635、FE-636）和 sdk-kotlin（D3、H13）实现时发现的。PRD 冻结，没有改；按"现在的实现"一列做了。结果都是本地结果（模拟器 emulator-5556，Pixel_10_Pro_XL，API 37；CI 不运行，真机 P-13 未执行）
 

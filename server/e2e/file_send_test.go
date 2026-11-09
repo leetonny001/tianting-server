@@ -252,4 +252,8 @@ func TestTC_FILE_91_01_MetaHasNoFileName(t *testing.T) {
 	if code != http.StatusOK || !strings.Contains(string(b), `"type":"file"`) || strings.Contains(string(b), "FEATURE-NAME") {
 		t.Fatalf("meta = %d %s", code, b)
 	}
+	// P-37 ③（PRD-chat v1.4 第 14.1 节）：元数据带原文件大小。
+	if !strings.Contains(string(b), `"fileSize":2048`) {
+		t.Fatalf("meta has no fileSize: %s", b)
+	}
 }

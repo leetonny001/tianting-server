@@ -1,6 +1,6 @@
 # 测试用例：图片和文件消息（FILE，C2）
 
-> 依据：[PRD-chat v1.3](../prd/PRD-chat-v1.3.md)（冻结）第 4、6 节、第 15 节 AC-FILE-90；[GATE-objstore](../review/GATE-objstore-2026-11-06.md)；[tools/objstore-contract](../../tools/objstore-contract/README.md)。任务单：[backend-chat](../tasks/backend-chat.md)、[console-chat](../tasks/console-chat.md)、[frontend-chat](../tasks/frontend-chat.md)。
+> 依据：[PRD-chat v1.4](../prd/PRD-chat-v1.4.md)（冻结）第 4、6 节、第 15 节 AC-FILE-90；[GATE-objstore](../review/GATE-objstore-2026-11-06.md)；[tools/objstore-contract](../../tools/objstore-contract/README.md)。任务单：[backend-chat](../tasks/backend-chat.md)、[console-chat](../tasks/console-chat.md)、[frontend-chat](../tasks/frontend-chat.md)。
 > 范围：标了【C2】的 AC-FILE（CH-27）。依赖撤回、清空、举报的 AC 随 C4～C6。
 >
 > 通用约定：
@@ -107,10 +107,10 @@
 | TC-FILE-07-07 | 弱网上传失败 5 次：不扣额度 | AC-FILE-07-7 | Playwright（H5）+ 原生 UI 测试 + SDK 单测 | P0 |
 | TC-FILE-07-08 | send 被拒后文件还是 ready，取消拉黑后可以绑定 | AC-FILE-07-8 | 后端 e2e | P0 |
 | TC-FILE-07-09 | 退出登录清除沙盒副本 | AC-FILE-07-9 | 原生 UI 测试（Android、iOS） | P0 |
-| TC-FILE-07-10 | 文件 24 小时被清理：原生重传，H5 提示 | AC-FILE-07-10 | Playwright（H5）+ 原生 UI 测试 + SDK 单测 | P0 |
+| TC-FILE-07-10 | 文件 24 小时被清理：三端重传，原生没有副本时提示 | AC-FILE-07-10 | Playwright（H5）+ 原生 UI 测试 + SDK 单测 | P0 |
 | TC-FILE-90-01 | 真实 MinIO 合同测试 | AC-FILE-90-1 | 合同测试 | P0 |
 | TC-FILE-90-02 | 云厂商合同测试 | AC-FILE-90-2 | 手工 | P0 |
-| TC-FILE-91-01 | 元数据响应搜不到文件名（AC-ADM-30-7 的扩展，C2 起生效） | AC-ADM-30-7 | 后端 e2e | P0 |
+| TC-FILE-91-01 | 元数据响应搜不到文件名，带文件大小（AC-ADM-30-7 的扩展，C2 起生效；大小 v1.4） | AC-ADM-30-7 | 后端 e2e | P0 |
 | TC-FILE-06-12 | 后台删除的图片 30 天后物理删除 | AC-FILE-06-13 | 后端 e2e | P0 |
 
 ---
@@ -1405,19 +1405,22 @@
 - 预期结果：
   1. 9 个副本都被清除
 
-### TC-FILE-07-10 文件 24 小时被清理：原生重传，H5 提示
+### TC-FILE-07-10 文件 24 小时被清理：三端重传，原生没有副本时提示
 - 关联 AC：AC-FILE-07-10
 - 优先级：P0
 - 批次：C2
 - 层级：Playwright（H5）+ 原生 UI 测试 + SDK 单测
 - 环境：ES（[IM 钟]）
-- 前置条件：原生端：待发送消息（文件已 `ready`），沙盒副本还在；H5 同样场景（页面未刷新）；[IM 钟] 推进 25 小时并运行 `file_purge`
+- 前置条件：原生端：待发送消息（文件已 `ready`），沙盒副本还在；另一条没有沙盒副本；H5 同样场景（页面未刷新）；[IM 钟] 推进 25 小时并运行 `file_purge`
 - 步骤：
-  1. 原生点重发
-  2. H5 点重发（H5 刷新的场景单独跑一次）
+  1. 原生点重发（有副本的一条）
+  2. H5 点重发
+  3. 原生点重发（没有副本的一条）
 - 预期结果：
-  1. 原生：`send` 得到 4096，回到"上传中"，重新上传后发送成功；不算自动重发次数
-  2. H5 刷新后没有源文件的场景：提示"原文件已不可用，请重新选择"，只能删除这条消息
+  1. 原生：`send` 得到 4096 或 4048（v1.4：被清理的上传行已删，实测 4048），回到"上传中"，重新上传后发送成功；不算自动重发次数
+  2. H5：同 1，重新上传后发送成功
+  3. 原生没有副本：提示"原文件已不可用，请重新选择"，只能删除这条消息
+  4. SDK 单测：自己上传的 `fileId` 收到 4048 按已清理处理；不是自己上传的（例如转发别人的）收到 4048 照常失败，不重新上传
 
 ## 对象存储合同（F-FILE-90）
 

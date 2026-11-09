@@ -2,7 +2,7 @@
 
 | 项 | 内容 |
 |---|---|
-| 依据 | [PRD-chat v1.3](../prd/PRD-chat-v1.3.md)（冻结）第 4～6、11、12、14、15、16、18 节；[ARCH-v1](../arch/ARCH-v1.md)；[协议](../../protocol/README.md)、[错误码](../../protocol/ERRORS.md)、[管理接口](../../protocol/ADMIN.md) |
+| 依据 | [PRD-chat v1.4](../prd/PRD-chat-v1.4.md)（冻结）第 4～6、11、12、14、15、16、18 节；[ARCH-v1](../arch/ARCH-v1.md)；[协议](../../protocol/README.md)、[错误码](../../protocol/ERRORS.md)、[管理接口](../../protocol/ADMIN.md) |
 | 范围 | **只有 C1、C2 和公共部分**（PRD 决定 CH-27）。C3～C6 的 AC 不进任务；【全部】的 AC 只验证到 C2 为止的部分（PRD 第 15 节的累计表） |
 | 负责 | 后端（AI） |
 | 仓库 | im-server（GitHub 仓库 `tianting-server`，本地 `im-mvp/server/`）；协议在同仓库 `protocol/`，部署在 `deploy/`，工具在 `tools/` |

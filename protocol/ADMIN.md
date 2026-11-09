@@ -94,7 +94,7 @@ scope：`POST /admin/users/token` → `token.issue`；`POST /admin/users/import`
 | `POST /admin/users/sessions/query` | `{userId}` | `{sessions:[{connId, platform, connectedAt, node, ip, queueLen}], partial, scope}` | `user.sessions`，写审计（result 的 summary 带 `count`）。`ip` 已脱敏（IPv4 `a.b.*.*`，IPv6 前 3 组），完整 IP 拿不到。B6 之前 `partial: true, scope: "localNode"`：只覆盖接收请求的节点，**不能据此下"不在线"的结论**。用户不存在 404 / 4042 |
 | `GET /admin/groups` | `q`、`includeDissolved=true`、`cursor`、`limit` | `{groups:[{groupId, name, type, owner, memberCount, historyVisible, createdAt, dissolvedAt?}], nextCursor}` | `group.read`，不写审计。`q` 可选：groupId 前缀或群名前缀。`type` 为 `managed`（托管）/ `user`（客户端自建）；`owner` 没有时为 `null`。按创建时间倒序，默认不含已解散的群 |
 | `GET /admin/groups/{groupId}/members` | `cursor`、`limit`、`prefix` | `{members:[{userId, role, joinedAt}], nextCursor}` | `group.read`。按 userId 升序（和客户端 `groupMembers` 的顺序不同），`prefix` 是 userId 前缀。已解散或不存在 404 / 4043 |
-| `POST /admin/convs/messages/query` | `{convId, beforeSeq?, limit?, from?, sinceTs?, untilTs?}` | `{messages:[{seq, msgId, from, type, bodyLength, ts}], hasMore}` | `msg.meta`，写审计。**响应没有正文**；`bodyLength` 是文本的码点数（非文本消息是 body JSON 的码点数）。`limit` 1～50，默认 50；按 seq 倒序；时间是闭区间。不受成员关系和 `historyVisible` 限制，已解散的群照常返回；会话不存在返回空列表；`convId` 格式错误 400 / 4007 |
+| `POST /admin/convs/messages/query` | `{convId, beforeSeq?, limit?, from?, sinceTs?, untilTs?}` | `{messages:[{seq, msgId, from, type, bodyLength, fileSize?, ts}], hasMore}` | `msg.meta`，写审计。**响应没有正文**；`bodyLength` 是文本的码点数（非文本消息是 body JSON 的码点数）。`fileSize` 是图片、文件消息的原文件字节数（不含缩略图），其他消息和已删除的不出现（PRD-chat v1.4 第 14.1 节）。`limit` 1～50，默认 50；按 seq 倒序；时间是闭区间。不受成员关系和 `historyVisible` 限制，已解散的群照常返回；会话不存在返回空列表；`convId` 格式错误 400 / 4007 |
 
 P1（PRD-admin G-ADM-07、G-ADM-13、G-ADM-17）：
 

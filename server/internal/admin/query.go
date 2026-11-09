@@ -297,6 +297,7 @@ type messageMetaJSON struct {
 	From       string `json:"from"`
 	Type       string `json:"type"`
 	BodyLength int    `json:"bodyLength"`
+	FileSize   int64  `json:"fileSize,omitempty"`
 	TS         int64  `json:"ts"`
 	Deleted    bool   `json:"deleted,omitempty"`
 	DeletedAt  int64  `json:"deletedAt,omitempty"`
@@ -351,7 +352,7 @@ func (a *Admin) queryMessageMeta(w http.ResponseWriter, r *http.Request) {
 	}
 	out := make([]messageMetaJSON, len(msgs))
 	for i, m := range msgs {
-		out[i] = messageMetaJSON{m.Seq, m.MsgID, m.From, m.Type, m.BodyLength, m.TS, m.DeletedAt > 0, m.DeletedAt, m.DeletedBy}
+		out[i] = messageMetaJSON{m.Seq, m.MsgID, m.From, m.Type, m.BodyLength, m.FileSize, m.TS, m.DeletedAt > 0, m.DeletedAt, m.DeletedBy}
 	}
 	noteAuditCount(r.Context(), len(out))
 	writeJSON(w, http.StatusOK, struct {

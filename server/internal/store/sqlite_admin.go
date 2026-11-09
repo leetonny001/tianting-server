@@ -133,8 +133,11 @@ func (s *SQLite) ListMessageMeta(ctx context.Context, q MessageMetaQuery) ([]Mes
 	args = append(args, q.Limit+1)
 	// SQLite 的 length() 对 TEXT 按字符（码点）计数；正文只参与计算长度，不离开数据库。
 	// #nosec G202 -- where 是常量片段，取值全部走占位符
+	// 文件大小取 files.size（complete 时读到的真实值）；过期、撤回后行仍保留（F-FILE-06 规则 2a），大小照常返回，已删除的消息为 0。
 	rows, err := s.db.QueryContext(ctx, `SELECT seq, msg_id, from_uid, type,
-		CASE WHEN deleted_at > 0 THEN 0 ELSE COALESCE(length(json_extract(body, '$.text')), length(body)) END, ts, deleted_at, deleted_by
+		CASE WHEN deleted_at > 0 THEN 0 ELSE COALESCE(length(json_extract(body, '$.text')), length(body)) END,
+		CASE WHEN deleted_at > 0 THEN 0 ELSE COALESCE((SELECT f.size FROM files f WHERE f.msg_id = messages.msg_id AND f.conv_id = messages.conv_id AND f.kind IN ('image', 'file')), 0) END,
+		ts, deleted_at, deleted_by
 		FROM messages WHERE `+strings.Join(where, " AND ")+` ORDER BY seq DESC LIMIT ?`, args...)
 	if err != nil {
 		return nil, false, err
@@ -143,7 +146,7 @@ func (s *SQLite) ListMessageMeta(ctx context.Context, q MessageMetaQuery) ([]Mes
 	out := []MessageMeta{}
 	for rows.Next() {
 		var m MessageMeta
-		if err := rows.Scan(&m.Seq, &m.MsgID, &m.From, &m.Type, &m.BodyLength, &m.TS, &m.DeletedAt, &m.DeletedBy); err != nil {
+		if err := rows.Scan(&m.Seq, &m.MsgID, &m.From, &m.Type, &m.BodyLength, &m.FileSize, &m.TS, &m.DeletedAt, &m.DeletedBy); err != nil {
 			return nil, false, err
 		}
 		out = append(out, m)

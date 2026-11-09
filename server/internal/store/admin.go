@@ -82,12 +82,14 @@ type MessageMetaQuery struct {
 }
 
 // MessageMeta 是一条消息的元数据。故意没有正文字段（AC-ADM-30-7）。BodyLength 是文本的码点数，非文本消息是 body JSON 的码点数。
+// FileSize 是图片、文件消息绑定的原文件字节数（不含缩略图、不含文件名，PRD-chat v1.4 第 14.1 节，P-37 ③）；其他消息和已删除的为 0。
 type MessageMeta struct {
 	Seq        int64
 	MsgID      string
 	From       string
 	Type       string
 	BodyLength int
+	FileSize   int64
 	DeletedAt  int64
 	DeletedBy  string
 	TS         int64
