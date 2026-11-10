@@ -4,7 +4,9 @@
 // C2：单调合并里的 expired 和 modVer 重拉：expired 只能从假变真，迟到的旧 sync 不回写，重连时只重拉 modVer 变了的已加载会话。
 // C4：deleted、recalled 只能从假变真（变真时清除原文、文件名和引用）；quote.state 只能从 normal 往后走，quote.text 清除后不恢复；
 // 收到 msgDeleted 时清除本地所有引用这条消息的原文；收到 msgDeleted、readUpdated 且这个会话本地 mentionUnread > 0 时，
-// 节流（每 5 秒最多一次）重新拉 convs。置顶、删除会话、总未读随 C5。
+// 节流（每 5 秒最多一次）重新拉 convs。
+// C5：会话列表按置顶排序，convs 的 deleted 判断（不生成 removed 快照），按 minSeq 物理清除本地（迟到的应答不写回），
+// convSettingsChanged、convDeleted 之后的状态，总未读（见 convs.go）。
 package chatmodel
 
 import (
@@ -68,11 +70,18 @@ func (m Msg) MarshalJSON() ([]byte, error) {
 }
 
 // Conv 是 convs 应答里的一个会话。ModVer 为 nil 表示老服务端没有这个字段；MentionUnread 为 nil 表示没有这个字段（C4 开关关闭或老服务端）。
+// C5：MinSeq 不写是 1，Unread、UpdatedAt 不写是 0；Pinned、PinnedAt、NotifyOff 不写表示没有设置。
 type Conv struct {
 	ConvID        string `json:"convId"`
 	MaxSeq        int64  `json:"maxSeq"`
 	ModVer        *int64 `json:"modVer,omitempty"`
 	MentionUnread *int64 `json:"mentionUnread,omitempty"`
+	MinSeq        int64  `json:"minSeq,omitempty"`
+	Unread        int64  `json:"unread,omitempty"`
+	UpdatedAt     int64  `json:"updatedAt,omitempty"`
+	Pinned        bool   `json:"pinned,omitempty"`
+	PinnedAt      int64  `json:"pinnedAt,omitempty"`
+	NotifyOff     bool   `json:"notifyOff,omitempty"`
 }
 
 // Recalled 是 msgDeleted 事件的 recalled（F-RCL-01 规则 5a）。
@@ -81,14 +90,19 @@ type Recalled struct {
 	At int64  `json:"at"`
 }
 
-// Event 是下行事件里这批用例用到的两种：msgDeleted（后台删除；带 Recalled 是撤回）和 readUpdated（另一端已读）。字段和协议相同。
+// Event 是下行事件里这批用例用到的：msgDeleted（后台删除；带 Recalled 是撤回）、readUpdated（另一端已读），
+// C5 的 convSettingsChanged {convId, pinned, pinnedAt?, notifyOff}、convDeleted {convId, clearedSeq}。字段和协议相同。
 type Event struct {
-	Type     string    `json:"type"`
-	ConvID   string    `json:"convId"`
-	MsgIDs   []string  `json:"msgIds,omitempty"`
-	Seqs     []int64   `json:"seqs,omitempty"`
-	Recalled *Recalled `json:"recalled,omitempty"`
-	ReadSeq  int64     `json:"readSeq,omitempty"`
+	Type       string    `json:"type"`
+	ConvID     string    `json:"convId"`
+	MsgIDs     []string  `json:"msgIds,omitempty"`
+	Seqs       []int64   `json:"seqs,omitempty"`
+	Recalled   *Recalled `json:"recalled,omitempty"`
+	ReadSeq    int64     `json:"readSeq,omitempty"`
+	Pinned     *bool     `json:"pinned,omitempty"`
+	PinnedAt   int64     `json:"pinnedAt,omitempty"`
+	NotifyOff  *bool     `json:"notifyOff,omitempty"`
+	ClearedSeq *int64    `json:"clearedSeq,omitempty"`
 }
 
 // Client 是一个 SDK 实例里和这批用例有关的状态。
@@ -102,10 +116,15 @@ type Client struct {
 	refreshed    bool
 	lastRefresh  int64
 	pendingFetch bool
+	// C5：list 是最近一次 convs（加上之后的事件）里的会话；removed 是推断为"你已不在该群"的群；floor 是每个会话本地的 minSeq（清除下限）。
+	list    map[string]Conv
+	removed map[string]bool
+	floor   map[string]int64
 }
 
 func New() *Client {
-	return &Client{loaded: map[string]map[int64]Msg{}, baseline: map[string]int64{}, mentions: map[string]int64{}}
+	return &Client{loaded: map[string]map[int64]Msg{}, baseline: map[string]int64{}, mentions: map[string]int64{},
+		list: map[string]Conv{}, removed: map[string]bool{}, floor: map[string]int64{}}
 }
 
 // Load 是 App 打开会话、loadHistory 拿到的一页。返回这次新变成过期的 fileId。
@@ -114,9 +133,11 @@ func (c *Client) Load(convID string, msgs []Msg) []string {
 }
 
 // Connect 处理一次（重）连接：convs 应答之后，对已加载的会话按 modVer 决定要不要重拉（F-RCL-03 规则 2）。
+// meta 是 convs 应答的 truncated、deleted、deletedTruncated（C5：先做 deleted 判断和本地清除，清除的文件也算在返回的 fileId 里）。
 // replies 是每个会话重拉的应答，errs 是重拉失败的错误码。每个要重拉的会话独立处理（P-39 ②，Frank 2026-11-10）：
 // 一个失败只影响它自己——不记新的 modVer，下次重连还会拉；其余会话这一轮照常重拉并记新的 modVer。返回发过 sync 的会话（排好序）和新变成过期的 fileId。
-func (c *Client) Connect(convs []Conv, replies map[string][]Msg, errs map[string]int) (syncs, expired []string) {
+func (c *Client) Connect(convs []Conv, meta ConvsMeta, replies map[string][]Msg, errs map[string]int) (syncs, expired []string) {
+	expired = c.applyConvs(convs, meta)
 	byID := map[string]Conv{}
 	for _, cv := range convs {
 		byID[cv.ConvID] = cv
@@ -160,15 +181,24 @@ func (c *Client) applyMentions(convs []Conv) {
 	}
 }
 
-// Event 处理一个下行事件（[SDK 钟] 不动）。convs 是这一步里 SDK 拉 convs 时的应答（不拉就不用）。返回这一步发出的 convs 请求数。
-func (c *Client) Event(ev Event, convs []Conv) int {
-	if ev.Type == "msgDeleted" {
+// Event 处理一个下行事件（[SDK 钟] 不动）。convs 是这一步里 SDK 拉 convs 时的应答（不拉就不用）。返回这一步发出的 convs 请求数
+// 和 convDeleted 清除的消息里的 fileId。
+func (c *Client) Event(ev Event, convs []Conv) (int, []string) {
+	switch ev.Type {
+	case "msgDeleted":
 		c.applyDeleted(ev)
+	case "convSettingsChanged":
+		c.applySettings(ev)
+		return 0, nil
+	case "convDeleted":
+		files := c.applyConvDeleted(ev)
+		sort.Strings(files)
+		return 0, files
 	}
 	if (ev.Type == "msgDeleted" || ev.Type == "readUpdated") && c.mentions[ev.ConvID] > 0 {
-		return c.requestRefresh(convs)
+		return c.requestRefresh(convs), nil
 	}
-	return 0
+	return 0, nil
 }
 
 // Advance 把 [SDK 钟] 推进 ms 毫秒；节流窗口结束时补拉一次 convs。返回这一步发出的 convs 请求数。
@@ -245,6 +275,9 @@ func (c *Client) merge(convID string, msgs []Msg) []string {
 	}
 	var expired []string
 	for _, m := range msgs {
+		if m.Seq < c.floor[convID] { // 清除范围内的：迟到的应答不写回（C5，F-CVS-03 规则 6 ②）
+			continue
+		}
 		old, ok := list[m.Seq]
 		if !ok {
 			if m.Deleted {

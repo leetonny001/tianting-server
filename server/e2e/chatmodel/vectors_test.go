@@ -29,18 +29,27 @@ type expect struct {
 	// C4：ConvsFetches 只在 event、advance 之后（这一步 SDK 为了提及计数发了几次 convs）；MentionUnread 只在 convs 带过这个字段时出现。
 	ConvsFetches  *int             `json:"convsFetches,omitempty"`
 	MentionUnread map[string]int64 `json:"mentionUnread,omitempty"`
+	// C5（只在 C5 的用例里出现）：会话列表的顺序、每个会话的状态、推断为"你已不在该群"的群、总未读。
+	Conversations []string            `json:"conversations,omitempty"`
+	ConvState     map[string]ConvView `json:"convState,omitempty"`
+	Removed       *[]string           `json:"removed,omitempty"`
+	TotalUnread   *int64              `json:"totalUnread,omitempty"`
 }
 
 type step struct {
-	Op       string           `json:"op"` // connect | disconnect | load | event | advance
-	Convs    []Conv           `json:"convs,omitempty"`
-	Replies  map[string][]Msg `json:"replies,omitempty"`
-	Errors   map[string]int   `json:"errors,omitempty"`
-	ConvID   string           `json:"convId,omitempty"`
-	Messages []Msg            `json:"messages,omitempty"`
-	Event    *Event           `json:"event,omitempty"` // 只有 event
-	Ms       int64            `json:"ms,omitempty"`    // 只有 advance
-	Expect   *expect          `json:"expect,omitempty"`
+	Op    string `json:"op"` // connect | disconnect | load | event | advance
+	Convs []Conv `json:"convs,omitempty"`
+	// C5：convs 应答的 truncated、deleted、deletedTruncated（只有 connect）。
+	Truncated        bool             `json:"truncated,omitempty"`
+	Deleted          []Deleted        `json:"deleted,omitempty"`
+	DeletedTruncated bool             `json:"deletedTruncated,omitempty"`
+	Replies          map[string][]Msg `json:"replies,omitempty"`
+	Errors           map[string]int   `json:"errors,omitempty"`
+	ConvID           string           `json:"convId,omitempty"`
+	Messages         []Msg            `json:"messages,omitempty"`
+	Event            *Event           `json:"event,omitempty"` // 只有 event
+	Ms               int64            `json:"ms,omitempty"`    // 只有 advance
+	Expect           *expect          `json:"expect,omitempty"`
 }
 
 type vcase struct {
@@ -48,6 +57,7 @@ type vcase struct {
 	Rule  string   `json:"rule"`
 	ACs   []string `json:"acs"`
 	Steps []step   `json:"steps"`
+	C5    bool     `json:"-"` // 期望里带会话列表、状态、removed、总未读
 }
 
 type file struct {
@@ -302,6 +312,111 @@ var cases = []vcase{
 			withConvs(step{Op: "event", Event: &Event{Type: "readUpdated", ConvID: g1, ReadSeq: 9}}, cvm(g1, 9, v(2), 0), cvm(g2, 4, v(1), 0)),
 		},
 	},
+	// ---- C5（BE-487） ----
+	{
+		Name: "置顶排序：置顶的在前按 pinnedAt 倒序，其余按 updatedAt 倒序，同时间按 convId；convSettingsChanged 改变排序，取消置顶回到按时间",
+		Rule: "F-CVS-01 规则 3，F-CVS-04 规则 1", ACs: []string{"AC-CVS-01-1", "AC-CVS-04-1"}, C5: true,
+		Steps: []step{
+			conn(at(ab, 300, 0), at(g1, 100, 0), at(g2, 300, 0), pinnedAt(gx, 400, 2000)),
+			settings(g1, true, 3000, false),
+			settings(gx, false, 0, true),
+			drop,
+			conn(pinnedAt(g1, 100, 3000), at(ab, 300, 0), at(g2, 300, 0), notifyOffConv(at(gx, 400, 0))),
+		},
+	},
+	{
+		Name: "deleted 判断：convs 里消失的群在 deleted 里是删除会话，从列表移除、不生成 removed 快照；不在 deleted 里的推断为\"你已不在该群\"",
+		Rule: "F-CVS-03 规则 6 ①，F-GRP-03 规则 4", ACs: []string{"AC-CVS-03-5"}, C5: true,
+		Steps: []step{
+			conn(at(ab, 300, 0), at(g1, 200, 0), at(g2, 100, 0)),
+			load(g1, text(1, secretCVS), text(2, "g1 两条")),
+			drop,
+			{Op: "connect", Convs: []Conv{at(ab, 300, 0)}, Deleted: []Deleted{{ConvID: g1, ClearedSeq: 2}}},
+		},
+	},
+	{
+		Name: "deleted 判断：truncated 或 deletedTruncated 为 true 时，消失的群一律不推断",
+		Rule: "F-CVS-03 规则 6 ①（frontend-chat 第 54 条）", ACs: []string{"AC-CVS-03-5"}, C5: true,
+		Steps: []step{
+			conn(at(ab, 300, 0), at(g1, 200, 0), at(g2, 100, 0)),
+			drop,
+			{Op: "connect", Convs: []Conv{at(ab, 300, 0)}, Truncated: true},
+			drop,
+			conn(at(ab, 300, 0), at(g1, 200, 0), at(g2, 100, 0)),
+			drop,
+			{Op: "connect", Convs: []Conv{at(ab, 300, 0)}, Deleted: []Deleted{{ConvID: gx, ClearedSeq: 1}}, DeletedTruncated: true},
+		},
+	},
+	{
+		Name: "本地清除（convs 路径）：列表里的会话清除 seq < minSeq 的消息和文件，保留下来的消息里引用被清除消息的摘要照常显示；deleted 里的会话全部清除；迟到的旧应答不写回",
+		Rule: "F-CVS-03 规则 2、6 ②，P-46 ④（frontend-chat 第 62 条）", ACs: []string{"AC-CVS-03-2", "AC-CVS-03-10", "AC-CVS-04-2"}, C5: true,
+		Steps: []step{
+			conn(at(ab, 300, 0), at(g1, 200, 0)),
+			load(ab, text(1, secretCVS), text(2, quotedOld), img(3, "CF1", false), quoting(4, "回复旧消息", 2, "normal", quotedOld), text(5, "新的")),
+			load(g1, doc(1, "CF2", false), text(2, secretCVS)),
+			drop,
+			{Op: "connect", Convs: []Conv{minSeqConv(at(ab, 300, 0), 4)}, Deleted: []Deleted{{ConvID: g1, ClearedSeq: 2}}},
+			load(ab, text(1, secretCVS), text(2, quotedOld), img(3, "CF1", false), quoting(4, "回复旧消息", 2, "normal", quotedOld), text(5, "新的")),
+			load(g1, doc(1, "CF2", false), text(2, secretCVS)),
+		},
+	},
+	{
+		Name: "convDeleted：没有更新的消息时从列表移除并清除本地；有更新的消息时留在列表，minSeq = clearedSeq + 1、未读只算之后的、不再置顶、仍免打扰；总未读随之变化",
+		Rule: "F-CVS-03 规则 2、3，F-CVS-04 规则 1（backend-chat 第 84 条）", ACs: []string{"AC-CVS-04-5", "AC-CVS-03-6", "AC-CVS-03-3"}, C5: true,
+		Steps: []step{
+			conn(unreadConv(pinnedAt(ab, 300, 2000), 10, 3), notifyOffConv(unreadConv(pinnedAt(g1, 200, 1000), 10, 4)), unreadConv(at(g2, 100, 0), 2, 2)),
+			load(ab, text(9, secretCVS), img(10, "CF3", false)),
+			load(g1, text(7, "七"), text(8, "八"), text(9, "九"), text(10, "十")),
+			deletedEvent(ab, 10),
+			deletedEvent(g1, 8),
+		},
+	},
+	{
+		Name: "总未读：普通会话 unread 之和 + 免打扰会话 mentionUnread 之和；取消免打扰后按 unread 计入；全部在免打扰会话且没有 @ 时为 0",
+		Rule: "F-CVS-02 规则 4", ACs: []string{"AC-CVS-02-5", "AC-CVS-02-2", "AC-CVS-02-4"}, C5: true,
+		Steps: []step{
+			conn(unreadConv(at(ab, 300, 0), 2, 2), notifyOffConv(withMention(unreadConv(at(g1, 200, 0), 5, 5), 1))),
+			settings(g1, false, 0, false),
+			drop,
+			conn(unreadConv(at(ab, 300, 0), 2, 2), unreadConv(at(g2, 250, 0), 3, 3), notifyOffConv(withMention(unreadConv(at(g1, 200, 0), 5, 5), 0))),
+			drop,
+			conn(notifyOffConv(withMention(unreadConv(at(g1, 200, 0), 7, 7), 0)), at(ab, 300, 0), at(g2, 250, 0)),
+		},
+	},
+}
+
+// C5 的特征串：删除会话清除之后内存和本地库都不能再有（AC-CVS-03-10）。
+const secretCVS = "ZXQ-CVS-1 旧消息"
+
+// quotedOld 是被清除的旧消息里被引用的那条：保留下来的消息里引用它的摘要照常显示（P-46 ④），所以不用特征串。
+const quotedOld = "被引用的旧消息"
+
+const gx = "group:gx"
+
+func at(id string, updatedAt int64, maxSeq int64) Conv {
+	return Conv{ConvID: id, MaxSeq: maxSeq, ModVer: v(1), UpdatedAt: updatedAt}
+}
+
+func pinnedAt(id string, updatedAt, pinned int64) Conv {
+	c := at(id, updatedAt, 0)
+	c.Pinned, c.PinnedAt = true, pinned
+	return c
+}
+
+func notifyOffConv(c Conv) Conv { c.NotifyOff = true; return c }
+
+func minSeqConv(c Conv, minSeq int64) Conv { c.MinSeq = minSeq; return c }
+
+func unreadConv(c Conv, maxSeq, unread int64) Conv { c.MaxSeq, c.Unread = maxSeq, unread; return c }
+
+func withMention(c Conv, n int64) Conv { c.MentionUnread = &n; return c }
+
+func settings(convID string, pinned bool, pinnedAt int64, notifyOff bool) step {
+	return step{Op: "event", Event: &Event{Type: "convSettingsChanged", ConvID: convID, Pinned: &pinned, PinnedAt: pinnedAt, NotifyOff: &notifyOff}}
+}
+
+func deletedEvent(convID string, cleared int64) step {
+	return step{Op: "event", Event: &Event{Type: "convDeleted", ConvID: convID, ClearedSeq: &cleared}}
 }
 
 func run(c vcase) vcase {
@@ -312,14 +427,14 @@ func run(c vcase) vcase {
 		var e expect
 		switch st.Op {
 		case "connect":
-			syncs, exp := cl.Connect(st.Convs, st.Replies, st.Errors)
+			syncs, exp := cl.Connect(st.Convs, ConvsMeta{Truncated: st.Truncated, Deleted: st.Deleted, DeletedTruncated: st.DeletedTruncated}, st.Replies, st.Errors)
 			s := nonNil(syncs)
 			e.Syncs, e.FilesExpired = &s, exp
 		case "load":
 			e.FilesExpired = cl.Load(st.ConvID, st.Messages)
 		case "event":
-			n := cl.Event(*st.Event, st.Convs)
-			e.ConvsFetches = &n
+			n, files := cl.Event(*st.Event, st.Convs)
+			e.ConvsFetches, e.FilesExpired = &n, files
 		case "advance":
 			n := cl.Advance(st.Ms, st.Convs)
 			e.ConvsFetches = &n
@@ -337,6 +452,10 @@ func run(c vcase) vcase {
 		if mu := cl.MentionUnread(); len(mu) > 0 {
 			e.MentionUnread = mu
 		}
+		if c.C5 {
+			removed, total := cl.Removed(), cl.TotalUnread()
+			e.Conversations, e.ConvState, e.Removed, e.TotalUnread = nonNil(cl.Conversations()), cl.Views(), &removed, &total
+		}
 		st.Expect = &e
 		out.Steps[i] = st
 	}
@@ -353,18 +472,18 @@ func nonNil(s []string) []string {
 // TC-CHAT-90-13（AC-CHAT-90-15，服务端产出期望值的部分）；TC-FILE-06-11（AC-FILE-06-12）的向量。
 func TestChatSyncVectors(t *testing.T) {
 	f := file{
-		Description: "消息同步共享用例（PRD-chat F-RCL-03 规则 2、2a，F-QUO-02 规则 4，F-MEN-03 规则 1；第 15 节表 C2 的\"合并和过期\"、C4 的\"撤回合并、引用清除、提及计数\"）。按顺序执行 steps，connect、load、event、advance 之后断言 expect。期望结果由服务端的 Go 参考客户端（server/e2e/chatmodel）生成，不要手改。",
-		Scope:       "C2：单调合并里的 expired 和 modVer 重拉。C4：deleted、recalled 只能从假变真，quote.state 只能从 normal 往后走、quote.text 清除后不恢复，收到 msgDeleted 时清除引用它的原文，提及计数的节流刷新。置顶、删除会话、总未读随 C5 加到这份文件。三套 SDK 用假传输层跑真实的客户端（AC-CHAT-90-15）。",
+		Description: "消息同步共享用例（PRD-chat F-RCL-03 规则 2、2a，F-QUO-02 规则 4，F-MEN-03 规则 1，F-CVS-01～04；第 15 节表 C2 的\"合并和过期\"、C4 的\"撤回合并、引用清除、提及计数\"、C5 的\"置顶排序、deleted 判断、总未读\"）。按顺序执行 steps，connect、load、event、advance 之后断言 expect。期望结果由服务端的 Go 参考客户端（server/e2e/chatmodel）生成，不要手改。",
+		Scope:       "C2：单调合并里的 expired 和 modVer 重拉。C4：deleted、recalled 只能从假变真，quote.state 只能从 normal 往后走、quote.text 清除后不恢复，收到 msgDeleted 时清除引用它的原文，提及计数的节流刷新。C5：置顶排序，convs 的 deleted 判断（不生成 removed 快照，truncated、deletedTruncated 时不推断），按 minSeq 物理清除本地（convs 和 convDeleted 两条路径，迟到的应答不写回，保留下来的消息里的引用摘要照常显示），convSettingsChanged、convDeleted 之后的状态，总未读。三套 SDK 用假传输层跑真实的客户端（AC-CHAT-90-15）。",
 		Format: map[string]string{
 			"self":       "登录用户。会话 c2c:alice:bob 的对方是 bob",
 			"消息":         "{seq, type, fileId?, name?, expired?, text?, quote?, deleted?, recalled?, recalledBy?} 展开为下行消息：msgId=<convId>#<seq>，clientMsgId=bob-<convId>-<seq>，from=bob，ts=1000+seq；image 的 body 为 {image:{fileId, width:10, height:10, size:100, mime:\"image/png\", expired?}}，file 为 {file:{fileId, name, size:100, mime:\"application/pdf\", expired?}}，text 为 {text, quote?}；quote {seq, state, text?} 展开为 {msgId:<convId>#<seq>, seq, from:\"bob\", type:\"text\", state, text?}；deleted=true 的消息没有 body，带 deleted:true，recalled=true 时再带 recalled:true、recalledAt=2000+seq、recalledBy；expired、deleted、recalled 只在为 true 时出现",
-			"会话":         "{convId, maxSeq, modVer?, mentionUnread?} 展开为 convs 里的会话：type 按前缀，name=convId，readSeq=maxSeq，minSeq=1，unread=0，lastMsg=null，updatedAt=0；modVer 不写表示老服务端没有这个字段；mentionUnread 不写表示没有这个字段（C4 开关关闭或老服务端），firstMentionSeq 在 mentionUnread>0 时等于 maxSeq",
-			"connect":    "（重）连接成功，convs 应答为 convs。之后 SDK 发出的每个 sync 都按 convId 回复：errors 里有的回这个错误码，否则回 replies 里的消息（没有就是空列表），hasMore=false，直到不再发 sync。maxSeq 等于已加载的最大 seq，所以只有重拉，没有补拉",
+			"会话":         "{convId, maxSeq, modVer?, mentionUnread?} 展开为 convs 里的会话：type 按前缀，name=convId，readSeq=maxSeq，minSeq=1，unread=0，lastMsg=null，updatedAt=0；modVer 不写表示老服务端没有这个字段；mentionUnread 不写表示没有这个字段（C4 开关关闭或老服务端），firstMentionSeq 在 mentionUnread>0 时等于 maxSeq。C5：minSeq 不写是 1，unread、updatedAt 不写是 0；pinned、pinnedAt、notifyOff 不写表示没有设置（pinned=true 时带 pinnedAt）",
+			"connect":    "（重）连接成功，convs 应答为 convs（C5：再带这一步的 truncated、deleted、deletedTruncated，不写是 false / 没有）。之后 SDK 发出的每个 sync 都按 convId 回复：errors 里有的回这个错误码，否则回 replies 里的消息（没有就是空列表），hasMore=false，直到不再发 sync。maxSeq 等于已加载的最大 seq，所以只有重拉，没有补拉",
 			"disconnect": "连接断开（不是退出登录），之后按 SDK 的重连规则重连，由下一步 connect 完成",
 			"load":       "App 打开会话加载最新一页（loadHistory），SDK 发出的 sync 回复 messages，hasMore=false。messages 为空时 SDK 可以不发请求",
-			"event":      "服务端下发一个事件，event 是事件帧的 data（msgDeleted、readUpdated，字段和协议相同）。这一步里 SDK 如果为了提及计数重新拉 convs（F-MEN-03 规则 1：这个会话本地 mentionUnread > 0 时，节流每 5 秒最多一次），应答是这一步的 convs；这些 convs 只用来更新 mentionUnread，modVer 和上次相同，不会引起重拉",
+			"event":      "服务端下发一个事件，event 是事件帧的 data（msgDeleted、readUpdated，C5 的 convSettingsChanged、convDeleted，字段和协议相同）。这一步里 SDK 如果为了提及计数重新拉 convs（F-MEN-03 规则 1：这个会话本地 mentionUnread > 0 时，节流每 5 秒最多一次），应答是这一步的 convs；这些 convs 只用来更新 mentionUnread，modVer 和上次相同，不会引起重拉",
 			"advance":    "[SDK 钟] 推进 ms 毫秒（每个用例从 0 开始；connect、load、event 不推进时钟）。节流窗口里被推迟的刷新在窗口结束（上次刷新后 5000 毫秒）时发出，应答是这一步的 convs",
-			"expect":     "syncs：这一步 SDK 发过 sync 的会话（排好序，空列表表示一个都没有；重拉的顺序各端可以不同；某个会话重拉失败只影响它自己，其余会话照拉（P-39 ②），所以集合和顺序无关）。filesExpired：这一步新变成已过期的 fileId（排好序；sdk-ts 是 filesExpired 事件，原生端是 FilesExpired / .filesExpired），空列表表示没有。messages：已加载的会话的全部消息，按 seq 比较 type、fileId、expired（缺省为 false）、file 的 name、text、quote（seq、state、text）、deleted、recalled、recalledBy（缺省为 false / 空）；deleted 的消息只比较 seq、type、deleted、recalled、recalledBy，原文、文件名、引用都必须已清除（内存和本地库搜不到特征串 ZXQ-RCL-2、ZXQ-QUO-1）。convsFetches：event、advance 这一步 SDK 发了几次 convs。mentionUnread：本地记的 mentionUnread（只有 convs 带过这个字段的会话）",
+			"expect":     "syncs：这一步 SDK 发过 sync 的会话（排好序，空列表表示一个都没有；重拉的顺序各端可以不同；某个会话重拉失败只影响它自己，其余会话照拉（P-39 ②），所以集合和顺序无关）。filesExpired：这一步新变成已过期的 fileId（排好序；sdk-ts 是 filesExpired 事件，原生端是 FilesExpired / .filesExpired），空列表表示没有。messages：已加载的会话的全部消息，按 seq 比较 type、fileId、expired（缺省为 false）、file 的 name、text、quote（seq、state、text）、deleted、recalled、recalledBy（缺省为 false / 空）；deleted 的消息只比较 seq、type、deleted、recalled、recalledBy，原文、文件名、引用都必须已清除（内存和本地库搜不到特征串 ZXQ-RCL-2、ZXQ-QUO-1）。convsFetches：event、advance 这一步 SDK 发了几次 convs。mentionUnread：本地记的 mentionUnread（只有 convs 带过这个字段的会话）。C5 的用例另有：conversations 是会话列表的顺序（置顶的在前按 pinnedAt 倒序，其余 updatedAt 倒序，同时间按 convId）；convState 是列表里每个会话的 minSeq、unread、pinned、pinnedAt、notifyOff；removed 是推断为\"你已不在该群\"的群（排好序，生成 removed 快照的那些）；totalUnread 是总未读（普通会话 unread 之和 + 免打扰会话 mentionUnread 之和）。C5 清除的消息里的文件也算在 filesExpired 里（页面丢掉缓存）；清除之后内存和本地库都搜不到特征串 ZXQ-CVS-1",
 		},
 		Self: "alice",
 	}
@@ -504,7 +623,59 @@ func TestChatModelRules(t *testing.T) {
 	if mu := th[8].Expect.MentionUnread; mu[g1] != 0 {
 		t.Errorf("last refresh: %+v", mu)
 	}
-	for _, c := range cases[len(cases)-6:] {
+	// ---- C5（BE-487） ----
+	byPrefix := func(prefix string) []step {
+		for _, c := range cases {
+			if strings.HasPrefix(c.Name, prefix) {
+				return run(c).Steps
+			}
+		}
+		t.Fatalf("no case starting with %q", prefix)
+		return nil
+	}
+	order := byPrefix("置顶排序")
+	for i, want := range map[int][]string{
+		0: {gx, ab, g2, g1}, // 置顶在前；ab、g2 同为 300 按 convId
+		1: {g1, gx, ab, g2}, // 后置顶的 pinnedAt 更大，排最前（g1 的 updatedAt 更小）
+		2: {g1, gx, ab, g2}, // 取消置顶回到按 updatedAt
+		4: {g1, gx, ab, g2},
+	} {
+		if got := order[i].Expect.Conversations; !slices.Equal(got, want) {
+			t.Errorf("order step %d = %v, want %v", i, got, want)
+		}
+	}
+	del := byPrefix("deleted 判断：convs 里消失的群")[3].Expect
+	if !slices.Equal(*del.Removed, []string{g2}) || slices.Contains(del.Conversations, g1) || del.Messages[g1] != nil {
+		t.Errorf("deleted group must not become removed, the other one must: %+v", del)
+	}
+	for _, i := range []int{2, 6} {
+		if e := byPrefix("deleted 判断：truncated")[i].Expect; len(*e.Removed) != 0 {
+			t.Errorf("step %d: no inference when truncated: %+v", i, *e.Removed)
+		}
+	}
+	clr := byPrefix("本地清除（convs 路径）")
+	if e := clr[4].Expect; !slices.Equal(e.FilesExpired, []string{"CF1", "CF2"}) || len(e.Messages[ab]) != 2 || e.Messages[ab][0].Seq != 4 ||
+		e.Messages[ab][0].Quote.Text != quotedOld || e.Messages[g1] != nil || e.ConvState[ab].MinSeq != 4 {
+		t.Errorf("clearing by minSeq and deleted: %+v", e)
+	}
+	if e := clr[6].Expect; len(e.Messages[ab]) != 2 || len(e.Messages[g1]) != 0 || len(e.FilesExpired) != 0 {
+		t.Errorf("stale replies must not write back: %+v", e)
+	}
+	cd := byPrefix("convDeleted：")
+	if e := cd[3].Expect; slices.Contains(e.Conversations, ab) || e.Messages[ab] != nil || !slices.Equal(e.FilesExpired, []string{"CF3"}) || *e.TotalUnread != 2 {
+		t.Errorf("convDeleted without newer messages: %+v", e)
+	}
+	if g := cd[4].Expect.ConvState[g1]; g.MinSeq != 9 || g.Unread != 2 || g.Pinned || g.PinnedAt != 0 || !g.NotifyOff || len(cd[4].Expect.Messages[g1]) != 2 {
+		t.Errorf("convDeleted with newer messages: %+v", cd[4].Expect)
+	}
+	tu := byPrefix("总未读：")
+	for i, want := range map[int]int64{0: 3, 1: 7, 3: 5, 5: 0} {
+		if got := *tu[i].Expect.TotalUnread; got != want {
+			t.Errorf("totalUnread step %d = %d, want %d", i, got, want)
+		}
+	}
+	c4Start := slices.IndexFunc(cases, func(c vcase) bool { return strings.HasPrefix(c.Name, "撤回：收到带 recalled") })
+	for _, c := range cases[c4Start:] { // C4 和 C5 的用例结束时都不能再有特征串
 		last := run(c).Steps[len(c.Steps)-1].Expect
 		b, _ := json.Marshal(last.Messages)
 		if strings.Contains(string(b), "ZXQ-") {
