@@ -1013,7 +1013,7 @@ C5 分发时发现的（2026-11-10，PRD 冻结，没有改；按"建议"一列�
 | 66 | F-CVS-03 规则 4（FE-683 实测） | H5 原有缺陷：不在会话列表、也没有消息的群，聊天页一直显示"加载中…"；C5 删除群会话后就会出现 | 已修（tianting-web@78c2b2f）：显示空的聊天页，可以发言，标题取 `groupInfo` 的群名。Android、iOS 验收时同样检查 |
 | 67 | AC-CHAT-90-9（FE-683 实测） | H5 原有缺陷：宽屏导航栏"消息"有角标时，可读名称不含数字（axe label-content-name-mismatch，serious），C5 用例让角标出现后才测出 | 已修（tianting-web@78c2b2f）："消息，5 条未读"。Android、iOS 验收时检查角标的可读名称 |
 | 68 | F-CVS-03 规则 2（FE-682 实测） | 本机正在发送的消息，迟到的 ack 带回的 seq 落在清除范围里（`upToSeq` 之前已看到别人更新的消息时会出现）：sdk-ts 会被下限挡掉、一直停在"发送中" | **协调方定（实现细节）**：三套 SDK 按 sdk-swift@94fda7b 统一，这条消息一起去掉。sdk-ts、sdk-kotlin 补改 |
-| 69 | BE-487（FE-682 实测） | chat-sync.json 的 format 说明写 `readSeq = maxSeq`，C5 用例带了 `unread`，实际按 `readSeq = maxSeq − unread` 展开（sdk-ts、sdk-swift 一致） | 说明文字随 BE-489 改正，用例数据不变 |
+| 69 | BE-487（FE-682 实测） | chat-sync.json 的 format 说明写 `readSeq = maxSeq`，C5 用例带了 `unread`，实际按 `readSeq = maxSeq − unread` 展开（sdk-ts、sdk-swift 一致） | 说明文字随 BE-489 改正，用例数据不变。**已修**（BE-489，`5b38668`：生成器改说明后 `-update`，`cases` 逐字节不变，只有 `format.会话` 一句不同；三套 SDK 下次同步协议时带上） |
 | 70 | F-CVS-03、F-GRP（FE-682 实测） | 被删除隐藏的群在离线期间被移出、之后没再加回：各 SDK 都不发 `convRemoved`（它本来就不在列表里） | 不影响显示，记录；FE-686 验收时看从通讯录进入的表现 |
 | 71 | 问题 56（FE-684 实测） | convSet / convDelete 的 4290 页面写"操作过于频繁"（errors.json 的 message），SDK 通用 `*:4290` 是"操作太频繁，请稍后再试" | **协调方定**：C5 两个命令按问题 56 用"操作过于频繁"（H5、Android 已如此，iOS 同样）；其他命令照旧。三端一致即可，不改 SDK 通用表 |
 | 72 | AC-RCL-01-8（FE-684 实测） | 模拟器时钟比 Mac 慢约 9 秒，C4 用例 `tc_rcl_01_08` 按设备时钟推算"112 秒前"，按服务端时间超过 2 分钟，稳定失败（余量只有约 8 秒） | **协调方定**：用例改按服务端时间推算（不放宽断言、不改设备时间设置）；FE-686 之前修 |
