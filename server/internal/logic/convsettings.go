@@ -4,11 +4,13 @@ import (
 	"cmp"
 	"context"
 	"encoding/json"
+	"errors"
 	"time"
 
 	"tianting/server/internal/delivery"
 	"tianting/server/internal/protocol"
 	"tianting/server/internal/ratelimit"
+	"tianting/server/internal/store"
 )
 
 // C5 会话置顶、免打扰、删除（PRD-chat 第 9 节，BE-483～BE-486）。
@@ -76,7 +78,53 @@ func (s *Service) convSet(ctx context.Context, c delivery.Session, raw json.RawM
 	if !s.cvs.cfg.Enabled {
 		return nil, featureDisabled() // AC-CVS-02-7
 	}
-	return nil, protocol.Errorf(protocol.CodeUnknownCmd, "convSet is not available yet")
+	uid := c.UserID()
+	if !s.cvs.rate.Allow(uid) { // 格式之后、查库之前；和 convDelete 共用，不计入发送限流（backend-chat 第 73 条）
+		return nil, protocol.Errorf(protocol.CodeRateLimited, "too many conversation settings")
+	}
+	if _, perr := s.authorize(ctx, uid, req.ConvID); perr != nil { // 单聊非参与方 4032；群不存在或已解散 4043；非成员 4033
+		return nil, perr
+	}
+	if _, ok, err := s.store.GetConversation(ctx, uid, req.ConvID); err != nil {
+		return nil, s.internal("get conversation", err)
+	} else if !ok {
+		// 没有消息的单聊（F-CVS-01 规则 5）；和 convDelete 对没有消息的单聊幂等成功不同，两条都是原文（backend-chat 第 78 条）。
+		return nil, protocol.Errorf(protocol.CodeNotFound, "conversation not found")
+	}
+	_, err := s.store.SetConvSettings(ctx, store.ConvSetReq{
+		UserID: uid, ConvID: req.ConvID, Pinned: req.Pinned, NotifyOff: req.NotifyOff,
+		Now: s.nowMs(), PinMax: s.cvs.cfg.PinMax,
+	})
+	switch {
+	case errors.Is(err, store.ErrPinLimit):
+		return nil, protocol.Errorf(protocol.CodePinLimitExceeded, "pin limit reached") // 不带 details，客户端文案固定（backend-chat 第 80 条）
+	case errors.Is(err, store.ErrNotGroupMember):
+		return nil, protocol.Errorf(protocol.CodeNotGroupMember, "not a member of %s", req.ConvID) // 判断之后退群了
+	case err != nil:
+		return nil, s.internal("set conversation settings", err)
+	}
+	s.publishConvSettings(uid)
+	conv, perr := s.convFor(ctx, uid, req.ConvID)
+	if perr != nil {
+		return nil, perr
+	}
+	return protocol.ConvSetAck{Conv: conv}, nil
+}
+
+// convFor 返回和 convs 里这一项完全相同的会话（convSet 的 ack，BE-484 第 3 条）。
+func (s *Service) convFor(ctx context.Context, uid, convID string) (protocol.Conversation, *protocol.Error) {
+	row, ok, err := s.store.GetConversation(ctx, uid, convID)
+	if err != nil {
+		return protocol.Conversation{}, s.internal("get conversation", err)
+	}
+	if !ok {
+		return protocol.Conversation{}, protocol.Errorf(protocol.CodeNotGroupMember, "not a member of %s", convID) // 写入之后退群了
+	}
+	convs := []protocol.Conversation{toConversation(row)}
+	if perr := s.decorateConvs(ctx, uid, convs); perr != nil {
+		return protocol.Conversation{}, perr
+	}
+	return convs[0], nil
 }
 
 // convDelete：F-CVS-03。校验顺序：格式 → 开关 → 频率 → 会话权限 → 写入（BE-485 第 1 条）。

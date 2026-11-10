@@ -107,3 +107,26 @@ func TestConvSettingsInvalidationOnLeave(t *testing.T) {
 		t.Errorf("NotifyConvRemoved published %v", got)
 	}
 }
+
+// convSet (and convDelete, BE-485) publish convSettings after the commit; rejected requests do not.
+func TestConvSettingsInvalidationOnCommands(t *testing.T) {
+	s, st, inv := newCVSService(t, ConvSettingsConfig{Enabled: true, RatePerSec: 1000})
+	ctx := context.Background()
+	if _, _, err := st.SaveMessage(ctx, store.Message{MsgID: "m1", ClientMsgID: "c1", ConvID: "c2c:a:b", From: "a", Type: "text",
+		Body: []byte(`{"text":"hi"}`), TS: 1, ConvUsers: []string{"a", "b"}}); err != nil {
+		t.Fatal(err)
+	}
+	inv.take()
+	if f := call(t, s, "a", protocol.CmdConvSet, map[string]any{"convId": "c2c:b:x", "pinned": true}); f.Error == nil || f.Error.Code != protocol.CodeNotConvParticipant {
+		t.Fatalf("non-participant: %+v", f.Error)
+	}
+	if got := inv.take(); len(got) != 0 {
+		t.Errorf("rejected convSet published %v", got)
+	}
+	if f := call(t, s, "a", protocol.CmdConvSet, map[string]any{"convId": "c2c:a:b", "notifyOff": true}); f.Error != nil {
+		t.Fatalf("convSet: %+v", f.Error)
+	}
+	if !inv.published("a") {
+		t.Error("convSet did not publish convSettings")
+	}
+}

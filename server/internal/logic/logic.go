@@ -405,13 +405,18 @@ func (s *Service) convs(ctx context.Context, c delivery.Session) (any, *protocol
 	for _, r := range rows {
 		out.Convs = append(out.Convs, toConversation(r))
 	}
-	if perr := s.applyGroupMutes(ctx, c.UserID(), out.Convs); perr != nil {
-		return nil, perr
-	}
-	if perr := s.applyMentionCounts(ctx, c.UserID(), out.Convs); perr != nil {
+	if perr := s.decorateConvs(ctx, c.UserID(), out.Convs); perr != nil {
 		return nil, perr
 	}
 	return out, nil
+}
+
+// decorateConvs 补上禁言和提及计数：convs 和 convSet 的 ack 用同一份（BE-484 第 3 条）。
+func (s *Service) decorateConvs(ctx context.Context, uid string, convs []protocol.Conversation) *protocol.Error {
+	if perr := s.applyGroupMutes(ctx, uid, convs); perr != nil {
+		return perr
+	}
+	return s.applyMentionCounts(ctx, uid, convs)
 }
 
 // toConversation 把存储层的原始数据算成协议里的会话（PRD F-CONV-01、F-CONV-02）。
@@ -437,6 +442,8 @@ func toConversation(r store.ConvRow) protocol.Conversation {
 		// 单聊名称：对方有昵称用昵称，否则用 userId（BE-043；昵称修改后下次拉取生效，C-19）。
 		out.Name = cmp.Or(r.PeerNickname, r.PeerID)
 	}
+	// 置顶、免打扰（C5）：开关关闭后照常输出（P-46 ②）；没有设置时都不出现（omitempty）。免打扰下未读照常计算（F-CVS-02 规则 3）。
+	out.Pinned, out.PinnedAt, out.NotifyOff = r.PinnedAt > 0, r.PinnedAt, r.NotifyOff
 	// 未读 = maxSeq − max(readSeq, joinSeq)，从入群时刻算起，与 historyVisible 无关（C-02）。
 	out.Unread = max(0, r.MaxSeq-max(r.ReadSeq, r.JoinSeq))
 	if r.LastVisible {

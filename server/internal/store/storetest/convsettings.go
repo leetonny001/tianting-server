@@ -24,6 +24,7 @@ func convSettingCases() []struct {
 		{"ConvSettingsMemberCleanup", testConvSettingsMemberCleanup},
 		{"ConvSettingsNotifyOffUsers", testConvSettingsNotifyOffUsers},
 		{"ConvSettingsTotalUnread", testConvSettingsTotalUnread},
+		{"ConvSettingsListOrder", testConvSettingsListOrder},
 	}
 }
 
@@ -155,7 +156,7 @@ func testConvSettingsDeletedList(t *testing.T, open Opener) {
 			t.Fatal(err)
 		}
 	}
-	saveAt(t, s, "c2c:a:d3", "d3", "m3b", 200, "back") // d3 重新出现
+	saveAt(t, s, "c2c:a:d3", "d3", "m3b", 200, "back")                                           // d3 重新出现
 	s.DeleteConv(c, store.ConvDeleteReq{UserID: "a", ConvID: "c2c:a:d0", UpToSeq: 1, Now: 1500}) // 只更新 deleted_at，cleared 仍是 2
 	mustSet(t, s, store.ConvSetReq{UserID: "a", ConvID: "c2c:a:d1", NotifyOff: ptr(true), Now: 1600})
 	got, truncated, err := s.DeletedConvs(c, "a", 10)
@@ -280,5 +281,29 @@ func testConvSettingsTotalUnread(t *testing.T, open Opener) {
 	}
 	if n, _ := s.TotalUnread(c, "nobody"); n != 0 {
 		t.Errorf("nobody = %d", n)
+	}
+}
+
+// convs order (F-CVS-01 rules 3, 4): pinned first by pinnedAt desc, then updatedAt desc, convId asc; with LIMIT the pinned ones stay.
+func testConvSettingsListOrder(t *testing.T, open Opener) {
+	s, c := open(t), ctx()
+	for i := range 5 {
+		saveAt(t, s, fmt.Sprintf("c2c:a:o%d", i), "a", fmt.Sprintf("m%d", i), int64(100+i), "hi")
+	}
+	saveAt(t, s, "c2c:a:o9", "a", "m9", 104, "tie") // same updatedAt as o4
+	mustSet(t, s, store.ConvSetReq{UserID: "a", ConvID: "c2c:a:o1", Pinned: ptr(true), Now: 1000})
+	mustSet(t, s, store.ConvSetReq{UserID: "a", ConvID: "c2c:a:o0", Pinned: ptr(true), Now: 2000}) // pinned later, older updatedAt
+	convs, truncated, err := s.ListConversations(c, "a", 10)
+	if err != nil || truncated || convIDs(convs) != "[c2c:a:o0 c2c:a:o1 c2c:a:o4 c2c:a:o9 c2c:a:o3 c2c:a:o2]" {
+		t.Fatalf("order = %s, %v, %v", convIDs(convs), truncated, err)
+	}
+	if convs[0].PinnedAt != 2000 || convs[2].PinnedAt != 0 {
+		t.Errorf("rows = %+v", convs[:3])
+	}
+	if convs, truncated, _ := s.ListConversations(c, "a", 3); !truncated || convIDs(convs) != "[c2c:a:o0 c2c:a:o1 c2c:a:o4]" {
+		t.Errorf("limit 3 = %s, %v", convIDs(convs), truncated)
+	}
+	if convs, _, _ := s.ListConversations(c, "o0", 10); convIDs(convs) != "[c2c:a:o0]" || convs[0].PinnedAt != 0 {
+		t.Errorf("peer sees the pin: %+v", convs)
 	}
 }
