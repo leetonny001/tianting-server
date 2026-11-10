@@ -91,7 +91,7 @@ func (s *Service) convSet(ctx context.Context, c delivery.Session, raw json.RawM
 		// 没有消息的单聊（F-CVS-01 规则 5）；和 convDelete 对没有消息的单聊幂等成功不同，两条都是原文（backend-chat 第 78 条）。
 		return nil, protocol.Errorf(protocol.CodeNotFound, "conversation not found")
 	}
-	_, err := s.store.SetConvSettings(ctx, store.ConvSetReq{
+	set, err := s.store.SetConvSettings(ctx, store.ConvSetReq{
 		UserID: uid, ConvID: req.ConvID, Pinned: req.Pinned, NotifyOff: req.NotifyOff,
 		Now: s.nowMs(), PinMax: s.cvs.cfg.PinMax,
 	})
@@ -104,6 +104,9 @@ func (s *Service) convSet(ctx context.Context, c delivery.Session, raw json.RawM
 		return nil, s.internal("set conversation settings", err)
 	}
 	s.publishConvSettings(uid)
+	// 多端同步（F-CVS-04 规则 1）：同一用户的其他在线连接收到当前状态，操作的连接只拿 ack；幂等的重复操作也发（客户端按服务端覆盖）。
+	s.pushEvent(uid, protocol.ConvSettingsChangedEvent{Type: protocol.EventConvSettingsChanged, ConvID: req.ConvID,
+		Pinned: set.PinnedAt > 0, PinnedAt: set.PinnedAt, NotifyOff: set.NotifyOff}, c.ConnID())
 	conv, perr := s.convFor(ctx, uid, req.ConvID)
 	if perr != nil {
 		return nil, perr
@@ -160,5 +163,7 @@ func (s *Service) convDelete(ctx context.Context, c delivery.Session, raw json.R
 	}
 	s.log.Info("conversation deleted", "conv", req.ConvID, "clearedSeq", got.ClearedSeq) // 只记 convId、clearedSeq（BE-485 第 9 条）
 	s.publishConvSettings(uid)
+	// 只发 convDeleted：它已经意味着已读到 clearedSeq、置顶清除、minSeq = clearedSeq + 1，不另发 readUpdated、convSettingsChanged（第 84 条）。
+	s.pushEvent(uid, protocol.ConvDeletedEvent{Type: protocol.EventConvDeleted, ConvID: req.ConvID, ClearedSeq: got.ClearedSeq}, c.ConnID())
 	return protocol.ConvDeleteAck{ClearedSeq: got.ClearedSeq}, nil
 }
