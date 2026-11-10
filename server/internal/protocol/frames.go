@@ -22,6 +22,7 @@ const (
 	CmdLeaveRoom = "leaveRoom"
 	CmdRead      = "read"
 	CmdPing      = "ping"
+	CmdRecall    = "recall" // C4（PRD-chat F-RCL-01）：IM_MSG_ACTIONS_ENABLED 关闭时 4030 featureDisabled
 
 	CmdAck   = "ack"
 	CmdMsg   = "msg"
@@ -70,6 +71,9 @@ var idPattern = regexp.MustCompile(`^[A-Za-z0-9_-]{1,64}$`)
 
 // ValidID 判断用户 / 群 / 房间 ID 是否合法。
 func ValidID(s string) bool { return idPattern.MatchString(s) }
+
+// ValidMsgID 判断 msgId 的格式（recall、quote，C4）：和 ID 同一个字符集，服务端生成的是 UUIDv7。
+func ValidMsgID(s string) bool { return idPattern.MatchString(s) }
 
 // TrimText 去掉首尾空白。空白以 Unicode White_Space 属性为准（unicode.IsSpace），
 // U+200B、U+FEFF 不算空白（PRD C-26）。
@@ -122,12 +126,40 @@ func AckErr(id string, err *Error) OutFrame {
 func Event(data any) OutFrame { return OutFrame{Cmd: CmdEvent, Data: data} }
 
 // MsgBody 是消息内容：text 消息用 Text，custom 消息用 Data，image、file 用 Image、File。按 type 互斥（PRD-chat F-MOD-02 规则 4a）。
+// Quote、Mentions 只有 text 能带（C4，PRD-chat F-QUO-01、F-MEN-01）。
 type MsgBody struct {
-	Text  string          `json:"text,omitempty"`
-	Data  json.RawMessage `json:"data,omitempty"`
-	Tip   *TipBody        `json:"tip,omitempty"`
-	Image *ImageBody      `json:"image,omitempty"`
-	File  *FileBody       `json:"file,omitempty"`
+	Text     string          `json:"text,omitempty"`
+	Data     json.RawMessage `json:"data,omitempty"`
+	Tip      *TipBody        `json:"tip,omitempty"`
+	Image    *ImageBody      `json:"image,omitempty"`
+	File     *FileBody       `json:"file,omitempty"`
+	Quote    *Quote          `json:"quote,omitempty"`
+	Mentions *Mentions       `json:"mentions,omitempty"`
+}
+
+// Quote 是引用（C4）。上行只有 MsgID（其他字段出现就是 4000，Schema 的 QuoteRef）；下行由服务端组装（F-QUO-02，Schema 的 QuoteView）：
+// State 是 normal / recalled / deleted / expired，只有 normal 带 Text；原消息已不存在时只有 MsgID 和 State=deleted。
+type Quote struct {
+	MsgID string `json:"msgId"`
+	Seq   int64  `json:"seq,omitempty"`
+	From  string `json:"from,omitempty"`
+	Type  string `json:"type,omitempty"`
+	State string `json:"state,omitempty"`
+	Text  string `json:"text,omitempty"`
+}
+
+// 引用的状态（F-QUO-02 规则 1）。
+const (
+	QuoteNormal   = "normal"
+	QuoteRecalled = "recalled"
+	QuoteDeleted  = "deleted"
+	QuoteExpired  = "expired"
+)
+
+// Mentions 是 @（C4，F-MEN-01、02）。下行的 UserIDs 一定出现（只有 @ 所有人时是空数组）。
+type Mentions struct {
+	UserIDs []string `json:"userIds"`
+	All     bool     `json:"all,omitempty"`
 }
 
 // ImageBody 是图片消息（PRD-chat F-FILE-02 规则 1）。上行只用 FileID：客户端带的 width、size 等不报错、被忽略（AC-FILE-02-2、02-11），
@@ -203,6 +235,10 @@ type Message struct {
 	TS          int64   `json:"ts"`
 	Deleted     bool    `json:"deleted,omitempty"`
 	DeletedAt   int64   `json:"deletedAt,omitempty"`
+	// 撤回（C4，F-RCL-01 规则 5a）：下行同时 deleted=true、没有 body，老 SDK 按删除显示。后台版序列化里 deleted 只表示后台删除（RC2-21）。
+	Recalled   bool   `json:"recalled,omitempty"`
+	RecalledAt int64  `json:"recalledAt,omitempty"`
+	RecalledBy string `json:"recalledBy,omitempty"`
 }
 
 // SendReq 对应 cmd=send。
@@ -234,10 +270,13 @@ func (r *SendReq) Validate() *Error {
 	// body 按 type 互斥（F-MOD-02 规则 4a，C2 起生效，不受开关影响，AC-FILE-02-15）。
 	b := r.Body
 	hasData := len(b.Data) > 0
+	if r.Type != MsgText && (b.Quote != nil || b.Mentions != nil) {
+		return Errorf(CodeBadRequest, "only text messages can carry quote or mentions") // AC-QUO-01-3、AC-MEN-01-3
+	}
 	switch r.Type {
 	case MsgText:
 		if hasData || b.Image != nil || b.File != nil {
-			return Errorf(CodeBadRequest, "text body only allows text")
+			return Errorf(CodeBadRequest, "text body only allows text, quote and mentions")
 		}
 	case MsgCustom:
 		if b.Text != "" || b.Image != nil || b.File != nil {
@@ -250,6 +289,23 @@ func (r *SendReq) Validate() *Error {
 	case MsgFile:
 		if b.Text != "" || hasData || b.Image != nil || b.File == nil || b.File.FileID == "" {
 			return Errorf(CodeBadRequest, "file body only allows file.fileId")
+		}
+	}
+	// 上行的 quote 只有 msgId（Schema 的 QuoteRef）；下行字段出现就是伪造（F-QUO-01 规则 3：服务端下发时组装）。
+	if q := b.Quote; q != nil && (!ValidMsgID(q.MsgID) || q.Seq != 0 || q.From != "" || q.Type != "" || q.State != "" || q.Text != "") {
+		return Errorf(CodeBadRequest, "quote only allows a valid msgId")
+	}
+	if m := b.Mentions; m != nil {
+		if r.ConvType != ConvGroup {
+			return Errorf(CodeBadRequest, "mentions are only for group messages") // F-MEN-01 规则 1
+		}
+		if len(m.UserIDs) == 0 && !m.All {
+			return Errorf(CodeBadRequest, "mentions needs userIds or all")
+		}
+		for _, uid := range m.UserIDs {
+			if !ValidID(uid) {
+				return Errorf(CodeBadRequest, "invalid mentions.userIds")
+			}
 		}
 	}
 	switch r.Type {
@@ -356,23 +412,33 @@ type LastMsg struct {
 	Type  string `json:"type"`
 	Text  string `json:"text"`
 	TS    int64  `json:"ts"`
-	// Deleted：最后一条消息被删除（第二批，F-ADM-31 规则 3）；这时 JSON 里没有 text。
+	// Deleted：最后一条消息被删除（第二批，F-ADM-31 规则 3）或被撤回（C4）；这时 JSON 里没有 text。
 	Deleted bool `json:"deleted,omitempty"`
+	// Recalled、RecalledBy：被撤回（C4，F-RCL-03 规则 4），同时 Deleted=true。
+	Recalled   bool   `json:"recalled,omitempty"`
+	RecalledBy string `json:"recalledBy,omitempty"`
 }
 
-// MarshalJSON：被删除的消息不带 text，其他情况 text 一定出现（可以是空字符串）。
+// MarshalJSON：被删除、撤回的消息不带 text，其他情况 text 一定出现（可以是空字符串）。
 func (m LastMsg) MarshalJSON() ([]byte, error) {
 	if !m.Deleted {
-		type plain LastMsg
-		return json.Marshal(plain(m))
+		return json.Marshal(struct {
+			MsgID string `json:"msgId"`
+			From  string `json:"from"`
+			Type  string `json:"type"`
+			Text  string `json:"text"`
+			TS    int64  `json:"ts"`
+		}{m.MsgID, m.From, m.Type, m.Text, m.TS})
 	}
 	return json.Marshal(struct {
-		MsgID   string `json:"msgId"`
-		From    string `json:"from"`
-		Type    string `json:"type"`
-		TS      int64  `json:"ts"`
-		Deleted bool   `json:"deleted"`
-	}{m.MsgID, m.From, m.Type, m.TS, true})
+		MsgID      string `json:"msgId"`
+		From       string `json:"from"`
+		Type       string `json:"type"`
+		TS         int64  `json:"ts"`
+		Deleted    bool   `json:"deleted"`
+		Recalled   bool   `json:"recalled,omitempty"`
+		RecalledBy string `json:"recalledBy,omitempty"`
+	}{m.MsgID, m.From, m.Type, m.TS, true, m.Recalled, m.RecalledBy})
 }
 
 // Summary 截取消息摘要（前 100 个码点）。
@@ -405,6 +471,10 @@ type Conversation struct {
 	AllMuted bool `json:"allMuted,omitempty"`
 	// ModVer 是会话内已有消息展示内容的版本号（PRD-chat F-RCL-03 规则 2，C2 起：文件过期时递增）。变化时 SDK 重拉这个会话。
 	ModVer int64 `json:"modVer"`
+	// MentionUnread、FirstMentionSeq：未读中提及我的数量和第一条的 seq（C4，F-MEN-03 规则 1）。
+	// IM_MSG_ACTIONS_ENABLED 开启时每个会话都带 mentionUnread（可以是 0），firstMentionSeq 只在有提及时出现；关闭时都没有。
+	MentionUnread   *int64 `json:"mentionUnread,omitempty"`
+	FirstMentionSeq int64  `json:"firstMentionSeq,omitempty"`
 }
 
 // ConvsAck 是 convs 的应答。
@@ -444,12 +514,40 @@ func NullableMs(ms *int64) json.RawMessage {
 	return json.RawMessage(strconv.FormatInt(*ms, 10))
 }
 
-// MsgDeletedEvent 通知会话参与者消息被删除（第二批，F-ADM-31 规则 5）。
+// MsgDeletedEvent 通知会话参与者消息被删除（第二批，F-ADM-31 规则 5）或被撤回（C4，F-RCL-03 规则 1：带 Recalled）。
 type MsgDeletedEvent struct {
-	Type   string   `json:"type"`
-	ConvID string   `json:"convId"`
-	MsgIDs []string `json:"msgIds"`
-	Seqs   []int64  `json:"seqs"`
+	Type     string        `json:"type"`
+	ConvID   string        `json:"convId"`
+	MsgIDs   []string      `json:"msgIds"`
+	Seqs     []int64       `json:"seqs"`
+	Recalled *RecalledInfo `json:"recalled,omitempty"`
+}
+
+// RecalledInfo 是撤回的操作者和时间（F-RCL-01 规则 5a）。
+type RecalledInfo struct {
+	By string `json:"by"`
+	At int64  `json:"at"`
+}
+
+// RecallReq 对应 cmd=recall（C4，PRD-chat F-RCL-01）。ack 是空对象。
+type RecallReq struct {
+	ConvID string `json:"convId"`
+	MsgID  string `json:"msgId"`
+}
+
+// Validate 是格式校验：会话 ID（4007）、msgId（4000）；聊天室没有撤回（4000）。
+func (r *RecallReq) Validate() *Error {
+	conv, err := ParseConvID(r.ConvID)
+	if err != nil {
+		return err
+	}
+	if conv.Type == ConvRoom {
+		return Errorf(CodeBadRequest, "room messages cannot be recalled")
+	}
+	if !ValidMsgID(r.MsgID) {
+		return Errorf(CodeBadRequest, "invalid msgId")
+	}
+	return nil
 }
 
 // 禁言范围。

@@ -355,6 +355,8 @@ type GroupMembersPageReq struct {
 	GroupID string  `json:"groupId"`
 	Cursor  *string `json:"cursor"`
 	Limit   *int    `json:"limit"`
+	// Keyword 是成员搜索（C4，PRD-chat F-MEN-01 规则 6）：userId 或昵称前缀；为空按没有处理。PRD 第 11.1 节写的是 GroupMembersReq（backend-chat 第 51 条）。
+	Keyword *string `json:"keyword"`
 }
 
 type GroupMemberItem struct {

@@ -208,3 +208,118 @@ func TestTC_CHAT_90_24_DeviceFrameVectorsServerParse(t *testing.T) {
 		t.Errorf("register vectors must cover provider, env default, empty and over-long tokens: %v", seen)
 	}
 }
+
+// TC-CHAT-90-32（AC-CHAT-90-10 的 C4 服务端部分，BE-470）、TC-RCL-03-07（AC-RCL-03-7）：frames.json 里名字以"C4）"结尾的用例用服务端真实的解析跑一遍。
+// 上行 recall、groupMembers 走严格解码 + Validate（send 已在 TestFrameVectorsServerParse 里跑过）；valid 必须通过、invalid 必须被拒绝。
+// 下行的 msg、ack sync、ack convs、msgDeleted、convAdded 用服务端的模型解码再编码，结果和用例逐字段相同（服务端发得出这些帧，
+// 撤回的消息没有 body、deleted 和 recalled 都是 true）。
+func TestTC_CHAT_90_32_C4FrameVectorsServerParse(t *testing.T) {
+	raw, err := os.ReadFile("../../../protocol/vectors/frames.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var vf struct {
+		Valid, Invalid []struct {
+			Name  string          `json:"name"`
+			Frame json.RawMessage `json:"frame"`
+		}
+	}
+	if err := json.Unmarshal(raw, &vf); err != nil {
+		t.Fatal(err)
+	}
+	type head struct {
+		ID   string          `json:"id"`
+		Cmd  string          `json:"cmd"`
+		Data json.RawMessage `json:"data"`
+	}
+	parseUp := func(h head) *protocol.Error {
+		if h.Cmd != protocol.CmdRecall && h.Cmd != protocol.CmdGroupMembers {
+			return nil
+		}
+		if h.ID == "" {
+			return protocol.Errorf(protocol.CodeMissingRequestID, "missing id")
+		}
+		switch h.Cmd {
+		case protocol.CmdRecall:
+			req, perr := decode[protocol.RecallReq](h.Data)
+			if perr != nil {
+				return perr
+			}
+			return req.Validate()
+		case protocol.CmdGroupMembers:
+			_, perr := decode[protocol.GroupMembersPageReq](h.Data)
+			return perr
+		}
+		return nil
+	}
+	// roundTrip 用服务端的类型解码再编码，返回编码结果和用例原文。
+	roundTrip := func(t *testing.T, name string, h head) {
+		t.Helper()
+		check := func(v any, want json.RawMessage) {
+			t.Helper()
+			if err := json.Unmarshal(want, v); err != nil {
+				t.Errorf("%s: decode: %v", name, err)
+				return
+			}
+			got, _ := json.Marshal(v)
+			if !sameJSON(t, got, want) {
+				t.Errorf("%s: server encodes\n%s\nwant\n%s", name, got, want)
+			}
+		}
+		switch h.Cmd {
+		case protocol.CmdMsg:
+			check(&protocol.Message{}, h.Data)
+		case protocol.CmdAck:
+			var probe map[string]json.RawMessage
+			_ = json.Unmarshal(h.Data, &probe)
+			switch {
+			case probe["messages"] != nil:
+				check(&protocol.SyncAck{}, h.Data)
+			case probe["convs"] != nil:
+				check(&protocol.ConvsAck{}, h.Data)
+			}
+		case protocol.CmdEvent:
+			var ev struct{ Type string }
+			_ = json.Unmarshal(h.Data, &ev)
+			switch ev.Type {
+			case protocol.EventMsgDeleted:
+				check(&protocol.MsgDeletedEvent{}, h.Data)
+			case protocol.EventConvAdded:
+				check(&protocol.ConvAddedEvent{}, h.Data)
+			}
+		}
+	}
+	seen := map[string]int{}
+	for _, v := range vf.Valid {
+		if !strings.Contains(v.Name, "C4）") {
+			continue
+		}
+		var h head
+		_ = json.Unmarshal(v.Frame, &h)
+		seen["valid/"+h.Cmd]++
+		if perr := parseUp(h); perr != nil {
+			t.Errorf("valid/%s: server rejects: %v", v.Name, perr)
+		}
+		roundTrip(t, "valid/"+v.Name, h)
+	}
+	for _, v := range vf.Invalid {
+		if !strings.Contains(v.Name, "C4）") {
+			continue
+		}
+		var h head
+		_ = json.Unmarshal(v.Frame, &h)
+		seen["invalid/"+h.Cmd]++
+		if h.Cmd != protocol.CmdRecall && h.Cmd != protocol.CmdGroupMembers {
+			continue // send 在 TestFrameVectorsServerParse；下行的非法帧只给 Schema 和 SDK 用
+		}
+		if parseUp(h) == nil {
+			t.Errorf("invalid/%s: server accepts", v.Name)
+		}
+	}
+	for k, n := range map[string]int{"valid/recall": 2, "invalid/recall": 5, "valid/send": 7, "invalid/send": 12, "valid/msg": 9,
+		"invalid/msg": 7, "valid/ack": 3, "valid/event": 2, "valid/groupMembers": 2, "invalid/groupMembers": 1} {
+		if seen[k] < n {
+			t.Errorf("frames.json has %d C4 vectors of %s, want >= %d (BE-470 第 5 条): %v", seen[k], k, n, seen)
+		}
+	}
+}

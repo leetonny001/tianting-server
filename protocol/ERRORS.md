@@ -18,7 +18,7 @@
 | 409x | 冲突 | 不重试 |
 | 413x | 数量超出上限（HTTP 状态用 400，沿用 4130、4131；4139 文件过大用 413） | 不重试 |
 | 415x | 不支持的类型（HTTP 415，C2 起） | 不重试 |
-| 429x | 频率限制 | 稍后重试（例外：4291、4294 登录锁定、4292 配额用完不自动重试） |
+| 429x | 频率限制 | 稍后重试（例外：4291、4294 登录锁定、4292 配额用完、4293 @ 所有人次数用完不自动重试） |
 | 500x～503x | 服务端错误 | 可以重试 |
 | 504x | 结果未知 | **不**自动重试（操作可能已经生效） |
 
@@ -47,6 +47,14 @@
 | `send` | 4036 | 消息已发出，但被对方拒收了 |
 | `send` | 4137 | 对方回复之前，最多只能发送 N 条消息（N 取最近一次同步 / 事件中的 `strangerMsgLimit`） |
 | `send` | 4292 | 今天发起新聊天的次数已用完，请稍后再试 |
+| `send` | 4293 | @所有人次数已用完（C4，消息标记失败，不自动重发） |
+| `send` | 4040 | 引用的消息不可用（C4，`reason: quoteUnavailable`） |
+| `send` | 4030 | 只有群主和管理员可以 @所有人（C4，`reason: mentionAllForbidden`；普通成员的客户端本来不显示"所有人"） |
+| `recall` | 4097 | 按 `details.windowSeconds`：120 →「发送时间超过 2 分钟，无法撤回」；604800 →「发送时间超过 7 天，无法撤回」（C4） |
+| `recall` | 4030 | 你没有权限撤回这条消息（C4；`reason: featureDisabled` 时隐藏入口） |
+| `recall` | 4044 | 消息不存在或已被删除（C4） |
+| `recall` | 4290 | 操作太频繁，请稍后再试（C4，每人每分钟 20 次） |
+| `groupMembers`（带 `keyword`） | 4290 | 搜索太频繁，请稍后再试（C4，每人每分钟 30 次） |
 | `friendApply` / `friendRespond` | 4132 | 你的好友数量已达上限 |
 | `friendRespond` / `friendApply` | 4133 | 对方好友数量已达上限 |
 | `friendRespond` | 4045 | 该申请已过期（刷新列表） |
@@ -57,6 +65,8 @@
 | `groupSetAdmin` | 4136 | 管理员最多 10 人 |
 | 上传（`/v1/files/*`，C2） | 4292 | 今天的上传额度已用完 |
 | `friendApply` / `userSearch` / `block` / `unblock` | 4292 | 今天的次数已用完，明天再试 |
+
+**4293 同样不自动重试**（C4，PRD-chat F-MEN-02 规则 2）：不用 4292，避免和"今天发起新聊天的次数已用完"混淆。
 
 **4292 是 429x 的例外**：`retryable=false`，带社交功能的 SDK 都认识它、不自动重试。老版本 SDK 只会在 `send` 上遇到 4292（新对象配额），按兜底重试同样返回 4292，受现有重试上限约束，不会放大。
 
@@ -99,7 +109,7 @@
 | 4041 | NOT_IN_ROOM | — | ws | 否 | 未加入聊天室（二期） | 重新进房 |
 | 4042 | USER_NOT_FOUND | 404 | ws / admin | 否 | 用户不存在 | 提示「用户不存在」 |
 | 4043 | GROUP_NOT_FOUND | 404 | ws / admin | 否 | 群不存在 | 提示「群聊不存在或已解散」 |
-| 4044 | MESSAGE_NOT_FOUND | 404 | admin / console | 否 | 消息不存在（或隔离原文已过期删除） | 提示「消息不存在或已过期」 |
+| 4044 | MESSAGE_NOT_FOUND | 404 | ws / admin / console | 否 | 消息不存在（或隔离原文已过期删除）；`recall`（C4）：不存在、属于其他会话、已被后台删除，不区分 | 提示「消息不存在或已过期」 |
 | 4045 | FRIEND_REQUEST_NOT_FOUND | — | ws | 否 | 好友申请不存在、已过期（申请时被我拉黑过同样如此，响应体相同） | 提示「该申请已过期」并刷新列表 |
 | 4046 | TARGET_NOT_GROUP_MEMBER | 404 | ws / admin | 否 | 操作对象不是群成员（M4：转让、设管理员、指定群主） | 提示「对方已不在群里」 |
 | 4090 | GROUP_EXISTS | 409 | admin | 否 | 群 ID 已存在 | 换一个群 ID |
@@ -109,8 +119,9 @@
 | 4094 | PUSH_ID_CONFLICT | 409 | admin | 否 | 同一 `pushId` 的调用方或内容不同 | 换一个 `pushId`；内容相同的重试不会得到这个错误 |
 | 4095 | USERNAME_TAKEN | 409 | client | 否 | 用户名已存在或保留 | 提示「这个用户名不能使用」 |
 | 4096 | FILE_NOT_READY | 409 | ws / client | 否 | 文件未完成上传，或已绑定其他消息 | 重新上传（F-FILE-07 规则 4） |
+| 4097 | RECALL_WINDOW_EXPIRED | — | ws | 否 | 超过撤回时限（`details.windowSeconds`，C4） | 见第 2 节映射表 |
 | 4130 | GROUP_MEMBER_LIMIT_EXCEEDED | 400 | ws / admin / console | 否 | 群成员已达上限 | 提示「群成员已达上限」 |
-| 4131 | BATCH_LIMIT_EXCEEDED | 400 | admin / console / client | 否 | 单次批量操作数量超限（client：`/v1/files/urls` 一次超过 50 项） | 分批调用 |
+| 4131 | BATCH_LIMIT_EXCEEDED | 400 | ws / admin / console / client | 否 | 单次批量操作数量超限（client：`/v1/files/urls` 一次超过 50 项；ws：`send` 的 `mentions.userIds` 超过 `IM_MENTION_MAX`，C4） | 分批调用 |
 | 4132 | FRIEND_LIMIT_EXCEEDED | 400 | ws / admin | 否 | 自己的好友数已达上限；管理接口导入时 `msg` 写出 userId | 提示「你的好友数量已达上限」 |
 | 4133 | PEER_FRIEND_LIMIT_EXCEEDED | — | ws | 否 | 对方的好友数已达上限 | 提示「对方好友数量已达上限」 |
 | 4134 | BLOCK_LIMIT_EXCEEDED | — | ws | 否 | 黑名单已满 | 提示「黑名单已满」 |
@@ -122,6 +133,7 @@
 | 4290 | RATE_LIMITED | 429 | ws / admin / console / client | 是 | 操作过于频繁 | 提示「发送太频繁」，1 秒后可重试 |
 | 4291 | CONSOLE_LOGIN_LOCKED | 429 | console | 否 | 登录失败过多，该账号名（或账号名 + IP）暂时锁定 | 提示「尝试次数过多，请 N 分钟后再试」，不自动重试 |
 | 4292 | QUOTA_EXCEEDED | 429 | ws / admin / console / client | **否** | 配额用完：每日（好友申请、搜索、拉黑、新对象被拒）或每小时（新对象） | 见第 2 节映射表，不自动重试 |
+| 4293 | MENTION_ALL_LIMITED | — | ws | **否** | @ 所有人次数用完（`details.retryAfterSeconds`，C4） | 提示「@所有人次数已用完」，不自动重发 |
 | 4294 | ACCOUNT_LOGIN_LOCKED | 429 | client | **否** | 尝试过多，暂时锁定（`details.retryAfterSeconds`） | 提示「尝试次数过多，请 N 分钟后再试」，不自动重试 |
 | 5000 | INTERNAL | 500 | ws / admin / console / client | 是 | 服务器内部错误 | 消息标记失败，允许重发 |
 | 5030 | SERVICE_UNAVAILABLE | 503 | ws / admin / console / client | 是 | 服务暂不可用 | 按退避策略重试 |
@@ -129,7 +141,7 @@
 | 5032 | OBJECT_STORE_UNAVAILABLE | 503 | client | 是 | 对象存储暂不可用 | 退避重试；`complete` 的 5032 SDK 退避重试 3 次再转失败 |
 | 5040 | UPSTREAM_RESULT_UNKNOWN | 504 | console | 否 | 调用 im-server 超时，操作结果未知 | 提示「操作结果未知，请刷新确认，不要重复提交」；`pushId` 幂等的接口由对账任务重放 |
 
-### 3.1 `reason`（PRD-chat 第 11.5 节，C1、C2 部分）
+### 3.1 `reason`（PRD-chat 第 11.5 节，C1、C2、C4 部分）
 
 同一个错误码按 `reason` 细分。`errors.json` 的 `reasons` 是真相源，测试保证和 Go 常量一致。**客户端不认识的 `reason` 按这个码的默认处理**。
 
@@ -151,12 +163,14 @@
 | 4030 | `accountSessionRequired` | 没有 `sid` 的 token 调用账号接口 |
 | 4030 | `accountExists` | 有账号的用户调用 `/demo/login` |
 | 4030 | `accountDeletionPending` | 注销冷静期内密码正确（`details.deleteAt`） |
-| 4030 | `featureDisabled` | 新命令的开关关闭（C2 起用；C3 的 `deviceNotificationRegister`、`deviceNotificationUnregister`、`deviceNotificationSettings`、`presence` 同样） |
+| 4030 | `featureDisabled` | 新命令的开关关闭（C2 起用；C3 的 `deviceNotificationRegister`、`deviceNotificationUnregister`、`deviceNotificationSettings`、`presence` 同样；C4 的 `recall`，以及 `send` 带 `quote`、`mentions`） |
+| 4030 | `mentionAllForbidden` | 普通成员 `mentions.all=true`，或托管群没有群主（C4，F-MEN-02 规则 1），消息不保存 |
+| 4040 | `quoteUnavailable` | 引用的消息在其他会话、不存在、已撤回、已删除、是 `tip` 或在发送者入群之前，响应完全相同（C4，F-QUO-01 规则 2），消息不保存 |
 | 4290 | `recoverLimited` | 用最新一代恢复码成功 `recover` 超过每小时次数（**PRD 第 11.5 节有列，F-ACC-05 规则 2**） |
 | 4290 | `uploadPendingLimit` | 未完成上传数超限（C2），SDK 不自动重试，提示"上传任务太多，请稍后再试" |
 | 5032 | `completeInProgress` | 同一上传的 `complete` 正在进行（租约），可以重试（C2） |
 
-撤回、引用、@、举报的 `reason` 随对应里程碑加入。
+举报的 `reason` 随 C6 加入。
 
 ## 4. WebSocket 关闭码
 

@@ -35,13 +35,14 @@ ws(s)://{host}/ws?platform={android|ios|web|pc}
 | 命令 | 方向 | 用途 | ack 数据 |
 |---|---|---|---|
 | `auth` | 上行 | 鉴权，必须是第一帧；成功后再发返回 4000 | `{userId, serverTime, recoveryCodeUnacked?}` |
-| `send` | 上行 | 发消息 | `{msgId, convId, seq, ts}` |
+| `send` | 上行 | 发消息。C4（PRD-chat F-QUO-01、F-MEN-01，`IM_MSG_ACTIONS_ENABLED` 关闭时带 `quote`、`mentions` 是 4030 `featureDisabled`）：`text` 的 `body` 可以带 `quote {msgId}` 和群聊的 `mentions {userIds?, all?}`，其他类型带了 4000；引用不可用 4040 `quoteUnavailable`（几种原因响应相同）；`userIds` 超过 20 个 4131；单聊带 `mentions` 4000；普通成员 `all=true` 4030 `mentionAllForbidden`；@ 所有人次数（每群每小时 3、每天 10）用完 4293 `details.retryAfterSeconds`，计数不可用 5030。服务端去重、静默去掉不是当前成员的 `userIds`，不解析正文里的 `@`。下行 `body.quote` 由服务端组装 `{msgId, seq, from, type, state, text?}`（`state` 为 `normal`、`recalled`、`deleted`、`expired`，后三种没有 `text`） | `{msgId, convId, seq, ts}` |
 | `sync` | 上行 | 拉消息：`afterSeq`（补拉之后的）或 `beforeSeq`（翻页拉之前的），二选一 | `{messages, hasMore}`，按 seq 升序 |
-| `convs` | 上行 | 拉会话列表：按 `updatedAt` 倒序、`convId` 升序，最多 500 个 | `{convs, truncated}` |
+| `convs` | 上行 | 拉会话列表：按 `updatedAt` 倒序、`convId` 升序，最多 500 个。C4 开启时每个会话带 `mentionUnread`（未读中提及我的数量，含 @ 所有人，自己发的不算）和 `firstMentionSeq`（有提及时） | `{convs, truncated}` |
 | `read` | 上行 | 上报已读位置 | `{}` |
 | `ping` | 上行 | 心跳 | 回 `pong`（不是 ack） |
+| `recall` | 上行 | **C4 撤回（PRD-chat F-RCL-01、02，BE-470）**：`{convId, msgId}`。发送者 120 秒内（`IM_RECALL_WINDOW_SEC`）；群主撤回任何人、管理员撤回普通成员，7 天内（`IM_GROUP_RECALL_WINDOW_SEC`，撤回自己的取更宽的时限）；托管群没有群主时不能撤回他人的。校验顺序：格式 → 频率（每人每分钟 20 次 4290，重试也计数）→ 会话权限（4032、4033、4043）→ 消息存在（4044，属于其他会话也是）→ `tip` 4000 → 已撤回（幂等成功，不再发事件）→ 已被后台删除（4044）→ 权限和时限（4030、4097 `details.windowSeconds`）。禁言、被拉黑不影响，不计入发送限流。`IM_MSG_ACTIONS_ENABLED` 关闭时 4030 `featureDisabled`。成功后全部在线参与者收到 `msgDeleted` 带 `recalled {by, at}`；`sync`、`msg` 里撤回的消息 `deleted=true`、`recalled=true`、`recalledAt`、`recalledBy`，没有 `body`；`lastMsg` 同样带 `deleted`、`recalled`、`recalledBy`，没有 `text`；会话 `modVer` 增加 | `{}` |
 | `msg` | 下行 | 新消息 | — |
-| `event` | 下行 | `kicked`；`convAdded`（被拉进群，内容与 convs 的一项相同）、`convRemoved {convId, reason?}`（被移出群 `removed` / 群被解散 `dissolved` / 自己在其他端退群 `left`）；`readUpdated`（自己在其他端的已读位置前进了，包括发言即已读）；`socialChanged {ver}`（关系数据变了，只发给 ver 变化的用户，排除发起连接）、`socialSettingsChanged {mode, strangerMsgLimit}`（业务方改了社交配置）；`groupChanged {groupId}`（群资料或成员变了，同一个群至少间隔 1 秒合并，收到后重新 `groupInfo`） | — |
+| `event` | 下行 | `kicked`；`convAdded`（被拉进群，内容与 convs 的一项相同）、`convRemoved {convId, reason?}`（被移出群 `removed` / 群被解散 `dissolved` / 自己在其他端退群 `left`）；`readUpdated`（自己在其他端的已读位置前进了，包括发言即已读）；`msgDeleted {convId, msgIds, seqs, recalled?}`（后台删除；C4 起撤回也用它，带 `recalled {by, at}`）；`socialChanged {ver}`（关系数据变了，只发给 ver 变化的用户，排除发起连接）、`socialSettingsChanged {mode, strangerMsgLimit}`（业务方改了社交配置）；`groupChanged {groupId}`（群资料或成员变了，同一个群至少间隔 1 秒合并，收到后重新 `groupInfo`） | — |
 | `friendApply` / `friendRespond` / `friendDelete` / `friendRemark` | 上行 | 好友申请、处理申请、单向删除、备注（PRD-social F-SOC-02、03、05） | `{status?, ver, changed, items}` |
 | `block` / `unblock` | 上行 | 拉黑、取消拉黑（F-SOC-07） | `{ver, changed, items}` |
 | `friendRequestsSeen` | 上行 | "新的朋友"标记已读（F-SOC-04） | `{requestSeenVer, ver, changed}` |
@@ -52,7 +53,7 @@ ws(s)://{host}/ws?platform={android|ios|web|pc}
 | `groupInvite` / `groupKick` | 上行 | 邀请（部分成功）/ 移出，单次 ≤ 50 人 | `{added, failed:[{userId, code}]}`；`{removed}` |
 | `groupLeave` / `groupTransfer` / `groupSetAdmin` / `groupDissolve` / `groupUpdate` | 上行 | 退群、转让群主、设置管理员、解散、改群名 / 公告 | `{}` |
 | `groupInfo` | 上行 | 群资料 | `{groupId, name, notice, noticeBy, noticeAt, owner, managed, myRole, memberCount, maxMembers, historyVisible, createdAt}` |
-| `groupMembers` | 上行 | 成员分页：群主 → 管理员 → 成员，`limit` 1～100 | `{members, nextCursor}` |
+| `groupMembers` | 上行 | 成员分页：群主 → 管理员 → 成员，`limit` 1～100。C4：可选 `keyword`（`userId` 前缀区分大小写，或昵称前缀 ASCII 不区分大小写；空串按没有处理），带 `keyword` 的请求每人每分钟 30 次（4290），开关关闭时照常可用 | `{members, nextCursor}` |
 | `joinRoom` / `leaveRoom` | — | 二期（聊天室） | — |
 | `push` | 下行 | 系统推送：`{pushId, type, data, ts, target, pushSeq?, roomId?}`。`pushSeq` 只在进收件箱的推送上出现（`target=user` 且 `ttlSeconds` ≠ 0）；`target=all` 和 `ttlSeconds=0` 只投当前在线连接，不补收（[PRD-live v1.0](../docs/prd/PRD-live-v1.0.md) 第 4 节）。SDK 行为用例 `vectors/push-sync.json` | — |
 | `pushSync` | 上行 | 按用户推送的离线补收：`{afterSeq, limit?}`（`limit` 1～100，默认 50，SDK 固定用 100）或 `{fromLatest: true}`（只取最新序号建立游标，不回放），二选一。只能拉自己的收件箱，只返回未过期的。`IM_PUSH_ENABLED` 关闭时 4001，SDK 静默忽略；每用户默认 120 次/分钟，超出 4290 | `{pushes, hasMore, latestSeq}`，三者在同一读事务内取得；`hasMore=true` 时 `pushes` 非空 |

@@ -24,6 +24,7 @@ const (
 	CodeRefreshTokenInvalid      = 4019 // PRD-chat F-ACC-03
 	CodeFileNotFound             = 4048 // PRD-chat F-FILE-04：不存在、无权访问、已过期或已撤回，不区分
 	CodeFileNotReady             = 4096 // 文件未完成上传，或已绑定其他消息（PRD-chat 第 11.5 节）
+	CodeRecallWindowExpired      = 4097 // 超过撤回时限，details.windowSeconds（C4，PRD-chat F-RCL-01、02）
 	CodeUserBanned               = 4034
 	CodeMessageNotFound          = 4044
 	CodeMsgReadGrantRequired     = 4039
@@ -55,6 +56,7 @@ const (
 	CodeFileTypeNotAllowed       = 4150
 	CodeRateLimited              = 4290
 	CodeQuotaExceeded            = 4292
+	CodeMentionAllLimited        = 4293 // @ 所有人次数用完，details.retryAfterSeconds，不自动重试（C4，F-MEN-02 规则 2）
 	CodeAccountLocked            = 4294 // details.retryAfterSeconds，不自动重试
 	CodeInternal                 = 5000
 	CodeServiceUnavailable       = 5030
@@ -86,6 +88,7 @@ var codes = map[int]codeInfo{
 	CodeRefreshTokenInvalid:      {"REFRESH_TOKEN_INVALID", 401},
 	CodeFileNotFound:             {"FILE_NOT_FOUND", 404},
 	CodeFileNotReady:             {"FILE_NOT_READY", 409},
+	CodeRecallWindowExpired:      {"RECALL_WINDOW_EXPIRED", 0},
 	CodeUserBanned:               {"USER_BANNED", 403},
 	CodeMessageNotFound:          {"MESSAGE_NOT_FOUND", 404},
 	CodeMsgReadGrantRequired:     {"MSG_READ_GRANT_REQUIRED", 403},
@@ -117,6 +120,7 @@ var codes = map[int]codeInfo{
 	CodeFileTypeNotAllowed:       {"FILE_TYPE_NOT_ALLOWED", 415},
 	CodeRateLimited:              {"RATE_LIMITED", 429},
 	CodeQuotaExceeded:            {"QUOTA_EXCEEDED", 429},
+	CodeMentionAllLimited:        {"MENTION_ALL_LIMITED", 0},
 	CodeAccountLocked:            {"ACCOUNT_LOGIN_LOCKED", 429},
 	CodeInternal:                 {"INTERNAL", 500},
 	CodeServiceUnavailable:       {"SERVICE_UNAVAILABLE", 503},
@@ -226,6 +230,8 @@ const (
 	ReasonAccountExists          = "accountExists"
 	ReasonAccountDeletionPending = "accountDeletionPending"
 	ReasonFeatureDisabled        = "featureDisabled"
+	ReasonMentionAllForbidden    = "mentionAllForbidden" // 4030：普通成员 @ 所有人（C4，F-MEN-02 规则 1）
+	ReasonQuoteUnavailable       = "quoteUnavailable"    // 4040：引用的消息不可用，几种原因不区分（C4，F-QUO-01 规则 2）
 	ReasonRecoverLimited         = "recoverLimited"
 	// C2 文件（PRD-chat F-FILE-01、02）。
 	ReasonFileKindMismatch   = "fileKindMismatch"
@@ -240,7 +246,8 @@ var reasons = map[int][]string{
 	CodeBadRequest:             {ReasonPasswordWeak, ReasonRecoveryCodeStale, ReasonFileKindMismatch, ReasonUploadMismatch, ReasonFileNameTooLong},
 	CodeTokenExpired:           {ReasonTokenSuperseded},
 	CodeRefreshTokenInvalid:    {ReasonRefreshInvalid, ReasonRefreshExpired, ReasonRefreshRevoked, ReasonRefreshSuperseded, ReasonReplayDetected, ReasonCredentialsChanged, ReasonLoggedOutOthers, ReasonAccountDeleted},
-	CodeForbidden:              {ReasonRegisterClosed, ReasonInviteInvalid, ReasonAccountSessionRequired, ReasonAccountExists, ReasonAccountDeletionPending, ReasonFeatureDisabled},
+	CodeForbidden:              {ReasonRegisterClosed, ReasonInviteInvalid, ReasonAccountSessionRequired, ReasonAccountExists, ReasonAccountDeletionPending, ReasonFeatureDisabled, ReasonMentionAllForbidden},
+	CodeNotFound:               {ReasonQuoteUnavailable},
 	CodeRateLimited:            {ReasonRecoverLimited, ReasonUploadPendingLimit},
 	CodeObjectStoreUnavailable: {ReasonCompleteInProgress},
 }
