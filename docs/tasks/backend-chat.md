@@ -61,7 +61,7 @@
 | BE-476 | ✅ 完成（本任务 AC 都有用例，AC-MEN-02-3 只记录） | `2678e5b`（代码）、`feeea0b`（用例）。**本地结果**。只在群聊、只有 `text`；`userIds` 去重后超过 `IM_MENTION_MAX` 4131；静默过滤非成员，全部被过滤按没有 `mentions` 保存；不解析正文；`all=true` 只有群主、管理员（角色查库），托管群没有群主时谁都不能（4030 `mentionAllForbidden`）；全群禁言不影响；次数在 `SaveMessage` 事务里扣（滚动 60 分钟 + Asia/Shanghai 自然日，4293 `retryAfterSeconds`；计数不可用 5030；撤回不退）；@ 所有人只写一行；`groupMembers.keyword`（`userId` 前缀区分大小写、昵称前缀 ASCII 不区分，每分钟 30 次，开关关也能用）。AC-MEN-01-1、01-2、01-3、01-4、01-11、02-1、02-2、02-6、02-7、02-8、02-9 通过（`e2e/men_mention_test.go`）。**AC-MEN-02-3 是性能用例，开发机只记录、判定等 P-12（BE-480），这一波没有跑** |
 | BE-477 | ✅ 完成（本任务 AC 都有用例） | `2678e5b`（代码）、`feeea0b`（用例）。**本地结果**。`conv_mentions` 和消息同一事务（自己不写，写失败整条不保存 5000）；`convs` 一次查询算 `mentionUnread`（@ 个人 + 别人的 @ 所有人，按 seq 去重，`seq > max(已读, 入群)`，只算当前所在的群）和 `firstMentionSeq`，开关开时每个会话都带 `mentionUnread`；撤回、后台删除时删行；`mention_purge` 清理已读之前和已不在群里的行。AC-MEN-01-1、01-4、03-1、03-4、03-8 通过（`e2e/men_mention_test.go`） |
 | BE-478 | ✅ 完成（服务端部分） | `a8244f5`。**本地结果，CI 不运行**。`server/e2e/chatmodel` 扩展：`text` 消息、`quote`、`deleted` / `recalled` 单调合并（变真时清除原文、文件名、引用）、`msgDeleted` 清除引用它的原文（撤回 `recalled`、后台删除 `deleted`）、提及计数的节流刷新（5 秒，窗口内的事件在窗口结束时补拉一次，本地为 0 不触发）；`chat-sync.json` 新增 6 个 C4 用例（步骤 `event`、`advance`，期望 `convsFetches`、`mentionUnread`），C2 的 7 个用例输出不变，`format` 说明同步。`TestChatModelRules` 断言关键结论（变异检查：去掉引用清除、允许回写、去掉节流、去掉补拉、为 0 也刷新都会失败）。AC-CHAT-90-15 的 C4 服务端部分、AC-RCL-03-13、AC-QUO-02-6、AC-MEN-03-7 的向量完成；三套 SDK 的执行器随 FE-660、FE-661、FE-663 |
-| BE-479 | 🟡 部分完成（第 4 条；第 1、2 条要 Frank 定，第 67 条） | `a8244f5`。第 4 条：`docs/reports/privacy-notice-checklist-draft.md` 增加 C4 的 6 个告知项（措辞"不再显示"，只是清单草稿，不代替法律文本）。第 5 条核对：`tools/trace.py` 已有 C4 里程碑，PRD 没有升版所以 `PRDS` 不变。**第 1、2 条（PRD-ui 升版、改写 AC-UI-09-1、PRD-core / social / admin / ops 的 C4 部分）没有做**：这一波的分发要求不改 PRD 和 AC。第 3 条随 FE-660～664 |
+| BE-479 | ✅ 完成（第 3 条随 FE-660～664） | `a8244f5`、`40b9a85`。第 4 条：`docs/reports/privacy-notice-checklist-draft.md` 增加 C4 的 6 个告知项（措辞"不再显示"，只是清单草稿，不代替法律文本）。第 1、2 条（`40b9a85`，2026-11-10 协调方确认按 PRD-chat 第 16 节落实，第 67 条）：PRD-core v1.5→v1.6、PRD-social v1.1→v1.2、PRD-ui v1.3→v1.4、PRD-admin v1.3→v1.4、PRD-ops v1.4→v1.5；**改写 AC-UI-09-1**（同步 TC-UI-09-01）、**AC-ADM-31-6**（幂等扩展到已撤回的，TC-ADM-31-06 改关联说明），AC-UI-09-7 不变；其余是规则说明，AC 总数不变（1598）。第 5 条：`tools/trace.py` 的 `PRDS` 和各任务单、用例的"依据"链接改为新文件名，`traceability.md` 重新生成，gaps 0。口径问题见第 68～71 条。第 3 条随 FE-660～664 |
 | BE-480、BE-481 | ⬜ 未开始 | BE-481 依赖 C3（AC-APN-03-3、AC-RCL-03-9），C3 恢复后再做 |
 | 全部 | 🟡 C1、C2 已校准 | 见 [c1-acceptance-2026-11-07.md](../reports/c1-acceptance-2026-11-07.md) 第 9 节、[c2-calibration-2026-11-10.md](../reports/c2-calibration-2026-11-10.md)：人日不能直接换算成 AI 用时，瓶颈是本机资源和待决定项。C3 已分发（暂停）；C4 2026-11-10 已分发；C5、C6 等 Frank 决定 |
 
@@ -1013,7 +1013,7 @@ C4 分发时发现的（2026-11-10，PRD 冻结，没有改；按"建议"一列�
 | 61 | AC-APN-03-3、AC-RCL-03-9 | 两条标【C4】，但要 C3 的推送 worker 和假通道（BE-455、BE-456、BE-406），C3 已暂停 | 放进 BE-481，C3 恢复后做，C4 其余任务不依赖 C3 代码；C4 验收时记"未执行（等 C3）"。**这两条 P0 未执行时 C4 能不能验收，要 Frank 定**（P-43 ②） |
 | 62 | 第 11.6 节、console 问题 13 | `POST /admin/files/{fileId}/fetch` 的请求、响应形状没写 | BE-470 第 4 条：请求 `{convId, msgId, variant?}`，响应文件字节、`attachment`、`nosniff`，不发预签名地址给 console |
 
-C4 后端第一波实现时发现的（2026-11-10，PRD 冻结，没有改；按"实现"一列做，Frank 不同意再改）。**需要 Frank 定的是第 67 条**，其余是缺口或记录：
+C4 后端第一波实现时发现的（2026-11-10，PRD 冻结，没有改；按"实现"一列做，Frank 不同意再改）。**需要 Frank 定的是第 67 条**（已由协调方确认并完成），其余是缺口或记录；第 68～71 条是 BE-479 第 1、2 条落实时记的，第 70 条要协调方定：
 
 | # | 位置 | 问题 | 现在的实现 |
 |---|---|---|---|
@@ -1021,7 +1021,11 @@ C4 后端第一波实现时发现的（2026-11-10，PRD 冻结，没有改；按
 | 64 | 第 12.1 节、文末第 53 条 | 计数表建议的列名 `window` 在 SQLite / Postgres 里是保留字（窗口函数） | 列名用 `win`（`mention_all_quota(group_id, win, bucket, count)`），其余同第 53 条 |
 | 65 | F-RCL-01 规则 3 | `historyVisible=false` 的群里，后加入的群主、管理员能不能撤回自己入群前（看不到）的消息没写 | 按"消息不存在"返回 4044（和其他会话的 msgId 一样）：看不到的消息不能操作，也不透露它存在 |
 | 66 | 第 11.6 节、BE-470 第 4 条 | `POST /admin/files/{fileId}/fetch` 的请求形状 `{convId, msgId, variant?}` 里没有 `grantId`，"有这个会话的有效隔离授权"要按什么找没写 | 按调用方 + 签名的 `X-IM-Operator` + `convId` + `quarantine=true` + 未过期查找（`store.HasActiveMsgGrant`），和正文读取的授权校验同一组条件；`fileId` 不属于 `msgId`、消息没撤回也没被后台删除、对象已删除都是 404 / 4048，不区分 |
-| 67 | BE-479 第 1、2 条 | BE-479 要改 PRD-ui（AC-UI-09-1 改写、升版）、PRD-core / social / admin / ops 的 C4 部分，但这一波的分发要求"不改 PRD 和 AC" | **没有做第 1、2 条**，只做了第 4 条（隐私清单草稿）和第 5 条的核对（trace.py 已有 C4）；第 3 条随 FE-660～664。**要 Frank 定**：BE-479 第 1、2 条（PRD 升小版本、改写 AC-UI-09-1、AC-ADM-31-6 的关联说明）什么时候做、由谁做 |
+| 67 | BE-479 第 1、2 条 | BE-479 要改 PRD-ui（AC-UI-09-1 改写、升版）、PRD-core / social / admin / ops 的 C4 部分，但这一波的分发要求"不改 PRD 和 AC" | **没有做第 1、2 条**，只做了第 4 条（隐私清单草稿）和第 5 条的核对（trace.py 已有 C4）；第 3 条随 FE-660～664。**要 Frank 定**：BE-479 第 1、2 条（PRD 升小版本、改写 AC-UI-09-1、AC-ADM-31-6 的关联说明）什么时候做、由谁做。2026-11-10 协调方确认按 PRD-chat 第 16 节落实，已完成（`40b9a85`） |
+| 68 | BE-479 第 2 条、PRD-ui F-UI-04 | BE-479 写"F-UI-04 规则 9（摘要前缀优先级）"，PRD-chat 第 16.1 节写"F-UI-04 规则 5、9 → 第 13.3 节、F-MEN-03 规则 2"。摘要前缀属于规则 5（摘要规则），规则 9 是会话长按菜单、置顶、免打扰（C5） | 写在 PRD-ui v1.4 F-UI-04 的"PRD-chat v1.5 变更（C4）"说明里，按规则 5 的扩展写（撤回摘要、"[有人@我]"和前缀优先级）；规则 9 留给 C5 |
+| 69 | BE-479 第 2 条、PRD-ops F-OPS-10 | PRD-chat 第 14.2 节的配置检查一行没有列撤回的检查项；BE-479、BE-471 有 `msg_actions`（开关状态、隔离密钥已设置、隐私说明版本） | 按 BE-471 的实现写进 PRD-ops v1.5 F-OPS-10 的说明，依据写 PRD-chat 第 4.1 节（开启要求 `IM_QUARANTINE_KEY`）和 F-ACC-10 规则 4；PRD-chat 第 14.2 节已冻结，没有改 |
+| 70 | PRD-chat 第 16.1 节、PRD-admin 第 12 节 | 第 16.1 节这一行有两件事："宿主 App"改为天听；门槛适用撤回隔离和举报证据。BE-479 只列"门槛适用撤回隔离"，"宿主 App 改为天听"不属于某个里程碑，BE-408 和 BE-479 都没列 | PRD-admin v1.4 第 12 节只加了"撤回原文的隔离"一行（门槛同第二批那一行，C4 在 ②③④ 完成前不能在生产打开，CH-17）；"宿主 App（fx-sport / ab77 / android）"的原文没改。**要协调方定**：随 C6（举报证据）一起改，还是单独改 |
+| 71 | BE-479 第 2 条、PRD-core | BE-479 列的 PRD-core 部分没有 F-MSG-05 规则 7 和 F-CONV-01 规则 1 的 `lastMsg.recalled`，但第 16.1 节的 PRD-core 行（"F-MSG-01 规则 6、F-MSG-05 规则 7…→ 第 4.3、11.1 节"、"F-CONV-01 规则 1、2、3 → `convs` 增加字段"）包括它们 | 按 PRD-chat F-RCL-01 规则 5a、F-RCL-03 规则 2、2a、4 和第 11.1 节的原文在 PRD-core v1.6 加了说明（撤回的消息同时 `deleted=true`、`recalled=true`；`lastMsg` 增加 `recalled`、`recalledBy`），AC 不变。F-MSG-01 规则 6 同时写了第 4.3 节第 1 步的结构校验和第 10 步的 @ 所有人计数（同是 C4 的部分） |
 
 ### C3 暂停时的状态（2026-11-10）
 
