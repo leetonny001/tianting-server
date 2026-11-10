@@ -11,7 +11,7 @@ const deletedNickname = "已注销用户"
 
 const cleanupGroupPage = 100
 
-// CleanupDeletedUser 是 account_cleanup 的第 ② 步（规则 3）：删好友、黑名单，昵称改掉，逐群退出（群主转让按 F-SOC-23 规则 4，托管群回到无群主）。
+// CleanupDeletedUser 是 account_cleanup 的第 ② 步（规则 3）：删好友、黑名单、全部会话设置（P-46 ③），昵称改掉，逐群退出（群主转让按 F-SOC-23 规则 4，托管群回到无群主）。
 // 最终一致，可以重试：每个群一个事务，已经退出的不会再处理，所以不会有重复的提示消息。头像对象随 BE-437。
 func (s *Service) CleanupDeletedUser(ctx context.Context, userID string, check func() error) error {
 	bumped, err := s.store.RemoveUserSocial(ctx, userID, deletedNickname, s.nowMs())
@@ -19,6 +19,7 @@ func (s *Service) CleanupDeletedUser(ctx context.Context, userID string, check f
 		return err
 	}
 	s.NotifySocialChanged(bumped, "", "")
+	s.publishConvSettings(userID)
 	for {
 		groups, _, err := s.store.ListUserGroups(ctx, userID, "", cleanupGroupPage)
 		if err != nil {

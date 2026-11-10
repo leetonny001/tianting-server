@@ -75,6 +75,24 @@ im.on('downloadAborted', (fileId, recalled) => …); // 同时发，先于 files
 - 错误：`recall` 的 4097 带 `details.windowSeconds`（`messageFor('recall', 4097, {windowSeconds})`："发送时间超过 2 分钟，无法撤回"或"…7 天…"），4030"你没有权限撤回这条消息"，4044 消息不存在或已被后台删除；`send` 的 4040（`errorReason: 'quoteUnavailable'`）、4293"@所有人次数已用完"、4131 标记失败，不自动重发。
 - 工具：`quoteSummary`（引用摘要，F-QUO-02 规则 2）、`quoteLabel`（四种状态的显示文字，规则 3）。引用文字、@ 的内容不进日志。
 
+会话置顶、免打扰、删除（PRD-chat C5，第 9 节、第 13.1 节；sdk-ts 已实现，FE-680，Kotlin、Swift 随 FE-681、682，语义相同）：
+
+```ts
+await im.setConvPinned(convId, pinned);     // convSet {pinned}：乐观更新（新置顶按校正后的服务端时间排最前，已置顶的再置顶 pinnedAt 不变），ack 的 conv 覆盖本地
+await im.setConvNotifyOff(convId, on);      // convSet {notifyOff}：同上。5000、4220、4290、4030、超时、未连接一律回滚并抛错，不自动重试
+await im.deleteConv(convId);                // convDelete {upToSeq: 本地看到的最大 seq}：ack 前先从列表消失，失败恢复；成功后按下面"本地清除"处理
+im.on('conversations', (list) => …);        // C5 起：置顶的在前（pinnedAt 倒序），其余 updatedAt 倒序，同时间按 convId；删除后还没有新消息的不在里面
+im.totalUnread();                           // 普通会话 unread 之和 + 免打扰会话 mentionUnread 之和（F-CVS-02 规则 4，标签角标、document.title、iOS 角标同一口径）
+im.on('totalUnread', (n) => …);             // 和 conversations 同一轮发出
+im.on('convDeleted', (convId) => …);        // 本端删除成功或其他设备删除了它：本地消息已清除，页面清这个会话的草稿（frontend-chat 第 55 条）
+(await account.getConfig()).features.convSettings; // 可选布尔，老服务端没有按关闭；关闭时隐藏菜单，已有的设置照常应用（P-46 ②）
+```
+
+- `Conversation.pinned`、`pinnedAt`（只在置顶时有）、`notifyOff`：来自 `convs`、`convSet` 的 ack 和其他端的 `convSettingsChanged`，以服务端为准，不做"仅本地置顶"。
+- **`convs.deleted` 和本地清除**（F-CVS-03 规则 6，frontend-chat 第 54、62 条）：`convs` 里消失的群先查 `deleted`，在里面的从列表移除，**不发 `convRemoved`、不生成 `removed` 快照**；不在里面的群照旧推断"你已不在该群"；`truncated` 或 `deletedTruncated` 为 true 时都不推断。对 `deleted` 里的和列表里的每个会话，物理清除 `seq < minSeq` 的消息（内存，原生端还有本地库和缓存目录），文件经 `filesExpired` 让页面丢缓存，迟到的 `sync` 应答不写回；**保留下来的消息里引用被清除消息的摘要照常显示**（P-46 ④）。
+- `convDeleted {convId, clearedSeq}`：`minSeq = clearedSeq + 1`、`readSeq = max(readSeq, clearedSeq)`、不再置顶、保留免打扰，按上一条清除，没有更新的消息时从列表移除；服务端不另发 `readUpdated`、`convSettingsChanged`（backend-chat 第 84 条）。之后来了 seq > `clearedSeq` 的消息，会话重新出现，未读只算新消息。
+- 本端 `deleteConv` 还会取消这个会话正在上传的附件、丢弃排队和失败的消息（frontend-chat 第 59 条）；其他设备删除时不丢本机未发出的消息（第 63 条）。
+
 其余接口：`refresh`、`changePassword`、`logoutOthers`、`logout`、`regenerateRecoveryCode`、`updateProfile`、`getConfig`、`listEvents`、`requestDelete`、`cancelDelete`、`foreground`。Kotlin 是 `suspend` 函数，还有 `networkOnline`、`pendingLogoutStore`（待退出）、`SystemTokenRevoker`；Swift 是 `async` 函数，`AccountSessionStore` 同时存待退出，`unregisterSystemPushToken` 是回调。系统令牌注销的调用点有，FCM、APNs 接入随 C3。
 
 ## 3. 行为规则（三套 SDK 必须一致）
@@ -101,7 +119,7 @@ im.on('downloadAborted', (fileId, recalled) => …); // 同时发，先于 files
 | 首次登录不为每个会话拉历史；打开会话时 `loadHistory`（第一次 `beforeSeq = maxSeq + 1, limit = 20`） | 实现约定 |
 | 实时消息出现 seq 缺口后等 500ms，仍未补上就 `sync` | F-MSG-04 规则 2 |
 | 按 `msgId` 去重；用 `clientMsgId` 把服务端回来的消息与本地待发消息合并 | F-MSG-04 规则 1 |
-| 会话按 `updatedAt` 倒序、`convId` 字节序升序 | F-CONV-01 |
+| 会话按 `updatedAt` 倒序、`convId` 字节序升序；C5 起置顶的在前（`pinnedAt` 倒序） | F-CONV-01、F-CVS-01 规则 3 |
 | 收到本地没有的会话的消息（第一次和某人聊、群消息比 `convAdded` 先到）：先补临时会话，200ms 后重新拉 `convs` 用服务端数据替换 | 实现约定 |
 | 处理 `convAdded`、`convRemoved`、`readUpdated` | F-GRP-03、F-SYNC-02 |
 
@@ -127,6 +145,15 @@ im.on('downloadAborted', (fileId, recalled) => …); // 同时发，先于 files
 | 撤回菜单按 `ts` 和校正后的服务端时间判断，不用设备时钟；4097、4293 不自动重试 | AC-RCL-01-8、F-MEN-02 规则 2 |
 | `mentionUnread > 0` 时收到 `readUpdated`、`msgDeleted` 节流 5 秒重拉 `convs`；为 0 或没有这个字段不拉 | F-MEN-03 规则 1、R-CF-18 |
 
+### 会话设置（FE-680～682，PRD-chat F-CVS-01～04）
+
+| 规则 | 依据 |
+|---|---|
+| 置顶、免打扰、删除都以服务端为准：ack、`convSettingsChanged`、`convDeleted` 覆盖本地；离线设备重连时 `convs` 带全部设置和 `deleted` | F-CVS-04 规则 1、2 |
+| `convs` 里消失的群先查 `deleted`：在里面的不生成 `removed` 快照；`truncated`、`deletedTruncated` 时不推断 | F-CVS-03 规则 6，F-GRP-03 规则 4 |
+| 按 `minSeq` 物理清除本地（`convs`、`convDeleted` 两条路径），迟到的应答不写回；保留下来的消息里的引用摘要照常显示 | F-CVS-03 规则 6，P-46 ④ |
+| 总未读 = 普通会话 `unread` 之和 + 免打扰会话 `mentionUnread` 之和 | F-CVS-02 规则 4 |
+
 ### 已读与未读（FE-006）
 
 | 规则 | 依据 |
@@ -149,7 +176,7 @@ im.on('downloadAborted', (fileId, recalled) => …); // 同时发，先于 files
 | `protocol/vectors/frames.json` | 帧格式的合法 / 非法用例 | Schema 校验 | `frames-schema.test.ts`（Schema 校验，合法和非法都跑） |
 | `protocol/schema/http-client.schema.json` | 账号接口的请求和响应 | `validateHTTP` | `account-http-schema.test.ts`（请求体）、`test/support/account.ts`（假响应） |
 | `protocol/vectors/account-session.json` | `cases`：客户端判断。`serverCases`：规则 4 的判定表 | `server/e2e/accountmodel`、`account_vectors_test.go` | `account-vectors.test.ts`：`cases` 跑真实的 `AccountClient` + 假 HTTP + 假时钟；`serverCases` 约束假服务端 |
-| `protocol/vectors/chat-sync.json` | `expired` 单调合并、`modVer` 重拉（C2）；撤回合并、引用清除、提及计数的节流刷新（C4，步骤 `event`、`advance`）；置顶、删除会话随 C5 | `server/e2e/chatmodel` | `chat-sync-vectors.test.ts`：真实的 `IMClient` + `FakeTransport` + 假时钟；`attachmentCases` 在 `attachment-vectors.test.ts`（冷启动用例跳过） |
+| `protocol/vectors/chat-sync.json` | `expired` 单调合并、`modVer` 重拉（C2）；撤回合并、引用清除、提及计数的节流刷新（C4，步骤 `event`、`advance`）；置顶排序、`deleted` 判断、本地清除、`convSettingsChanged` / `convDeleted` 之后的状态、总未读（C5，BE-487，`expect` 多 `conversations`、`convState`、`removed`、`totalUnread`） | `server/e2e/chatmodel` | `chat-sync-vectors.test.ts`：真实的 `IMClient` + `FakeTransport` + 假时钟；`attachmentCases` 在 `attachment-vectors.test.ts`（冷启动用例跳过） |
 
 ## 5. 测试
 

@@ -296,6 +296,7 @@ func (s *SQLite) MarkCleanupDone(ctx context.Context, userID string, now int64) 
 }
 
 // RemoveUserSocial 删除一个已注销用户的好友和黑名单（两个方向）、申请，头像和昵称改掉（F-ACC-08 规则 3 第 ② 步）。幂等。返回版本变化的用户。
+// 同一步删除这个用户的全部会话设置（单聊和群的置顶、免打扰、删除位置，P-46 ③，backend-chat 第 82 条）；对方的设置不动。
 func (s *SQLite) RemoveUserSocial(ctx context.Context, userID, nickname string, now int64) (map[string]int64, error) {
 	peers, err := listIDs(ctx, s.db, `SELECT peer_id FROM friends WHERE owner_id = ? AND deleted = 0`, userID)
 	if err != nil {
@@ -320,6 +321,9 @@ func (s *SQLite) RemoveUserSocial(ctx context.Context, userID, nickname string, 
 		return nil, err
 	}
 	if _, err := t.exec(`UPDATE users SET nickname = ?, avatar = '' WHERE user_id = ?`, nickname, userID); err != nil {
+		return nil, err
+	}
+	if _, err := t.exec(`DELETE FROM conv_settings WHERE user_id = ?`, userID); err != nil {
 		return nil, err
 	}
 	// 头像文件（PRD-chat F-ACC-06 规则 4，RS6-04）：注销清理时改成 purging，由 file_purge 删公开对象、final/{fileId}/ 前缀和行。

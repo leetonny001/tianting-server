@@ -210,7 +210,7 @@ type AccountStore interface {
 	// PendingCleanups 列出第 ① 步做完、第 ② 步没做完的账号。
 	PendingCleanups(ctx context.Context, limit int) ([]string, error)
 	MarkCleanupDone(ctx context.Context, userID string, now int64) error
-	// RemoveUserSocial 删除已注销用户的好友和黑名单，昵称改掉。幂等。返回版本变化的用户。
+	// RemoveUserSocial 删除已注销用户的好友和黑名单、全部会话设置（C5，P-46 ③），昵称改掉。幂等。返回版本变化的用户。
 	RemoveUserSocial(ctx context.Context, userID, nickname string, now int64) (map[string]int64, error)
 	// UpdateNickname 改昵称（F-ACC-06）。用户不存在或已注销返回 ErrNotFound。
 	UpdateNickname(ctx context.Context, userID, nickname string) error

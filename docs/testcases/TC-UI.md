@@ -1577,6 +1577,7 @@
 - 前置条件：已登录（alice），窄屏 375×812，测试模式 im-server（`IM_TEST_MODE=1 IM_DEMO_LOGIN=1`），Vite proxy 同源。`routeWs` 改写 `convs`：三个会话未读 2、5、0。
 - 步骤：打开 `/chats`
 - 预期结果："消息"标签角标"7"；`document.title` 为"(7) 天听"
+- 说明（PRD-ui v1.5 加注）：三个会话都没有免打扰（`notifyOff` 不出现），结果不变；有免打扰时总未读按 PRD-chat F-CVS-02 规则 4 计算，见 TC-CVS-02-02、02-04、02-05
 
 ### TC-UI-23-02 99+ 与 0 时的标题
 - 关联 AC：AC-UI-23-2
@@ -1589,6 +1590,7 @@
 - 预期结果：
   1. 角标"99+"，`document.title` 为"(120) 天听"
   2. `document.title` 为"天听"，角标不显示
+- 说明（PRD-ui v1.5 加注）：同 TC-UI-23-01，`convs` 里没有免打扰会话
 
 ### TC-UI-23-03 totalUnread 计算与事件
 - 关联 AC：AC-UI-23-1、AC-UI-23-2、AC-UI-23-3
