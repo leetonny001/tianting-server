@@ -1,7 +1,7 @@
 # 测试用例：图片和文件消息（FILE，C2）
 
 > 依据：[PRD-chat v1.5](../prd/PRD-chat-v1.5.md)（冻结）第 4、6 节、第 15 节 AC-FILE-90；[GATE-objstore](../review/GATE-objstore-2026-11-06.md)；[tools/objstore-contract](../../tools/objstore-contract/README.md)。任务单：[backend-chat](../tasks/backend-chat.md)、[console-chat](../tasks/console-chat.md)、[frontend-chat](../tasks/frontend-chat.md)。
-> 范围：标了【C2】的 AC-FILE（CH-27）。依赖撤回、清空、举报的 AC 随 C4～C6。
+> 范围：标了【C2】【C4】的 AC-FILE（CH-27）。C4 只有 AC-FILE-06-3（撤回的文件 30 天后物理删除，TC-FILE-06-13）；依赖清空、举报的 AC 随 C5、C6。
 >
 > 通用约定：
 > - 环境：**E1 单节点**（1 个 im-server，development，`IM_TEST_MODE=1`，SQLite 独立库；`IM_TRUSTED_PROXIES` 配成测试客户端，换 IP 用 `X-Forwarded-For`，PRD 第 4.5 节）；**E1 + 假 S3**（再加 `objstoretest` 独立进程，`IM_FILES_ENABLED=1`，公开桶和私有桶都在假 S3 上）；**E1 + console-server + tianting-admin**（`CON_TEST_MODE=1`，Postgres）；**真实 MinIO**（`deploy/testenv-ci.sh` 的固定版本）；**EP 性能**（目标机，P-12）；**Postgres**（B6 之后）；**模拟器**（Android 模拟器、iOS Simulator）；**真机**（P-13）。开发机不安装软件。
@@ -112,6 +112,7 @@
 | TC-FILE-90-02 | 云厂商合同测试 | AC-FILE-90-2 | 手工 | P0 |
 | TC-FILE-91-01 | 元数据响应搜不到文件名，带文件大小（AC-ADM-30-7 的扩展，C2 起生效；大小 v1.4） | AC-ADM-30-7 | 后端 e2e | P0 |
 | TC-FILE-06-12 | 后台删除的图片 30 天后物理删除 | AC-FILE-06-13 | 后端 e2e | P0 |
+| TC-FILE-06-13 | 撤回的图片：第 29 天对象还在、申请 404，第 31 天被删除 | AC-FILE-06-3 | 后端 e2e | P0 |
 
 ---
 
@@ -1277,6 +1278,20 @@
   1. 只重拉 c1；消息变成已过期，本地缓存被清除
   2. 迟到的应答不会把 `expired` 改回假（单调合并）
 - 说明：向量：`protocol/vectors/chat-sync.json` 的合并和过期用例
+
+### TC-FILE-06-13 撤回的图片：第 29 天对象还在、申请 404，第 31 天被删除
+- 关联 AC：AC-FILE-06-3
+- 优先级：P0
+- 批次：C4
+- 层级：后端 e2e
+- 环境：E1 + 假 S3
+- 前置条件：u1 发图片，u1 撤回（`IM_MSG_ACTIONS_ENABLED=1`）
+- 步骤：
+  1. [IM 钟] 推进 29 天，运行 `file_purge`，查对象存储；u2 申请地址
+  2. 推进到第 31 天，运行 `file_purge`
+- 预期结果：
+  1. 第 29 天原图和缩略图对象都在，`files.state=revoked`；u2 的申请该项 `code=4048`
+  2. 第 31 天对象被删除（按 `final/{fileId}/` 前缀），`files` 行保留、`objects_deleted=1`
 
 ## F-FILE-07 附件发送状态机
 

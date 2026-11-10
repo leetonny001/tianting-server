@@ -1,7 +1,7 @@
-# 测试用例：聊天产品非功能（CHAT，C1、C2、C3 部分）
+# 测试用例：聊天产品非功能（CHAT，C1、C2、C3、C4 部分）
 
 > 依据：[PRD-chat v1.5](../prd/PRD-chat-v1.5.md)（冻结）第 15 节 F-CHAT-90。任务单：[backend-chat](../tasks/backend-chat.md)、[frontend-chat](../tasks/frontend-chat.md)。
-> 范围：标了【C1】【C2】【C3】【全部】的 AC-CHAT（CH-27）。**【全部】的 AC 每个里程碑发布前跑一次，这里写到 C3 为止的范围**（第 15 节累计表）：C1、C2 是 TC-CHAT-90-01～17，C3 增加的部分是 TC-CHAT-90-19～25，C4～C6 增加的部分随对应里程碑。
+> 范围：标了【C1】【C2】【C3】【C4】【全部】的 AC-CHAT（CH-27）。**【全部】的 AC 每个里程碑发布前跑一次，这里写到 C3 为止的范围**（第 15 节累计表）：C1、C2 是 TC-CHAT-90-01～17，C3 增加的部分是 TC-CHAT-90-19～25（C3 已暂停），C4 的 AC-CHAT-90-7 和 C4 增加的部分是 TC-CHAT-90-26～34（AC-CHAT-90-3 在 C4 没有新增依赖，不另写），C5、C6 增加的部分随对应里程碑。
 > 判定（R-CQ-22）：主判据用绝对值，增幅只记录；每条写明负载和样本数（≥ 1000），生产配置，3 次取最差，报告写基线提交号。**所有数字都未校准；开发机结果只记录，不算通过，发布判定等 P-12**。
 >
 > 通用约定：
@@ -39,6 +39,15 @@
 | TC-CHAT-90-23 | 通知设置页：无障碍、深色模式 | AC-CHAT-90-9 | 原生 UI 测试 | P0 |
 | TC-CHAT-90-24 | 新帧向量（C3）：服务端和三套 SDK 都跑 | AC-CHAT-90-10 | 单测（四方） | P0 |
 | TC-CHAT-90-25 | 指标和配置检查（C3） | AC-CHAT-90-17 | 后端 e2e | P0 |
+| TC-CHAT-90-26 | 老版本三套 SDK 收到撤回：不崩溃，显示已删除，搜不到原文 | AC-CHAT-90-7 | SDK 单测（三套，老版本） | P0 |
+| TC-CHAT-90-27 | ack P99：带引用的单聊、带 @ 的群聊 | AC-CHAT-90-1 | 性能 | P0 |
+| TC-CHAT-90-28 | 开关全关（C4：IM_MSG_ACTIONS_ENABLED 关） | AC-CHAT-90-2 | 后端 e2e + 性能 | P0 |
+| TC-CHAT-90-29 | 日志和审计搜不到特征串（C4：撤回、引用、@） | AC-CHAT-90-5 | 后端 e2e + 部署 e2e | P0 |
+| TC-CHAT-90-30 | 菜单和引用条符合 B-1 和 B-3，图标在清单 | AC-CHAT-90-8 | Playwright（H5）+ 原生 UI 测试 | P0 |
+| TC-CHAT-90-31 | C4 页面：axe-core、深色模式、键盘打开消息菜单 | AC-CHAT-90-9 | Playwright（H5）+ 原生 UI 测试 | P0 |
+| TC-CHAT-90-32 | 新帧向量（C4）：服务端和三套 SDK 都跑 | AC-CHAT-90-10 | 单测（四方） | P0 |
+| TC-CHAT-90-33 | 共享用例（C4：撤回、引用、提及） | AC-CHAT-90-15 | SDK 单测（三套） | P0 |
+| TC-CHAT-90-34 | 指标和配置检查（C4） | AC-CHAT-90-17 | 后端 e2e | P0 |
 
 ---
 
@@ -387,3 +396,127 @@
   1. 出现 `im_offline_push_total{provider,result}`、`im_offline_push_dropped_total`、`im_offline_push_queue_len`
   2. 配置检查有 APNs / FCM 启用和密钥状态
   3. 标签没有 userId、令牌、`convId`
+
+### TC-CHAT-90-26 老版本三套 SDK 收到撤回：不崩溃，显示已删除，搜不到原文
+- 关联 AC：AC-CHAT-90-7
+- 优先级：P0
+- 批次：C4
+- 层级：SDK 单测（三套，老版本）
+- 环境：本地：sdk-ts@f417580、sdk-kotlin@2819ce6、sdk-swift@c8ec6ff（C4 之前的提交）+ 新的 `frames.json`
+- 前置条件：老版本 SDK 已加载含特征串的消息
+- 步骤：
+  1. 喂 `image`、`file` 消息，带 `recalled` 的 `msgDeleted`，带 `deleted`+`recalled` 的 `sync`，带 `quote`、`mentions` 的消息，`mentionUnread` 等新字段
+  2. 导出内存；原生读本地库文件
+- 预期结果：
+  1. 不崩溃，不认识的字段忽略
+  2. 图片、文件显示"[暂不支持的消息]"；撤回的消息显示"该消息已被删除"
+  3. 内存和本地库搜不到原文特征串
+
+### TC-CHAT-90-27 ack P99：带引用的单聊、带 @ 的群聊
+- 关联 AC：AC-CHAT-90-1
+- 优先级：P0
+- 批次：C4（【全部】，C4 增加的部分）
+- 层级：性能
+- 环境：EP 性能（P-12）；开发机只记录
+- 前置条件：第 15 节累计表 C4：带引用的单聊、带 @ 的群聊；500 条/秒，≥ 1000 条；生产配置，`IM_MSG_ACTIONS_ENABLED=1`
+- 步骤：
+  1. 分别压测两种消息，各跑 3 次
+- 预期结果：
+  1. 3 次取最差，ack P99 ≤ 200 ms（未校准），错误率 0；增幅只记录
+  2. 开发机结果不算通过
+
+### TC-CHAT-90-28 开关全关（C4：IM_MSG_ACTIONS_ENABLED 关）
+- 关联 AC：AC-CHAT-90-2
+- 优先级：P0
+- 批次：C4（【全部】，C4 增加的部分）
+- 层级：后端 e2e + 性能
+- 环境：E1；TC-PERF 在 EP（P-12）
+- 前置条件：`IM_MSG_ACTIONS_ENABLED=0`，其他新开关也关
+- 步骤：
+  1. 跑现有 `server/e2e` 全部用例（不改代码）
+  2. 跑 TC-PERF
+- 预期结果：
+  1. e2e 全过
+  2. TC-PERF 判定不变（开发机只记录）
+
+### TC-CHAT-90-29 日志和审计搜不到特征串（C4：撤回、引用、@）
+- 关联 AC：AC-CHAT-90-5
+- 优先级：P0
+- 批次：C4（【全部】，C4 增加的部分）
+- 层级：后端 e2e + 部署 e2e
+- 环境：E1 + 假 S3 + console-server
+- 前置条件：消息正文、文件名、引用文字都带特征串
+- 步骤：
+  1. 走撤回（单聊、群、管理员撤回、隔离读取、`fetch`）、引用、@、@ 所有人
+  2. 扫描 im-server 和 console-server 的日志、两边的审计表（`scan-logs`）
+- 预期结果：
+  1. 都搜不到特征串
+  2. 审计里只有 `msgId`、`fileId` 等标识
+
+### TC-CHAT-90-30 菜单和引用条符合 B-1 和 B-3，图标在清单
+- 关联 AC：AC-CHAT-90-8
+- 优先级：P0
+- 批次：C4（【全部】，C4 增加的部分）
+- 层级：Playwright（H5）+ 原生 UI 测试
+- 环境：Playwright（H5）+ 模拟器
+- 前置条件：C4 新增界面：消息菜单（复制、引用、撤回）、撤回提示行、引用条四种状态、@ 选择、"有人@我"按钮
+- 步骤：
+  1. 扫描文案和构建产物（PRD-ui B-1、B-3 的检查脚本）
+  2. 核对新增图标
+- 预期结果：
+  1. 符合 B-1、B-3
+  2. 新增图标都在 PRD-ui 6.6 节清单里
+
+### TC-CHAT-90-31 C4 页面：axe-core、深色模式、键盘打开消息菜单
+- 关联 AC：AC-CHAT-90-9
+- 优先级：P0
+- 批次：C4（【全部】，C4 增加的部分）
+- 层级：Playwright（H5）+ 原生 UI 测试
+- 环境：Playwright（H5）+ 模拟器
+- 前置条件：同 TC-CHAT-90-30 的页面
+- 步骤：
+  1. H5 跑 axe-core（浅色、深色）；原生跑等价检查（Android 语义树、iOS 系统审计）
+  2. H5 只用键盘：Tab 到气泡，菜单键或 Shift+F10 打开菜单，方向键、回车、Esc
+- 预期结果：
+  1. 没有 `button-name` 违规；新增颜色都来自 token
+  2. 键盘能打开菜单并执行"引用"
+  3. 新消息播报按 P-39 ① 不在本批（frontend-chat 第 14 条），记已知缺口
+
+### TC-CHAT-90-32 新帧向量（C4）：服务端和三套 SDK 都跑
+- 关联 AC：AC-CHAT-90-10
+- 优先级：P0
+- 批次：C4（【全部】，C4 增加的部分）
+- 层级：单测（四方）
+- 环境：本地（服务端、sdk-ts、sdk-kotlin、sdk-swift）
+- 前置条件：第 15 节累计表 C4：`recall`、`quote`、`mentions`、`msgDeleted.recalled`；`frames.json` 已有 BE-470 的用例
+- 步骤：
+  1. 服务端、三套 SDK 跑 `protocol/vectors/frames.json`；sdk-ts 做 Schema 校验
+- 预期结果：
+  1. 全部通过
+
+### TC-CHAT-90-33 共享用例（C4：撤回、引用、提及）
+- 关联 AC：AC-CHAT-90-15
+- 优先级：P0
+- 批次：C4（【全部】，C4 增加的部分）
+- 层级：SDK 单测（三套）
+- 环境：本地（三套 SDK）
+- 前置条件：`chat-sync.json` 已有 BE-478 的用例
+- 步骤：
+  1. 三套 SDK 跑 `chat-sync.json`、`account-session.json`
+- 预期结果：
+  1. 全部通过，含撤回合并、引用清除、提及计数
+
+### TC-CHAT-90-34 指标和配置检查（C4）
+- 关联 AC：AC-CHAT-90-17
+- 优先级：P0
+- 批次：C4（【全部】，C4 增加的部分）
+- 层级：后端 e2e
+- 环境：E1 + `/metrics`
+- 前置条件：C4：撤回指标、配置检查项 `msg_actions`
+- 步骤：
+  1. 发送者、群主、管理员各撤回一次
+  2. 抓 `/metrics`、`GET /internal/v1/config`
+- 预期结果：
+  1. `im_recalls_total{by}` 三个取值都增加
+  2. 配置检查有开关状态、隔离密钥已设置、隐私说明版本，不含密钥
+  3. 标签没有 userId、`convId`、`msgId`

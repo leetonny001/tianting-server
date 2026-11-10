@@ -1,7 +1,7 @@
 # 测试用例：账号注册和登录（ACC，C1；头像部分 C2）
 
 > 依据：[PRD-chat v1.5](../prd/PRD-chat-v1.5.md)（冻结）第 4、5 节；[ERRORS.md](../../protocol/ERRORS.md)。任务单：[backend-chat](../tasks/backend-chat.md)、[console-chat](../tasks/console-chat.md)、[frontend-chat](../tasks/frontend-chat.md)。
-> 范围：标了【C1】【C2】【C3】的 AC-ACC（CH-27）。C3 只有 AC-ACC-04-26（TC-ACC-04-30）；C1 AC 的推送令牌部分在 [TC-APN](TC-APN.md) TC-APN-91-01～03。C4～C6 的 AC-ACC 不在这里。
+> 范围：标了【C1】【C2】【C3】【C4】的 AC-ACC（CH-27）。C4 只有 AC-ACC-10-4（TC-ACC-10-04）。C3 只有 AC-ACC-04-26（TC-ACC-04-30）；C1 AC 的推送令牌部分在 [TC-APN](TC-APN.md) TC-APN-91-01～03。C5、C6 的 AC-ACC 不在这里。
 >
 > 通用约定：
 > - 环境：**E1 单节点**（1 个 im-server，development，`IM_TEST_MODE=1`，SQLite 独立库；`IM_TRUSTED_PROXIES` 配成测试客户端，换 IP 用 `X-Forwarded-For`，PRD 第 4.5 节）；**E1 + 假 S3**（再加 `objstoretest` 独立进程，`IM_FILES_ENABLED=1`，公开桶和私有桶都在假 S3 上）；**E1 + console-server + tianting-admin**（`CON_TEST_MODE=1`，Postgres）；**真实 MinIO**（`deploy/testenv-ci.sh` 的固定版本）；**EP 性能**（目标机，P-12）；**Postgres**（B6 之后）；**模拟器**（Android 模拟器、iOS Simulator）；**真机**（P-13）。开发机不安装软件。
@@ -192,6 +192,7 @@
 | TC-ACC-10-01 | 三个入口都能打开隐私说明；加载失败的提示 | AC-ACC-10-1 | Playwright（H5）+ 原生 UI 测试 | P0 |
 | TC-ACC-10-02 | 注册记录同意的版本 | AC-ACC-10-2 | 后端 e2e | P0 |
 | TC-ACC-10-03 | 版本更新：下次登录提示一次 | AC-ACC-10-3 | Playwright（H5）+ 原生 UI 测试 | P0 |
+| TC-ACC-10-04 | 生产、开关开、隐私说明版本为空：拒绝启动 | AC-ACC-10-4 | 后端单测 + e2e | P0 |
 | TC-ACC-03-49 | 吊销之后 refresh 的 reason 按原因返回 | AC-ACC-03-49 | 后端 e2e | P0 |
 | TC-ACC-03-50 | 恢复数据库后吊销全部会话 | AC-ACC-03-50 | 后端 e2e | P0 |
 
@@ -2739,6 +2740,22 @@
 - 预期结果：
   1. 第一次提示一次，确认后 `notice_version=v2`；第二次不提示
   2. 不确认也能继续使用（第一批不做强制）
+
+### TC-ACC-10-04 生产、开关开、隐私说明版本为空：拒绝启动
+- 关联 AC：AC-ACC-10-4
+- 优先级：P0
+- 批次：C4
+- 层级：后端单测 + e2e
+- 环境：E1 单节点（启动参数单独构造）
+- 前置条件：`IM_ENV=production`、`IM_MSG_ACTIONS_ENABLED=1`、`IM_QUARANTINE_KEY` 等其余生产必需项都合法，`IM_PRIVACY_NOTICE_VERSION` 为空
+- 步骤：
+  1. 启动 im-server
+  2. 补上版本后再启动
+  3. 版本为空但 `IM_MSG_ACTIONS_ENABLED=0` 时启动
+- 预期结果：
+  1. 非 0 退出，错误信息指出缺隐私说明版本（不含任何密钥）
+  2. 正常启动
+  3. 正常启动（只有 C4 开关打开才要求；C6 的同类检查是 AC-ACC-10-5）
 
 ---
 

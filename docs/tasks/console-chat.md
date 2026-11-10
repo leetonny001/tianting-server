@@ -1,9 +1,9 @@
-# console-server 任务单：天听聊天产品第一批（后台配合，C1、C2、C3）
+# console-server 任务单：天听聊天产品第一批（后台配合，C1、C2、C3、C4）
 
 | 项 | 内容 |
 |---|---|
-| 依据 | [PRD-chat v1.5](../prd/PRD-chat-v1.5.md)（冻结）第 11.6、14 节、F-ACC-09 和 F-APN-01 规则 4；[PRD-admin v1.2](../prd/PRD-admin-v1.3.md) 基座（权限点、两阶段审计、错误码）；[errors.json](../../protocol/errors.json) |
-| 范围 | **C1、C2、C3**（CH-27；C3 是 Frank 2026-11-10 决定按顺序继续的）。词库、举报（`moderation.words`、`report.*`、`console-msgread` 增加 `report.evidence`）属于 C6，这里不做 |
+| 依据 | [PRD-chat v1.5](../prd/PRD-chat-v1.5.md)（冻结）第 11.6、14 节、F-ACC-09、F-APN-01 规则 4 和 F-RCL-04；[PRD-admin v1.2](../prd/PRD-admin-v1.3.md) 基座（权限点、两阶段审计、错误码）；[errors.json](../../protocol/errors.json) |
+| 范围 | **C1、C2、C3、C4**（CH-27）。C3 是 Frank 2026-11-10 决定按顺序继续的，同一天又决定"推送后续做，先做功能"，**C3 已暂停**（CS-203 保留）；C4 同一天决定接着做（CS-202 从 C2 挪来，CS-204 新增）。词库、举报（`moderation.words`、`report.*`、`console-msgread` 增加 `report.evidence`）属于 C6，这里不做 |
 | 负责 | 后端（AI） |
 | 仓库 | tianting-console-server（Go）。管理后台页面在 tianting-admin，见 [frontend-chat.md](frontend-chat.md)；im-server 接口见 [backend-chat.md](backend-chat.md) |
 | 编号 | **CS-200 起** |
@@ -18,7 +18,8 @@
 | CS-200 | ✅ 完成（接口部分，页面随 FE-619） | console-server `6820da8`（**本地结果，CI 不运行**：真实 Postgres 17、真实 im-server，`go test -race -count=1 ./...` 全过）。AC-ACC-05-9（console 路由、源码、scope）、09-2、09-5、09-6、09-7、09-8、09-13 通过（`e2e/invites_test.go`、`internal/app/route_test.go`），矩阵（AC-ADM-05-1）覆盖 3 个新路由。AC-ACC-09-1 只验了后端部分，三端注册和"后台显示已用 2 次"的页面随 FE-610～619；AC-ACC-09-11 只验了接口，页面随 FE-619。AC-CHAT-90-5 的 C1 后端 e2e 通过，部署 e2e 没有执行。变异确认 20 条全部发现 |
 | CS-201 | ✅ 完成 | console-server@ec25a15（**本地结果，CI 不运行**：真实 Postgres 17、真实 im-server `IM_FILES_ENABLED=1` + 测试里的假 S3 `e2e/fakes3_test.go`）。代码没有改：元数据是白名单结构（`messageMeta`），正文接口原样透传 `body`，后台版序列化本来就能处理 `image`、`file`。新增 `TestTC_FILE_91_01_MetaHasNoFileName`（TC-FILE-91-01，AC-ADM-30-7 的 C2 扩展）：客服查元数据，console 响应和它从 im-server 拿到的响应都没有文件名、没有 `body`，只有类型和正文长度；正文授权后文件消息带文件名、大小、类型，图片带宽高、没有文件名；console 审计（`msg.meta.query`、`msg.read.grant`、`msg.read.page`）、console 全库、im-server 审计、两边日志都搜不到文件名。变异 1 项（元数据结构加回 `body`）被发现。后台 CSP 没有改（AC-CON-10-3 原有用例）。页面见 FE-639。`go test -race -count=1 ./...` 全过（临时 Postgres 17 集群，本地）。**没有验收的部分**：第 14.1 节元数据"显示大小"——im-server 元数据接口只有正文长度（见问题 12）；单聊正文开关没有另测（沿用 CS-200 之前的用例） |
 | CS-203 | ⬜ 未开始 | 2026-11-10 分发（C3） |
-| CS-202 | ⏭ 挪到 C4 | 2026-11-09 没有做：im-server 的 `POST /admin/files/{fileId}/fetch` 还不存在（第 11.6 节，AC-RCL-04-9 标的是 C4），按 Frank 2026-11-06 的决定这一批也不放开 `msg.read.group` 看文件内容。正文页只显示文件名和"不可预览"（FE-639 已做）。console 的代理（固定 `Content-Disposition: attachment`、写审计）等 im-server 接口有了再做，见问题 13。**P-37 ④（Frank 2026-11-09）**：挪到 C4，随 im-server 的 `fetch` 接口一起做 |
+| CS-204 | ⬜ 未开始 | 2026-11-10 分发（C4） |
+| CS-202 | ⬜ 未开始（批次改为 C4，2026-11-10） | 依赖 im-server 的 `fetch`（BE-474，形状在 BE-470 第 4 条）。2026-11-09 没有做：im-server 的 `POST /admin/files/{fileId}/fetch` 还不存在（第 11.6 节，AC-RCL-04-9 标的是 C4），按 Frank 2026-11-06 的决定这一批也不放开 `msg.read.group` 看文件内容。正文页只显示文件名和"不可预览"（FE-639 已做）。console 的代理（固定 `Content-Disposition: attachment`、写审计）等 im-server 接口有了再做，见问题 13。**P-37 ④（Frank 2026-11-09）**：挪到 C4，随 im-server 的 `fetch` 接口一起做 |
 
 ## 总览
 
@@ -27,9 +28,10 @@
 | C1 | CS-200 | 0.5 | 1.5（这里 0.5，页面 FE-619 1） | 合计一致 |
 | C2 | CS-201、CS-202 | 1.5 | 2.5（这里 1.5，页面 FE-639 1） | 合计一致 |
 | C3 | CS-203 | 0.5 | 0.5 | 一致 |
+| C4 | CS-204（另做从 C2 挪来的 CS-202） | 0.5 | 1.5（这里 0.5，页面 FE-671 1） | 合计一致；CS-202 的 0.5 仍算在 C2 行（第 18 节按 C2 估的），C4 实际要做 1 |
 | 公共 | — | 0 | 0 | 一致 |
 
-**依赖顺序**：BE-421 → CS-200；BE-434 → CS-201 → CS-202；BE-453、BE-457 → CS-203 → BE-459。
+**依赖顺序**：BE-421 → CS-200；BE-434 → CS-201；BE-453、BE-457 → CS-203 → BE-459（C3 暂停）；BE-474 → CS-204、CS-202 → FE-671 → BE-480。
 
 ---
 
@@ -62,15 +64,17 @@
 
 ### CS-202 审核员查看文件的代理
 - 优先级：P1
-- 批次：C2
+- 批次：C4（原 C2；P-37 ④，Frank 2026-11-09 挪到 C4）
 - 仓库：tianting-console-server
-- 依赖：CS-201
-- AC：无（C2 没有专属 AC）
+- 依赖：CS-201、BE-474（im-server `POST /admin/files/{fileId}/fetch`，形状见 BE-470 第 4 条）
+- AC：AC-RCL-04-9
 - 内容：
   1. 第 14.1 节"文件内容凭授权看，文件经 console-server 代理，后台 CSP 不放宽（R-CS-24）"；im-server 侧接口是 `POST /admin/files/{fileId}/fetch`（第 11.6 节）。
   2. **Frank 2026-11-06 决定不放开**（PRD v1.1 第 14.1 节）：正文页只显示文件名和"不可预览"，文件内容只走 `msg.quarantine`（隔离原文已有），举报证据的 `report.evidence` 随 C6。法务回复后再决定是否放开 `msg.read.group`。
   3. 代理响应固定 `Content-Disposition: attachment`，不内联；写审计。
-- 工作量：0.5 人日（console + 后台页面列）
+  4. C4 范围（AC-RCL-04-9）：只开放 `msg.quarantine` 路径——审核员对**已撤回或已被后台删除**的文件消息，在这个会话有有效隔离授权时，经 console 代理取文件（原图或缩略图）；没有授权 403 / 4039，没有权限点 403 / 4030（console 和 im-server 两层都拦）；单聊受 `IM_C2C_BODY_ACCESS`。console 用正文类调用方 `console-msgread` 调 im-server，响应字节流式透传、不落盘、不缓存；console 审计记 `fileId`、`msgId`、授权单号，不记文件名。`report.evidence` 的路径随 C6。
+  5. 后台 CSP 不放宽（AC-CON-10-3）；页面的"查看文件"按钮见 FE-671。
+- 工作量：0.5 人日（console + 后台页面列；人日算在 C2）
 
 ---
 
@@ -86,9 +90,22 @@
   3. 用户详情的"设备会话数"不变，不显示推送令牌（F-ACC-09 规则 5 没有这一项）。
 - 工作量：0.5 人日（console + 后台页面列）
 
+### CS-204 后台元数据和正文接口配合撤回
+- 优先级：P0
+- 批次：C4
+- 仓库：tianting-console-server
+- 依赖：BE-474
+- AC：AC-RCL-04-1、AC-RCL-04-3、AC-RCL-04-7
+- 内容：
+  1. 元数据接口（`msg.meta`，CS-201 第 4 条留的）：console 的 `messageMeta` 是白名单结构，增加 `recalled`、`recalledAt`、`recalledBy` 透传；仍然没有 `body`、文件名（AC-RCL-04-7）；撤回的文件消息没有 `fileSize`（im-server 不返回）。
+  2. 正文接口（`msg.read.group`）：按 im-server 的后台版序列化透传，撤回的消息 `deleted=false`、`recalled=true`、没有 `body`（AC-RCL-04-3）；隔离接口（`msg.quarantine`）返回撤回的原文（单聊照旧受 `IM_C2C_BODY_ACCESS`）。正文里的 `quote`、`mentions` 原样透传（引用文字按正文对待，不出现在元数据和 console 日志里）。
+  3. 后台删除已撤回的消息（AC-RCL-04-1）：console 两阶段审计照写，im-server 幂等返回 200；console 对账把它记成成功，不当成"状态不一致"。
+  4. 页面见 FE-671。
+- 工作量：0.5 人日（console + 后台页面列，撤回行）
+
 ---
 
-运维后台（第 14.2 节）的配置检查和指标都由 im-server 提供（BE-423、BE-438、BE-457），`tianting-ops` 的配置检查页按接口数据显示。C1、C2 没有页面改动；C3 的推送项见 CS-203。撤回、治理的项随 C4～C6。
+运维后台（第 14.2 节）的配置检查和指标都由 im-server 提供（BE-423、BE-438、BE-457），`tianting-ops` 的配置检查页按接口数据显示。C1、C2 没有页面改动；C3 的推送项见 CS-203。C4 的撤回指标 `im_recalls_total{by}` 和配置检查项 `msg_actions` 由 im-server 提供（BE-471），运维后台按接口数据通用显示，C4 不改页面（如果配置检查页是写死的项，随 FE-672 走查时补）。治理的项随 C6。
 
 ---
 
@@ -108,5 +125,5 @@
 10. **枚举口径**：TC-ACC-05-08 按 `password`、`recovery`、`reset` 搜 console 路由，会命中后台账号自己的 3 个接口（`/me/password`、`/me/recovery-codes`、`/accounts/{id}/reset`）。这 3 个不改 IM 用户，用例写成显式白名单，并用源码解析确认它们的处理函数不调用 im-server。
 11. **AC-CHAT-90-5 不在 CS-200 的 AC 行**：验收记录把 console 日志和审计部分记在 CS-200 下，追溯矩阵只挂 BE-422、BE-440。用例已写（`TestTC_CHAT_90_04_NoSecretsInLogsAndAudit`），没有改 AC 行，追溯矩阵不变。
 12. **元数据页的"大小"拿不到文件大小**（CS-201、FE-639）：PRD-chat 第 14.1 节写元数据页"显示类型和大小"，im-server 的 `/admin/convs/messages/query` 对文件消息只有 `bodyLength`（`store/admin.go` 第 84 行：非文本消息是 body JSON 的码点数，正文只存 `fileId`，所以和文件名、文件大小都无关），没有文件大小。console 只能透传它有的字段，页面显示类型和"正文长度"。要显示文件大小需要 im-server 在元数据里加 `size`（文件大小不算正文），属于后端改动，没有做，由 Frank 定。**P-37 ③ 已定（2026-11-09）**：im-server 加 `fileSize`，console 透传，页面显示。**已落实（2026-11-09）**：im-server 已加（tianting-server@f50b46c）；console 的元数据是白名单结构，tianting-console-server@62941c3 加 `fileSize`（`omitempty`），TC-FILE-91-01 断言文件、图片的 `fileSize` 等于原文件字节数、文本没有、仍然没有文件名和 `body`（去掉字段时失败），`go test -race -count=1 ./...` 全过（临时 Postgres 17、真实 im-server，本地）；页面 tianting-admin@4b18297（"大小"一列，图片、文件显示"1.2 MB"这样的大小，其他照旧正文长度），Vitest 111 个、e2e 56 个过（3 个按配置跳过）。
-13. **CS-202 等 im-server 接口**：`POST /admin/files/{fileId}/fetch` 在 im-server 里还没有（AC-RCL-04-9 是 C4），请求、响应的形状 `protocol/ADMIN.md` 也没有写。console 侧没有先写一个调不通的代理。**P-37 ④ 已定**：CS-202 挪到 C4。
+13. **CS-202 等 im-server 接口**：`POST /admin/files/{fileId}/fetch` 在 im-server 里还没有（AC-RCL-04-9 是 C4），请求、响应的形状 `protocol/ADMIN.md` 也没有写。console 侧没有先写一个调不通的代理。**P-37 ④ 已定**：CS-202 挪到 C4。**C4 分发（2026-11-10）**：接口形状在 backend-chat BE-470 第 4 条定了，im-server 实现见 BE-474。
 
