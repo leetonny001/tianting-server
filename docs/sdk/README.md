@@ -159,7 +159,7 @@ im.on('downloadAborted', (fileId, recalled) => …); // 同时发，先于 files
 
 ## 6. 账号会话语义（FE-610～612，三套 SDK 一致）
 
-依据 [PRD-chat](../prd/PRD-chat-v1.5.md) F-ACC-03 规则 5～7、F-ACC-04 规则 1、3、6，F-ACC-05 规则 1。代码入口：tianting-sdk-ts 的 `src/account-policy.ts`（纯判断，和 `server/e2e/accountmodel/model.go` 逐条对应）、`src/account.ts`（单飞、队列、定时器）、`src/connection.ts`（`onClosedWithProvider`）。**向量只覆盖 `model.go` 有的判断，下面标了"向量没有"的要靠各 SDK 自己的测试**，测试用例可以照 `test/account-session.test.ts` 翻译，用例名带 TC 编号。S1、K7、S3、K5（编号见任务单的问题表）在三套 SDK 里是同一组用例：sdk-ts `test/account-unified.test.ts`、sdk-kotlin `AccountUnifiedTest`、sdk-swift `AccountUnifiedTests`。
+依据 [PRD-chat](../prd/PRD-chat-v1.6.md) F-ACC-03 规则 5～7、F-ACC-04 规则 1、3、6，F-ACC-05 规则 1。代码入口：tianting-sdk-ts 的 `src/account-policy.ts`（纯判断，和 `server/e2e/accountmodel/model.go` 逐条对应）、`src/account.ts`（单飞、队列、定时器）、`src/connection.ts`（`onClosedWithProvider`）。**向量只覆盖 `model.go` 有的判断，下面标了"向量没有"的要靠各 SDK 自己的测试**，测试用例可以照 `test/account-session.test.ts` 翻译，用例名带 TC 编号。S1、K7、S3、K5（编号见任务单的问题表）在三套 SDK 里是同一组用例：sdk-ts `test/account-unified.test.ts`、sdk-kotlin `AccountUnifiedTest`、sdk-swift `AccountUnifiedTests`。
 
 对外：`AccountClient`（HTTP，独立于 `IMClient`），`im.connect(account.tokenProvider)` 进入账号模式；`im.connect(token)` 是演示模式，行为不变。
 

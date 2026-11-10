@@ -56,7 +56,13 @@ func (e *c4FileEnv) advanceTo(ts time.Time) {
 
 func (e *c4FileEnv) call(c testCaller, path string, body any) (int, []byte, http.Header) {
 	e.t.Helper()
-	req := e.signedRequest(c, http.MethodPost, path, body, signOpts{ts: e.now, operator: "op1", requestID: fmt.Sprintf("r-%d", reqSeq.Add(1))})
+	return e.callAs(c, "op1", path, body)
+}
+
+// callAs 和 call 相同，只是签名的操作人（X-IM-Operator）换成 operator。
+func (e *c4FileEnv) callAs(c testCaller, operator, path string, body any) (int, []byte, http.Header) {
+	e.t.Helper()
+	req := e.signedRequest(c, http.MethodPost, path, body, signOpts{ts: e.now, operator: operator, requestID: fmt.Sprintf("r-%d", reqSeq.Add(1))})
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
 		e.t.Fatal(err)
@@ -270,6 +276,84 @@ func TestTC_RCL_04_09_Fetch(t *testing.T) {
 	}
 	code, b, _ = e.call(e.body, path, req)
 	expectCode(t, "after purge", code, b, 404, protocol.CodeFileNotFound)
+}
+
+// TC-RCL-04-09 的 grantId 部分（PRD-chat v1.6 第 11.6 节，PENDING P-44 ④）：请求带 grantId 时只认这一个授权。
+// 同一调用方 + 操作人在这个会话还有另一个有效隔离授权的情况下，别的会话的、非隔离的、别的操作人的、别的调用方的、不存在的、
+// 过期的 grantId 都是 403 / 4039（不回退到按会话查）；对的 grantId 成功；不带 grantId 行为不变。
+func TestTC_RCL_04_09_FetchGrantID(t *testing.T) {
+	other := hmacCaller("console-msgread-2", adminauth.ScopeMsgBodyGroup, adminauth.ScopeMsgQuarantine)
+	other.cfg.BodyAccess = true
+	e := newC4FileEnv(t, func(c *app.Config) { c.AdminCallers = append(c.AdminCallers, other.cfg) })
+	tok1 := e.token("o")
+	e.createGroup("g1", "o", "m")
+	e.createGroup("g2", "o", "m")
+	orig := fakeJPEG(320, 240, 16<<10)
+	imgID := e.uploadImage(tok1, "grant-ZXQ-RCL-3.jpg", orig, smallThumb())
+	o := e.dial("o", "web")
+	img := mustAck[protocol.SendAck](t, sendFile(o, "group", "g1", "cmid-f0911", "image", imgID, nil))
+	mustRecall(t, o, "group:g1", img.MsgID)
+	path := "/admin/files/" + imgID + "/fetch"
+	grant := func(c testCaller, operator, conv string, quarantine bool) string {
+		t.Helper()
+		code, b, _ := e.callAs(c, operator, "/admin/msg-grants", map[string]any{"convId": conv, "operator": operator, "reason": "case review", "ticket": "T-9", "quarantine": quarantine})
+		if code != 200 {
+			t.Fatalf("grant %s %s %v: %d %s", operator, conv, quarantine, code, b)
+		}
+		var out struct {
+			GrantID string `json:"grantId"`
+		}
+		if err := json.Unmarshal(b, &out); err != nil || out.GrantID == "" {
+			t.Fatalf("grant body: %s", b)
+		}
+		return out.GrantID
+	}
+	fetch := func(grantID string) (int, []byte) {
+		t.Helper()
+		req := map[string]any{"convId": "group:g1", "msgId": img.MsgID}
+		if grantID != "" {
+			req["grantId"] = grantID
+		}
+		code, b, _ := e.call(e.body, path, req)
+		return code, b
+	}
+
+	g1 := grant(e.body, "op1", "group:g1", true) // 对的授权，15 分钟后过期
+	for label, id := range map[string]string{
+		"other conv":     grant(e.body, "op1", "group:g2", true),
+		"not quarantine": grant(e.body, "op1", "group:g1", false),
+		"other operator": grant(e.body, "op2", "group:g1", true),
+		"other caller":   grant(other, "op1", "group:g1", true),
+		"unknown":        "0193a7c4-0000-7000-8000-00000000beef",
+	} {
+		code, b := fetch(id)
+		expectCode(t, label, code, b, 403, protocol.CodeMsgReadGrantRequired)
+	}
+	if code, b := fetch(g1); code != 200 || sha256.Sum256(b) != sha256.Sum256(orig) {
+		t.Fatalf("right grantId: %d (%d bytes)", code, len(b))
+	}
+	if code, b := fetch(""); code != 200 || sha256.Sum256(b) != sha256.Sum256(orig) {
+		t.Fatalf("no grantId: %d (%d bytes)", code, len(b))
+	}
+
+	// 10 分钟后再申请一个 g2；16 分钟时 g1 过期而 g2 有效：带 g1 被拒，带 g2 和不带都成功（不带时的旧行为）。
+	e.advanceTo(e.now.Add(10 * time.Minute))
+	g2 := grant(e.body, "op1", "group:g1", true)
+	e.advanceTo(e.now.Add(6 * time.Minute))
+	code, b := fetch(g1)
+	expectCode(t, "expired", code, b, 403, protocol.CodeMsgReadGrantRequired)
+	if code, b := fetch(g2); code != 200 || sha256.Sum256(b) != sha256.Sum256(orig) {
+		t.Errorf("fresh grantId: %d (%d bytes)", code, len(b))
+	}
+	if code, _ := fetch(""); code != 200 {
+		t.Errorf("no grantId with a fresh grant: %d", code)
+	}
+	// 全部过期之后不带 grantId 也是 4039（旧行为）。
+	e.advanceTo(e.now.Add(10 * time.Minute))
+	code, b = fetch("")
+	expectCode(t, "all expired", code, b, 403, protocol.CodeMsgReadGrantRequired)
+	code, b = fetch(g2)
+	expectCode(t, "g2 expired", code, b, 403, protocol.CodeMsgReadGrantRequired)
 }
 
 // TC-RCL-04-09 的单聊部分：IM_C2C_BODY_ACCESS=off 时 fetch 403 / 4030 c2cBodyDisabled（和隔离原文相同）。

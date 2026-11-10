@@ -1,6 +1,6 @@
 # 测试用例：撤回（RCL，C4）
 
-> 依据：[PRD-chat v1.5](../prd/PRD-chat-v1.5.md)（冻结）第 4.1、4.3、4.5、8 节 F-RCL-01～04，第 11～15 节的 C4 部分。任务单：[backend-chat](../tasks/backend-chat.md) BE-470～BE-481，[console-chat](../tasks/console-chat.md) CS-202、CS-204，[frontend-chat](../tasks/frontend-chat.md) FE-660～FE-672。
+> 依据：[PRD-chat v1.6](../prd/PRD-chat-v1.6.md)（冻结）第 4.1、4.3、4.5、8 节 F-RCL-01～04，第 11～15 节的 C4 部分。任务单：[backend-chat](../tasks/backend-chat.md) BE-470～BE-481，[console-chat](../tasks/console-chat.md) CS-202、CS-204，[frontend-chat](../tasks/frontend-chat.md) FE-660～FE-672。
 > 范围：标了【C4】的 AC-RCL（CH-27，Frank 2026-11-10"先做功能"）。**TC-RCL-03-09 依赖 C3 的推送 worker 和假通道（BE-481），C3 恢复前记"未执行（等 C3）"**。引用和提及见 [TC-QUO](TC-QUO.md)、[TC-MEN](TC-MEN.md)；AC-FILE-06-3 在 [TC-FILE](TC-FILE.md)（TC-FILE-06-13），AC-APN-03-3 在 [TC-APN](TC-APN.md)（TC-APN-03-03），【全部】的 C4 部分在 [TC-CHAT](TC-CHAT.md)（TC-CHAT-90-26～34）。
 >
 > 通用约定：
@@ -642,9 +642,11 @@
 - 步骤：
   1. 分别 `POST /admin/files/{fileId}/fetch`
   2. 经 console 代理再走一遍（CS-202）
+  3. 请求体带 `grantId`（PRD-chat v1.6 第 11.6 节，P-44 ④）：同一调用方 + 操作人在这个会话另有一个有效隔离授权时，分别带对的、别的会话的、非隔离的、别的操作人的、别的调用方的、不存在的、过期的 `grantId`；再不带 `grantId`
 - 预期结果：
   1. 依次 403 / 4039、200（字节和原图 SHA-256 一致，`Content-Disposition: attachment`、`nosniff`）、403 / 4030
   2. console 响应同样带 `attachment`；console 审计有 `fileId`、`msgId`，搜不到文件名
+  3. 只有对的 `grantId` 200，其余都是 403 / 4039（不回退到按会话找）；不带 `grantId` 行为和 v1.5 相同；console 转给 im-server 的请求体带这个浏览器会话的 `grantId`，URL 和日志里没有
 
 ---
 

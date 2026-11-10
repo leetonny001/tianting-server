@@ -18,14 +18,18 @@ type ObjectReader interface {
 	Get(ctx context.Context, key string) (io.ReadCloser, objstore.Info, error)
 }
 
-// fetchFile 是 POST /admin/files/{fileId}/fetch（PRD-chat 第 11.6 节，F-RCL-04，AC-RCL-04-9；形状在 BE-470 第 4 条定）：
+// fetchFile 是 POST /admin/files/{fileId}/fetch（PRD-chat v1.6 第 11.6 节，F-RCL-04，AC-RCL-04-9；形状在 BE-470 第 4 条定，
+// v1.6 加可选 grantId，PENDING P-44 ④）：
 // 审核员看被撤回或被后台删除的消息里的图片、文件，console-server 代理（CS-202）。im-server 从对象存储读出来返回，不发预签名地址。
-// 要 msg.quarantine（C4；report.evidence 随 C6）且这个会话有有效的隔离授权（同一调用方、操作人），没有 403 / 4039；
+// 要 msg.quarantine（C4；report.evidence 随 C6）且这个会话有有效的隔离授权（同一调用方、操作人），没有 403 / 4039。
+// 带 grantId 时只认这一个授权：要属于这个调用方 + 签名的操作人 + convId、是隔离授权、没过期，任何一条不符合（含不存在）都是 403 / 4039，
+// 不再按会话找别的授权；不带时按调用方 + 操作人 + 会话查（兼容）。
 // 单聊受 IM_C2C_BODY_ACCESS（403 / 4030 c2cBodyDisabled）。fileId 不属于 msgId、消息没被撤回或删除、对象过了保留期：404 / 4048，不区分。
 // 审计只记 fileId、msgId、variant，不记文件名。
 func (a *Admin) fetchFile(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Cache-Control", "no-store")
 	var req struct {
+		GrantID string `json:"grantId"`
 		ConvID  string `json:"convId"`
 		MsgID   string `json:"msgId"`
 		Variant string `json:"variant"`
@@ -62,7 +66,7 @@ func (a *Admin) fetchFile(w http.ResponseWriter, r *http.Request) {
 	}
 	info := AuthFrom(r.Context())
 	now := a.clock.Now().UnixMilli()
-	ok, err := a.store.HasActiveMsgGrant(r.Context(), info.Caller, info.Operator, req.ConvID, true, now)
+	ok, err := a.fetchGrantOK(r.Context(), req.GrantID, info, req.ConvID, now)
 	if err != nil {
 		a.internal(w, "check msg grant", err)
 		return
@@ -120,6 +124,22 @@ func (a *Admin) fetchFile(w http.ResponseWriter, r *http.Request) {
 	}
 	w.WriteHeader(http.StatusOK)
 	_, _ = io.Copy(w, body)
+}
+
+// fetchGrantOK 判断 fetch 的授权（PRD-chat v1.6 第 11.6 节）。grantID 非空时只看这一个授权，和正文读取的条件相同再加上必须是隔离授权；
+// 为空时按调用方 + 操作人 + 会话找有效的隔离授权。
+func (a *Admin) fetchGrantOK(ctx context.Context, grantID string, info AuthInfo, convID string, now int64) (bool, error) {
+	if grantID == "" {
+		return a.store.HasActiveMsgGrant(ctx, info.Caller, info.Operator, convID, true, now)
+	}
+	g, err := a.store.GetMsgGrant(ctx, grantID)
+	if errors.Is(err, store.ErrMsgGrantNotFound) {
+		return false, nil
+	}
+	if err != nil {
+		return false, err
+	}
+	return g.Caller == info.Caller && g.Operator == info.Operator && g.ConvID == convID && g.Quarantine && g.ExpiresAt > now, nil
 }
 
 // registerFetch 在第二批管理接口和对象存储都开着时注册（隔离授权只有第二批才有）。

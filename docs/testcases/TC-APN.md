@@ -1,6 +1,6 @@
 # 测试用例：离线推送（APN，C3）
 
-> 依据：[PRD-chat v1.5](../prd/PRD-chat-v1.5.md)（冻结）第 4.4、4.5、7 节，第 13、15 节的 C3 部分，第 20.3 节；官方文档核对见 [backend-chat](../tasks/backend-chat.md) 文末第 34～46 条（PENDING P-40）。任务单：[backend-chat](../tasks/backend-chat.md) BE-406、BE-450～BE-460，[console-chat](../tasks/console-chat.md) CS-203，[frontend-chat](../tasks/frontend-chat.md) FE-650～FE-656。
+> 依据：[PRD-chat v1.6](../prd/PRD-chat-v1.6.md)（冻结）第 4.4、4.5、7 节，第 13、15 节的 C3 部分，第 20.3 节；官方文档核对见 [backend-chat](../tasks/backend-chat.md) 文末第 34～46 条（PENDING P-40）。任务单：[backend-chat](../tasks/backend-chat.md) BE-406、BE-450～BE-460，[console-chat](../tasks/console-chat.md) CS-203，[frontend-chat](../tasks/frontend-chat.md) FE-650～FE-656。
 > 范围：标了【C3】的 AC-APN（CH-27，Frank 2026-11-10 决定继续 C3）。AC-APN-03-3（【C4】撤回替换通知）是 C4 分发时写的 TC-APN-03-03，**依赖 C3 的推送实现，C3 恢复后执行**（backend-chat BE-481）；AC-APN-04-4（【C5】角标口径）随 C5，编号 TC-APN-04-04 留给它。AC-APN-02-11 已废弃（第 16.3 节），TC-APN-02-11 不使用。AC-ACC-04-26 的用例在 [TC-ACC](TC-ACC.md)（TC-ACC-04-30），AC-CHAT-90-13 和【全部】的 C3 部分在 [TC-CHAT](TC-CHAT.md)（TC-CHAT-90-18～25）。
 >
 > 通用约定：
