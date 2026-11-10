@@ -1,17 +1,17 @@
-# 后端任务单：天听聊天产品第一批（C1 账号、C2 图片和文件、C3 离线推送、C4 撤回引用 @、公共部分）
+# 后端任务单：天听聊天产品第一批（C1 账号、C2 图片和文件、C3 离线推送、C4 撤回引用 @、C5 会话设置、公共部分）
 
 | 项 | 内容 |
 |---|---|
-| 依据 | [PRD-chat v1.7](../prd/PRD-chat-v1.7.md)（冻结）第 4～8、11、12、14、15、16、18、20.3 节；[ARCH-v1](../arch/ARCH-v1.md)；[协议](../../protocol/README.md)、[错误码](../../protocol/ERRORS.md)、[管理接口](../../protocol/ADMIN.md) |
-| 范围 | **C1、C2、C3、C4 和公共部分**（PRD 决定 CH-27）。C3 是 Frank 2026-11-10 决定按顺序继续的，**同一天又决定"推送后续做，先做功能"，C3 已暂停**（任务和用例保留）；C4 是同一天决定接着做的。C5、C6 的 AC 不进任务；【全部】的 AC 验证到 C4 为止的部分（PRD 第 15 节累计表，C3 那一列等 C3 恢复） |
+| 依据 | [PRD-chat v1.7](../prd/PRD-chat-v1.7.md)（冻结）第 4～9、11、12、14、15、16、17、18、20.3 节；[ARCH-v1](../arch/ARCH-v1.md)；[协议](../../protocol/README.md)、[错误码](../../protocol/ERRORS.md)、[管理接口](../../protocol/ADMIN.md) |
+| 范围 | **C1、C2、C3、C4 和公共部分**（PRD 决定 CH-27）。C3 是 Frank 2026-11-10 决定按顺序继续的，**同一天又决定"推送后续做，先做功能"，C3 已暂停**（任务和用例保留）；C4 是同一天决定接着做的；**C5 是 Frank 2026-11-10 在聊天里说"开始 C5"后分发的**（第 17 节 C5 行，QUEUE Q29）。C6 的 AC 不进任务；【全部】的 AC 验证到 C5 为止的部分（PRD 第 15 节累计表，C3 那一列等 C3 恢复） |
 | 负责 | 后端（AI） |
 | 仓库 | im-server（GitHub 仓库 `tianting-server`，本地 `im-mvp/server/`）；协议在同仓库 `protocol/`，部署在 `deploy/`，工具在 `tools/` |
-| 编号 | **BE-400 起**。公共 BE-400～BE-408，C1 BE-410～BE-424，C2 BE-430～BE-440，C3 BE-450～BE-460，C4 BE-470～BE-481 |
+| 编号 | **BE-400 起**。公共 BE-400～BE-408，C1 BE-410～BE-424，C2 BE-430～BE-440，C3 BE-450～BE-460，C4 BE-470～BE-481，C5 BE-482～BE-490 |
 | 起点 | 现有迁移到 `0014_admin_stats.sql`；只有 SQLite；`IM_V13_ADMIN_FEATURES` 默认关闭；`tools/objstore-contract` 已有合同工具 |
-| 完成定义 | 任务内的 AC 都有通过的自动化测试，用例名带 TC 编号（[TC-ACC](../testcases/TC-ACC.md)、[TC-FILE](../testcases/TC-FILE.md)、[TC-APN](../testcases/TC-APN.md)、[TC-RCL](../testcases/TC-RCL.md)、[TC-QUO](../testcases/TC-QUO.md)、[TC-MEN](../testcases/TC-MEN.md)、[TC-CHAT](../testcases/TC-CHAT.md)）；`go test -race ./...` 全过；默认配置下 `server/e2e` 现有文件不改代码全过（AC-ACC-07-1）；Schema、向量、`ERRORS.md`、`ADMIN.md` 同步；`python3 -I tools/trace.py --check` 没有缺口 |
+| 完成定义 | 任务内的 AC 都有通过的自动化测试，用例名带 TC 编号（[TC-ACC](../testcases/TC-ACC.md)、[TC-FILE](../testcases/TC-FILE.md)、[TC-APN](../testcases/TC-APN.md)、[TC-RCL](../testcases/TC-RCL.md)、[TC-QUO](../testcases/TC-QUO.md)、[TC-MEN](../testcases/TC-MEN.md)、[TC-CVS](../testcases/TC-CVS.md)、[TC-CHAT](../testcases/TC-CHAT.md)）；`go test -race ./...` 全过；默认配置下 `server/e2e` 现有文件不改代码全过（AC-ACC-07-1）；Schema、向量、`ERRORS.md`、`ADMIN.md` 同步；`python3 -I tools/trace.py --check` 没有缺口 |
 | 环境限制 | **CI 现在不运行**（[PENDING](../reports/PENDING.md) P-21，Actions 预算是 $0），所有结果都是本地结果，要标明。开发机不装软件；真实 MinIO 要 Frank 同意才能临时构建。压测机 P-12、真机和渗透 P-13 未到位。**C3 的真实 APNs、FCM 要 Frank 先做 PRD 第 20.3 节的账号和网络步骤**（PENDING P-40），之前只用假通道 |
 
-格式说明：每个任务的 `- AC：` 一行列出它负责满足的验收标准，追溯矩阵由 `tools/trace.py` 从这一行生成。一条 AC 可以出现在多个任务里（功能任务 + 验收任务）。C5、C6 只写在任务内容里说明，不进 `- AC：` 行。
+格式说明：每个任务的 `- AC：` 一行列出它负责满足的验收标准，追溯矩阵由 `tools/trace.py` 从这一行生成。一条 AC 可以出现在多个任务里（功能任务 + 验收任务）。C6 只写在任务内容里说明，不进 `- AC：` 行。
 
 ## 进度
 
@@ -64,7 +64,9 @@
 | BE-479 | ✅ 完成（第 3 条随 FE-660～664） | `a8244f5`、`40b9a85`。第 4 条：`docs/reports/privacy-notice-checklist-draft.md` 增加 C4 的 6 个告知项（措辞"不再显示"，只是清单草稿，不代替法律文本）。第 1、2 条（`40b9a85`，2026-11-10 协调方确认按 PRD-chat 第 16 节落实，第 67 条）：PRD-core v1.5→v1.6、PRD-social v1.1→v1.2、PRD-ui v1.3→v1.4、PRD-admin v1.3→v1.4、PRD-ops v1.4→v1.5；**改写 AC-UI-09-1**（同步 TC-UI-09-01）、**AC-ADM-31-6**（幂等扩展到已撤回的，TC-ADM-31-06 改关联说明），AC-UI-09-7 不变；其余是规则说明，AC 总数不变（1598）。第 5 条：`tools/trace.py` 的 `PRDS` 和各任务单、用例的"依据"链接改为新文件名，`traceability.md` 重新生成，gaps 0。口径问题见第 68～71 条。第 3 条随 FE-660～664 |
 | BE-480 | 🟡 后端用例完成，等 C3 的 2 条未执行，性能未判定 | 报告 [c4-backend-acceptance-2026-11-10.md](../reports/c4-backend-acceptance-2026-11-10.md)。**本地结果，CI 不运行**。61 条 AC：通过 49、部分通过 8、未执行 4、失败 0。AC-APN-03-3、AC-RCL-03-9 **未执行（等 C3）**（BE-481，PENDING P-43 ②）；AC-MEN-02-3、AC-CHAT-90-1 是性能，开发机只记录（`IM_PERF_DEV=1`：`e2e/men_perf_test.go`、`e2e/c4_perf_test.go`，最差 P99 2.41 ms / 2.72 ms），判定等 P-12。新增特征串检查文件 `e2e/c4_markers_test.go`（原 `c4_logs_test.go` 改名并入，加 `TestTC_CHAT_90_29_MarkersInLogsAndAudit`，`scan-logs` 扫日志和 `admin_audit`）；console-server `e2e/c4_markers_test.go`（tianting-console-server@b11828d，TC-CHAT-90-29 的 console 一侧）；TC-RCL-01-01 补"2 秒内"的真实时间断言。没有改实现，没有新问题。全量 `go test ./...`、C4 相关包 `-race`、console-server 全量 `-race`（临时 Postgres）都通过 |
 | BE-481 | ⬜ 未开始 | 依赖 C3（AC-APN-03-3、AC-RCL-03-9），C3 恢复后再做 |
-| 全部 | 🟡 C1、C2 已校准 | 见 [c1-acceptance-2026-11-07.md](../reports/c1-acceptance-2026-11-07.md) 第 9 节、[c2-calibration-2026-11-10.md](../reports/c2-calibration-2026-11-10.md)：人日不能直接换算成 AI 用时，瓶颈是本机资源和待决定项。C3 已分发（暂停）；C4 2026-11-10 已分发；C5、C6 等 Frank 决定 |
+| BE-482～BE-489 | ⬜ 未开始 | 2026-11-10 分发（C5，QUEUE Q29） |
+| BE-490 | ⬜ 未开始 | 依赖 C3（AC-CVS-02-1、02-8、04-3，AC-MEN-03-2、03-3，AC-APN-04-4），C3 恢复后再做 |
+| 全部 | 🟡 C1、C2 已校准 | 见 [c1-acceptance-2026-11-07.md](../reports/c1-acceptance-2026-11-07.md) 第 9 节、[c2-calibration-2026-11-10.md](../reports/c2-calibration-2026-11-10.md)：人日不能直接换算成 AI 用时，瓶颈是本机资源和待决定项。C3 已分发（暂停）；C4 2026-11-10 已分发；C5 2026-11-10 已分发；C6 等 Frank 决定 |
 
 ## 总览
 
@@ -75,23 +77,24 @@
 | C2 文件 | BE-430～BE-440 | 24.5 | 对象存储客户端、上传、`complete`、发送、访问控制、生命周期、头像、部署、合同测试、验收 |
 | C3 推送 | BE-450～BE-460 | 19.5 | 协议、迁移和开关、令牌注册、吊销删令牌、在线判断和补推、队列和 worker、内容和隐私、APNs 和 FCM 通道、部署、验收、文档（假通道 BE-406 的 1 人日在公共里） |
 | C4 撤回引用 @ | BE-470～BE-481 | 14.5 | 协议、迁移和开关、撤回命令、撤回的下发和隔离、后台接口和文件代理接口、引用、@ 和 @ 所有人、提及计数、共享向量、冻结文档、验收；撤回和推送的衔接（BE-481，等 C3） |
+| C5 会话设置 | BE-482～BE-490 | 8 | 协议、迁移和开关、置顶和免打扰、删除会话、多端同步、共享向量、冻结文档、验收；免打扰和推送的衔接（BE-490，等 C3） |
 
 **人日对照（PRD-chat 第 18 节）**
 
-| 第 18 节的列 | 公共 | C1 | C2 | C3 | C4 | 落在 |
-|---|---|---|---|---|---|---|
-| 服务端 | 3 | 18.5 | 14.5 | 13 | 8.5 | 本单：BE-400～402、405；BE-410～421；BE-430～437；BE-450 0.5、BE-451 1.5、BE-452 2、BE-453 1.5、BE-454 2、BE-455 3、BE-456 1、BE-457 1.5；C4：BE-470 0.5、BE-471 0.5、BE-472 1.5、BE-473 0.5、BE-474 0.5、BE-475 1.5、BE-476 2、BE-477 1、BE-481 0.5 |
-| console + 后台页面 | 0 | 1.5 | 2.5 | 0.5 | 1.5 | [console-chat](console-chat.md) 和 [frontend-chat](frontend-chat.md)；C3：CS-203；C4：CS-204 0.5、FE-671 1（CS-202 的 0.5 挪到 C4 做，人日仍记在 C2） |
-| sdk-ts / sdk-kotlin / sdk-swift | 1 / 1 / 1 | 3.5 / 4 / 4 | 3.5 / 5.5 / 5.5 | 0 / 3 / 3 | 3 / 4.5 / 4.5 | [frontend-chat](frontend-chat.md)；C3：FE-650、FE-651（sdk-ts 只同步协议副本，随 BE-450）；C4：FE-660；FE-661、662；FE-663、664 |
-| H5 / Android / iOS | 0 | 5 / 5.5 / 5.5 | 6 / 8 / 8 | 0 / 5 / 5 | 5 / 6 / 6 | [frontend-chat](frontend-chat.md)；C3：FE-652、653；FE-654、655；C4：FE-665、666；FE-667、668；FE-669、670 |
-| 测试 | 6 | 8.5 | 9.5 | 6 | 8 | 公共 6：BE-402～406。C1：BE-422 5 + FE-620 3.5。C2：BE-440 5.5 + FE-640 4。C3：BE-459 3.5 + FE-656 2.5。C4：BE-478 1 + BE-480 3.5 + FE-672 3.5 |
-| 部署 | 1 | 1.5 | 3 | 2 | 0 | BE-407；BE-423；BE-438 2 + BE-439 1；BE-458 2；C4 没有 |
-| 文档 | 4 | 3 | 1.5 | 1 | 1.5 | 公共：BE-400 1、BE-401 0.5、BE-408 2.5。C1：BE-423 1.5、BE-424 1、FE-620 0.5。C2：BE-438 1、BE-439 0.5。C3：BE-450 0.5、BE-460 0.5。C4：BE-470 0.5、BE-479 1 |
-| **合计（三份任务单）** | **17** | **60.5** | **67.5** | **38.5** | **48.5** | **232，和第 18 节一致**（C3 本单 19.5、console-chat 0.5、frontend-chat 18.5；C4 本单 14.5、console-chat 0.5、frontend-chat 33.5） |
+| 第 18 节的列 | 公共 | C1 | C2 | C3 | C4 | C5 | 落在 |
+|---|---|---|---|---|---|---|---|
+| 服务端 | 3 | 18.5 | 14.5 | 13 | 8.5 | 5 | 本单：BE-400～402、405；BE-410～421；BE-430～437；BE-450 0.5、BE-451 1.5、BE-452 2、BE-453 1.5、BE-454 2、BE-455 3、BE-456 1、BE-457 1.5；C4：BE-470 0.5、BE-471 0.5、BE-472 1.5、BE-473 0.5、BE-474 0.5、BE-475 1.5、BE-476 2、BE-477 1、BE-481 0.5；C5：BE-482 0.5、BE-483 1、BE-484 1、BE-485 1.5、BE-486 0.5、BE-490 0.5 |
+| console + 后台页面 | 0 | 1.5 | 2.5 | 0.5 | 1.5 | 0.5 | [console-chat](console-chat.md) 和 [frontend-chat](frontend-chat.md)；C3：CS-203；C4：CS-204 0.5、FE-671 1（CS-202 的 0.5 挪到 C4 做，人日仍记在 C2）；C5：CS-205 0.5（页面没有改动） |
+| sdk-ts / sdk-kotlin / sdk-swift | 1 / 1 / 1 | 3.5 / 4 / 4 | 3.5 / 5.5 / 5.5 | 0 / 3 / 3 | 3 / 4.5 / 4.5 | 1.5 / 2.5 / 2.5 | [frontend-chat](frontend-chat.md)；C3：FE-650、FE-651（sdk-ts 只同步协议副本，随 BE-450）；C4：FE-660；FE-661、662；FE-663、664；C5：FE-680；FE-681；FE-682 |
+| H5 / Android / iOS | 0 | 5 / 5.5 / 5.5 | 6 / 8 / 8 | 0 / 5 / 5 | 5 / 6 / 6 | 2 / 3 / 3 | [frontend-chat](frontend-chat.md)；C3：FE-652、653；FE-654、655；C4：FE-665、666；FE-667、668；FE-669、670；C5：FE-683；FE-684；FE-685 |
+| 测试 | 6 | 8.5 | 9.5 | 6 | 8 | 4 | 公共 6：BE-402～406。C1：BE-422 5 + FE-620 3.5。C2：BE-440 5.5 + FE-640 4。C3：BE-459 3.5 + FE-656 2.5。C4：BE-478 1 + BE-480 3.5 + FE-672 3.5。C5：BE-487 0.5 + BE-489 2 + FE-686 1.5 |
+| 部署 | 1 | 1.5 | 3 | 2 | 0 | 0 | BE-407；BE-423；BE-438 2 + BE-439 1；BE-458 2；C4 没有；C5 没有 |
+| 文档 | 4 | 3 | 1.5 | 1 | 1.5 | 0.5 | 公共：BE-400 1、BE-401 0.5、BE-408 2.5。C1：BE-423 1.5、BE-424 1、FE-620 0.5。C2：BE-438 1、BE-439 0.5。C3：BE-450 0.5、BE-460 0.5。C4：BE-470 0.5、BE-479 1。C5：BE-488 0.5 |
+| **合计（三份任务单）** | **17** | **60.5** | **67.5** | **38.5** | **48.5** | **24.5** | **256.5，和第 18 节一致**（C3 本单 19.5、console-chat 0.5、frontend-chat 18.5；C4 本单 14.5、console-chat 0.5、frontend-chat 33.5；C5 本单 8、console-chat 0.5、frontend-chat 16） |
 
-**差异说明**：合计和第 18 节没有差异，因为这里是按第 18 节的列拆分，不是独立重估，**都是低置信**。下面这些第 18 节没有单独算，也没有另加人日，如果 C1 校准时超出就从这里看：① 第 4.5 节没有列的暂停点和故障注入（BE-404、BE-405）；② `sessions revoke-all` 命令路径（BE-415）；③ 邀请码重新启用和可信出口网段的配置（BE-421、BE-423）。**C3 同样是按列拆分**，第 18 节没有单独算、这里也没有另加人日的：④ 官方文档核对后补的行为（JWT 定时重签、`ExpiredProviderToken` 重签重试、延迟重试队列、410 的 `timestamp` 比较，文末第 34～46 条）；⑤ 假通道按官方错误码补的注入（BE-406）；⑥ 真机等待和 Frank 的账号步骤（第 18 节本来就不含）。**C4 同样是按列拆分**：⑦ BE-481（撤回和推送的衔接，等 C3）的 0.5 从撤回行的服务端 3.5 里拆出，没有另加；⑧ CS-202（后台看文件内容）从 C2 挪到 C4 做，它的 0.5 人日仍算在 C2（第 18 节 C2 行），C4 实际要做的任务合计 49；⑨ 第 18 节没有单独算、这里也没有另加的：后台版和下行版序列化分开（BE-474）、`fetch` 接口（BE-474）、成员搜索的 `keyword`（BE-476）。
+**差异说明**：合计和第 18 节没有差异，因为这里是按第 18 节的列拆分，不是独立重估，**都是低置信**。下面这些第 18 节没有单独算，也没有另加人日，如果 C1 校准时超出就从这里看：① 第 4.5 节没有列的暂停点和故障注入（BE-404、BE-405）；② `sessions revoke-all` 命令路径（BE-415）；③ 邀请码重新启用和可信出口网段的配置（BE-421、BE-423）。**C3 同样是按列拆分**，第 18 节没有单独算、这里也没有另加人日的：④ 官方文档核对后补的行为（JWT 定时重签、`ExpiredProviderToken` 重签重试、延迟重试队列、410 的 `timestamp` 比较，文末第 34～46 条）；⑤ 假通道按官方错误码补的注入（BE-406）；⑥ 真机等待和 Frank 的账号步骤（第 18 节本来就不含）。**C4 同样是按列拆分**：⑦ BE-481（撤回和推送的衔接，等 C3）的 0.5 从撤回行的服务端 3.5 里拆出，没有另加；⑧ CS-202（后台看文件内容）从 C2 挪到 C4 做，它的 0.5 人日仍算在 C2（第 18 节 C2 行），C4 实际要做的任务合计 49；⑨ 第 18 节没有单独算、这里也没有另加的：后台版和下行版序列化分开（BE-474）、`fetch` 接口（BE-474）、成员搜索的 `keyword`（BE-476）。**C5 同样是按列拆分**：⑩ BE-490（免打扰和推送的衔接，等 C3）的 0.5 从 C5 行服务端 5 里拆出，没有另加；⑪ 第 18 节没有单独算、这里也没有另加的：`files/urls.go` 和 `authorize` 的 `minSeq` 改造（BE-485）、角标聚合函数先做（BE-484）、`convSettings` 失效广播的发布端（BE-483）、后台查询的回归（CS-205）。
 
-**依赖顺序**：BE-400、BE-401 → BE-408、BE-402、BE-403 → BE-405、BE-407 → BE-410 → BE-411 → BE-412 → BE-413、BE-414 → BE-415 → BE-416 → BE-417 → BE-418 → BE-419、BE-420、BE-421 → BE-424、BE-423 → BE-422 →（C1 结束，校准）→ BE-404、BE-406 → BE-430 → BE-431 → BE-432 → BE-433 → BE-434 → BE-435 → BE-436 → BE-437 → BE-438、BE-439 → BE-440 →（C2 校准，Frank 决定 C3）→ BE-450 → BE-406、BE-451、BE-460 → BE-452、BE-454 → BE-453、BE-455 → BE-456、BE-457 → BE-458 → CS-203 → BE-459。**C3 暂停后先做 C4**：BE-470 → BE-471、BE-478、BE-479 → BE-472、BE-475、BE-476（可以并行）→ BE-473、BE-477 → BE-474 → CS-204、CS-202 → BE-480；BE-481 等 C3 恢复后的 BE-455、BE-456。console 和前端的依赖写在各自任务里。
+**依赖顺序**：BE-400、BE-401 → BE-408、BE-402、BE-403 → BE-405、BE-407 → BE-410 → BE-411 → BE-412 → BE-413、BE-414 → BE-415 → BE-416 → BE-417 → BE-418 → BE-419、BE-420、BE-421 → BE-424、BE-423 → BE-422 →（C1 结束，校准）→ BE-404、BE-406 → BE-430 → BE-431 → BE-432 → BE-433 → BE-434 → BE-435 → BE-436 → BE-437 → BE-438、BE-439 → BE-440 →（C2 校准，Frank 决定 C3）→ BE-450 → BE-406、BE-451、BE-460 → BE-452、BE-454 → BE-453、BE-455 → BE-456、BE-457 → BE-458 → CS-203 → BE-459。**C3 暂停后先做 C4**：BE-470 → BE-471、BE-478、BE-479 → BE-472、BE-475、BE-476（可以并行）→ BE-473、BE-477 → BE-474 → CS-204、CS-202 → BE-480；BE-481 等 C3 恢复后的 BE-455、BE-456。**C5**：BE-482 → BE-483、BE-487、BE-488 → BE-484 → BE-485 → BE-486 → CS-205 → BE-489；BE-490 等 C3 恢复后的 BE-406、BE-455、BE-456。console 和前端的依赖写在各自任务里。
 
 ---
 
@@ -913,6 +916,142 @@
 
 ---
 
+## C5 会话置顶、免打扰、删除
+
+> 2026-11-10 分发（依据 Frank 2026-11-10 在聊天里说"开始 C5"，满足第 17 节 C5 行"CH-27 校准后 Frank 决定继续"；QUEUE Q29）。依据 PRD 第 9 节 F-CVS-01～04，第 4.1、4.5、11、12.1、13～16 节的 C5 部分，其他章节标【C5】的 AC-APN-04-4、AC-MEN-03-2、AC-MEN-03-3，第 15 节累计表的 C5 列，第 17 节 C5 行，第 18 节 C5 行（24.5 人日）。开关 `IM_CONV_SETTINGS_ENABLED`。
+> **C5 不依赖 C3 的代码**。依赖推送的 6 条 AC（AC-CVS-02-1、02-8、04-3，AC-MEN-03-2、03-3，AC-APN-04-4）单独放在 BE-490，**C3 恢复、BE-406、BE-455、BE-456 完成后再做**，C5 其余任务不等它。判断依据（文末第 72 条）：这 6 条的预期都是"假通道 / 假 APNs 有没有调用、`badge` 是多少"，要推送 worker 和假通道才有调用可以断言（哨兵法的哨兵也要 worker 才会被调用）；main 上没有 `push` 包，也没有假 APNs、假 FCM（BE-406、BE-455、BE-456 都没有提交，只有不能直接用的本机草稿分支），C1、C2 的测试设施（假 S3、故障注入、双节点 `twoNodes`）里没有推送通道。能在 C5 先验的部分留在 C5：`unread`、`mentionUnread` 照常增加（BE-484 第 5 条），角标口径的聚合函数（BE-484 第 5 条，单测），`convSettings` 失效广播的发布端（BE-483 第 4 条）。**AC-CVS-02-6（App 前台不响铃）留在 C5**：预期只涉及客户端前台行为，不需要推送通道；三端现在没有任何系统通知和提示音代码，C3 恢复加通知后由 FE-653、FE-655 补跑 TC-CVS-02-06（frontend-chat 第 58 条）。
+> 现状（2026-11-10 调查，tianting-server `61debab`）：没有 `conv_settings`、`convSet`、`convDelete`、4220；`convs`（`logic/logic.go` 第 393 行）按 `updatedAt` 取 500；`toConversation`（第 412 行）单聊 `minSeq` 固定 1、群按 `joinSeq`；`authorize`（第 489 行）单聊固定 1；`files/urls.go` 的 `canAccess`（第 137～141 行）自己算 `minSeq`，不经过 `authorize`。双节点测试设施 `e2e/social_twonode_test.go`（共享 SQLite、测试模式 Invalidator 互发）已有。
+> 迁移号：C5 用 `0019_conv_settings.sql`，C3 恢复时 BE-451 用下一个空号（文末第 76 条）。
+
+### BE-482 协议变更（C5 部分）：convSet、convDelete、新事件、4220
+- 优先级：P0
+- 批次：C5
+- 仓库：tianting-server（`protocol/`、`server/internal/protocol`）
+- 依赖：BE-470
+- AC：AC-CHAT-90-10
+- 内容：
+  1. `frame.schema.json`（第 11.1 节）：上行 `convSet {convId, pinned?, notifyOff?}` → `{conv}`（完整的 `Conversation`；Schema 用 `anyOf` 要求至少一项，都没有时服务端 400 / 4000）；`convDelete {convId, upToSeq}` → `{clearedSeq}`（`upToSeq` 非负整数）；`Conversation` 增加 `pinned`、`pinnedAt`（只在置顶时出现）、`notifyOff`；`ConvsAck` 增加 `deleted: [{convId, clearedSeq}]`、`deletedTruncated`；新事件 `convSettingsChanged {convId, pinned, pinnedAt?, notifyOff}`、`convDeleted {convId, clearedSeq}`。字段叫 `notifyOff`，不用 `muted`（F-CVS-01 规则 1，R-CB-26）。
+  2. `errors.json`、`ERRORS.md`（第 11.5 节）：新增 4220 `PIN_LIMIT_EXCEEDED`（ws，不重试，文案"最多置顶 20 个会话"，不带 `details`，文末第 80 条）和 `422x` 区段"业务状态不允许"；`4040` 的动作补"`convSet`：没有消息的单聊"；`4290` 的动作补会话设置（每人每秒 5 次）。`4030` 的 `featureDisabled` 已有。
+  3. `http-client.schema.json`：`GET /v1/config` 的 `features` 增加 `convSettings`（文末第 75 条；同 C4 的 `msgActions`，老服务端没有这个字段按 false）。
+  4. `frames.json` 增加合法、非法用例：`convSet` 只带 `pinned`、只带 `notifyOff`、都带、都不带（非法）；`convDelete` 的 `upToSeq` 为负（非法）；下行带 `pinned*`、`notifyOff` 的 `Conversation`，带 `deleted`、`deletedTruncated` 的 `convs` ack，两个新事件。服务端 `logic` 用真实帧解析跑全部新用例（AC-CHAT-90-10 的 C5 服务端部分，TC-CHAT-90-38）。三套 SDK 同步 `protocol/` 副本，执行器随 FE-680～682。
+  5. 本任务不做：`report`、4510、4098（C6）；设备通知命令和 `presence`（C3，BE-450 已提交）。
+- 工作量：0.5 人日（服务端）
+
+### BE-483 迁移、Store、配置、开关和成员变动的清理
+- 优先级：P0
+- 批次：C5
+- 仓库：tianting-server（`store`、`config`、`app`、`logic`、`cache`）
+- 依赖：BE-482
+- AC：AC-CVS-02-7、AC-CVS-01-5、AC-CVS-03-12、AC-CHAT-90-2
+- 内容：
+  1. `0019_conv_settings.sql`（第 12.1 节，只加新表，SQLite / Postgres 兼容）：`conv_settings(user_id, conv_id, pinned_at, notify_off, deleted_at, cleared_seq)`，主键 `(user_id, conv_id)`，数值列默认 0；索引 `(user_id, pinned_at)`、`(user_id, deleted_at)`。**只有设置过的会话才有行**。Store 接口（名字先查有没有被占用，第 50 条的教训）：按用户一次取齐、置顶（同一事务数当前置顶数，超过 4220）、免打扰、删除（`cleared_seq` 只增不减）、按成员删除、按群删除、按会话和一批 userId 批量取免打扰（给 C3 worker，F-APN-02 规则 7，BE-490 用）；走 `storetest` 契约用例，Postgres 随 B6。
+  2. 第 4.1 节配置：`IM_CONV_SETTINGS_ENABLED`（默认关）、`IM_CONV_PIN_MAX`（20）；每人每秒 5 次的限流和 `deleted` 的 2000 上限 PRD 没有变量名，用 `IM_CONV_SETTINGS_RATE_PER_SEC`、`IM_CONV_DELETED_MAX`（文末第 73 条）。开关关：`convSet`、`convDelete` 403 / 4030 `featureDisabled`（AC-CVS-02-7）；`GET /v1/config` 的 `features.convSettings=false`。**开关关闭时已有的设置怎么处理要 Frank 定（文末第 81 条）**，定之前按建议实现：照常生效，只拦新命令。
+  3. F-CVS-01 规则 6、F-CVS-03 规则 6a（AC-CVS-01-5、AC-CVS-03-12）：退群、被移出、解散在**同一事务**删除这个成员（解散时是整个群）的 `conv_settings` 行，入口和 C4 处理 `conv_mentions` 的地方一一核对（主动退群、群主或管理员移出、解散、后台移除、`account_cleanup` 的逐群退出）；重新加入不继承，`minSeq` 只看 `joinSeq` 和 `historyVisible`。单聊的行在注销时怎么处理见文末第 82 条（要 Frank 定）。
+  4. 失效广播（第 11.4 节、F-CVS-04 规则 3）：`cache.Invalidator` 增加主题 `convSettings`（key 是 `userId`）；`convSet`、`convDelete`、第 3 条的清理提交后发布。C5 没有订阅者（`convs` 每次读库）；订阅者是 C3 的角标缓存（BE-490 第 3 条）。单测用记录型 Invalidator 断言发布了。
+  5. AC-CHAT-90-2 的 C5 部分：开关关时现有 e2e 不改代码全过（TC-CHAT-90-35）；没有设置时 `convs` 不输出 `deleted`、`deletedTruncated`、`pinned`、`pinnedAt`、`notifyOff`（`omitempty`），AC-CONV-01-1 的断言不变。
+  6. 第 15 节累计表 AC-CHAT-90-17 的 C5 列是"—"：不加指标和配置检查项。
+- 工作量：1 人日（服务端）
+
+### BE-484 置顶和免打扰：convSet、排序、500 上限、限流
+- 优先级：P0
+- 批次：C5
+- 仓库：tianting-server（`logic`、`store`）
+- 依赖：BE-483
+- AC：AC-CVS-01-1、AC-CVS-01-2、AC-CVS-01-3、AC-CVS-01-4、AC-CVS-04-4
+- 内容：
+  1. `convSet` 的校验顺序：格式（没有任何字段 400 / 4000）→ 开关（4030）→ 频率（4290，格式之后、查库之前，和 `convDelete` 共用一个计数，文末第 73 条）→ 会话权限：单聊非参与方 4032；群不存在或已解散 4043；非成员 4033；单聊没有消息 4040（F-CVS-01 规则 5；**和 `convDelete` 对没有消息的单聊幂等成功不同**，两条都是原文，第 78 条）→ 写入（AC-CVS-01-4）。
+  2. 置顶：原来没有置顶时 `pinned_at = 服务端时间`；**已置顶的再次置顶幂等成功、`pinnedAt` 不变**（AC-CVS-01-2）；置顶数在同一事务里判断，超过 `IM_CONV_PIN_MAX` 4220；`pinned=false` 清零。免打扰写 `notify_off`。写失败 500 / 5000。
+  3. ack `{conv}`：和 `convs` 里这一项完全相同（同一个 `toConversation` 加设置）。
+  4. `convs`（F-CVS-01 规则 3、4，F-CONV-01 规则 3 的扩展）：置顶的在最前（`pinnedAt` 倒序），其余 `updatedAt` 倒序，时间相同按 `convId`；500 上限里**置顶的一定在**，其余取最近更新的；`truncated` 含义不变（AC-CVS-01-1、01-3；AC-CONV-01-4、01-7 没有置顶时结果不变，第 88 条）。`ListConversations` 改成一条 SQL `LEFT JOIN conv_settings`，不按会话逐条查（同 C4 的 `applyMentionCounts`）。
+  5. 免打扰下的未读（F-CVS-02 规则 3、4）：`unread` 照常计算（AC-CVS-02-1 的"`unread` 增加"在这里先验，TC-CVS-02-01 记部分通过）；总未读的服务端口径（普通会话 `unread` 之和 + 免打扰会话 `mentionUnread` 之和）写成 `store` 的一个聚合函数，C5 只有单测（用 AC-APN-04-4 的数据：3 条普通、免打扰 2 条其中 1 条 @，再来 1 条普通 → 5），C3 的角标直接用它（BE-490 第 3 条）。
+  6. 限流（F-CVS-04 规则 4）：每人每秒 5 次，第 6 次 4290（AC-CVS-04-4）；不计入发送限流；`/admin/test/limits/reset` 能清。
+- 工作量：1 人日（服务端）
+
+### BE-485 删除会话：convDelete、clearedSeq、隐藏和重新出现
+- 优先级：P0
+- 批次：C5
+- 仓库：tianting-server（`logic`、`store`、`files`）
+- 依赖：BE-484
+- AC：AC-CVS-03-1、AC-CVS-03-2、AC-CVS-03-3、AC-CVS-03-4、AC-CVS-03-6、AC-CVS-03-7、AC-CVS-03-9、AC-CVS-03-11、AC-CVS-03-12、AC-CVS-03-13、AC-CVS-03-14、AC-CVS-03-15
+- 内容：
+  1. 校验：格式 → 开关 → 频率 → 单聊非参与方 4032、非群成员 4033、已解散的群 4043（AC-CVS-03-9）；不存在的（没有消息的单聊）、已删除的再删：幂等成功（规则 8）。
+  2. 同一事务（规则 1、2、3）：读 `conv_seq` 行（Postgres 加锁顺序接在第 4.3 节后面：`conv_seq` → `conv_settings`），`cleared = min(upToSeq, maxSeq)`；`cleared_seq = max(原值, cleared)`（**不回退**，AC-CVS-03-13）；`deleted_at = 服务端时间`；已读推进到 `max(readSeq, cleared)`（和 `read` 命令同样单调）；**清除置顶**（`pinned_at=0`，文末第 74 条），保留免打扰。ack `{clearedSeq}` 是生效后的值。
+  3. **隐藏条件 `deleted_at > 0 AND max_seq <= cleared_seq`**（规则 2，R-CB-13）：`convs` 不返回这些会话。只设了免打扰的空群（`cleared_seq=0`、`deleted_at=0`）照常显示；删除空群（`upToSeq=0`）隐藏（AC-CVS-03-11）。有新消息（只有 `tip` 也算）时 `max_seq > cleared_seq`，自然重新出现，`unread` 只算新消息（AC-CVS-03-2、03-13），不另写状态。并发（规则 5）：`upToSeq` 之后到达的消息不会被清除，会话马上可见（AC-CVS-03-14，用 `go test -race` 和重复交错构造两种先后）。
+  4. **`minSeq = max(原值, clearedSeq + 1)`**（规则 2）四处一起改：`toConversation`（单聊不再固定 1）；`authorize`（`sync`、`recall`、`quote` 都经过它：清除范围内的消息撤回 4044、引用 4040 `quoteUnavailable`，和"看不到的消息"一致，文末第 77 条）；`files/urls.go` 的 `canAccess`（清除范围内的图片、文件 404 / 4048，AC-CVS-03-7；其他成员照常，对象还在，AC-CVS-03-15）；C4 的 `mentionUnread` 只算 `seq > readSeq`，已读推进后自然减少。
+  5. `convs` 的 `deleted: [{convId, clearedSeq}]`（规则 6）：单聊和群都有，**只列当前隐藏的**，按 `deleted_at` 倒序最多 `IM_CONV_DELETED_MAX`（2000），超出 `deletedTruncated=true`（AC-CVS-03-4、03-11，文末第 79 条）。
+  6. 群（规则 4）：删除会话不是退群，成员、`myGroups`、`send` 不受影响（AC-CVS-03-4）。规则 6a：退群、被移出、解散删除这一行（BE-483 第 3 条），重新入群按新成员算，`historyVisible=true` 时看到全部历史，`deleted` 不再含它（AC-CVS-03-12）。
+  7. 删除后有新消息（AC-CVS-03-6）：不再置顶，仍免打扰。
+  8. 只影响自己：对方和其他成员的 `convs`、`sync`、文件地址不变（AC-CVS-03-1、03-15）；**后台查询不受影响**（管理接口不经过 `authorize`；没有单独的 AC，用例在 TC-CVS-03-01 第 4 步，console 一侧见 CS-205，文末第 87 条）。
+  9. 写失败 500 / 5000，客户端恢复显示。日志只记 `convId`、`clearedSeq`。
+- 工作量：1.5 人日（服务端）
+
+### BE-486 多端同步：新事件和 ack
+- 优先级：P0
+- 批次：C5
+- 仓库：tianting-server（`logic`）
+- 依赖：BE-484、BE-485
+- AC：AC-CVS-04-1、AC-CVS-04-2、AC-CVS-04-5、AC-CVS-03-2
+- 内容：
+  1. F-CVS-04 规则 1：提交后给**同一用户的其他在线连接**发 `convSettingsChanged {convId, pinned, pinnedAt?, notifyOff}`（`convSet`）或 `convDeleted {convId, clearedSeq}`（`convDelete`）；操作的连接只拿 ack（`DeliverToUser(uid, frame, exceptConn)`，同 `readUpdated`）。幂等的重复操作也发，内容是当前状态（客户端按服务端覆盖）。删除时**不另发** `readUpdated`、`convSettingsChanged`：`convDeleted` 已经意味着已读到 `clearedSeq`、置顶清除（文末第 84 条；SDK 的处理见 frontend-chat 第 55 条）。
+  2. 规则 2：离线设备重连时 `convs` 带全部设置和 `deleted`，以服务端为准（AC-CVS-04-2）；事件丢失下次 `convs` 补齐；两端同时改同一会话后到的覆盖。
+  3. 端到端 AC 的服务端部分：AC-CVS-04-1（D2 2 秒内收到 `convSettingsChanged`）、04-5（D2 2 秒内收到 `convDeleted`）、03-2（u2 再发后 u1 的 `convs` 重新出现，`unread=1`、`minSeq=11`）、04-2（D2 重连后 `convs` 和 D1 一致）；客户端部分随 FE-680～686。
+  4. 集群（第 15 节）：事件走 `Router`，跨节点投递随 B6；第一批单节点。
+- 工作量：0.5 人日（服务端）
+
+### BE-487 共享向量 chat-sync.json（置顶排序、deleted 判断、总未读）
+- 优先级：P0
+- 批次：C5
+- 仓库：tianting-server（`protocol/vectors`、`server/e2e/chatmodel`）
+- 依赖：BE-482
+- AC：AC-CHAT-90-15、AC-CVS-03-5、AC-CVS-02-5
+- 内容：
+  1. BE-478 第 3 条留的：`chat-sync.json` 增加置顶排序（`pinnedAt` 倒序在前，其余 `updatedAt`，同时间 `convId`；`convSettingsChanged` 改变排序）；**`deleted` 判断**（`convs` 里消失的群先查 `deleted`：在里面的是删除会话，从列表移除，**不生成 `removed` 快照**；不在里面的按 F-GRP-03 规则 4 推断"你已不在该群"；`truncated` 或 `deletedTruncated` 为 true 时不推断，AC-CVS-03-5，frontend-chat 第 54 条）；本地清除（`seq < minSeq` 的消息、引用这些消息的 `quote.text`、文件缓存键都清，`convs` 和 `convDeleted` 两条路径）；`convDeleted` 之后的状态（`readSeq ≥ clearedSeq`、不再置顶、仍免打扰）；总未读（普通会话 `unread` + 免打扰会话 `mentionUnread`：AC-CVS-02-5 的 3，AC-CVS-02-4 的 0）。
+  2. 期望值由 Go 参考客户端 `server/e2e/chatmodel` 生成（`-update`），`TestChatModelRules` 断言关键结论。三套 SDK 的执行器随 FE-680～682（AC-CHAT-90-15 的 C5 部分，TC-CHAT-90-39）。
+- 工作量：0.5 人日（测试）
+
+### BE-488 冻结文档变更（C5 涉及的部分）
+- 优先级：P1
+- 批次：C5
+- 仓库：tianting-server（`docs/`）
+- 依赖：BE-482
+- AC：无（文档任务；要加注的 AC 列在内容里，不进这一行）
+- 内容（第 16.1、16.2 节 C5 的部分，走变更流程：PRD 升小版本，文末变更记录写原因，同步任务单和用例；做法同 BE-479 的 `40b9a85`）：
+  1. PRD-core（升小版本）：F-CONV-01 规则 4"一期不做置顶、删除会话、免打扰"（现在第 538 行，第 16.1 节写的是旧版第 512 行）**作废**，见 PRD-chat F-CVS；F-CONV-01 规则 1、2、3：`convs` 增加 `pinned`、`pinnedAt`、`notifyOff`、`deleted`、`deletedTruncated`，排序增加置顶，删除的会话不出现；F-CONV-02 规则 5：总未读口径（F-CVS-02 规则 4）；F-GRP-03 规则 4：快照先排除 `deleted` 列表。AC-CONV-01-1（只加可选字段）、AC-CONV-01-2、01-4、01-7（没有置顶时结果不变）、AC-GRP-03-3（另有 AC-CVS-03-5 区分删除会话）断言不变，规则里加注（第 88 条）。
+  2. PRD-ui（升小版本）：第 126 行、第 11 节、G-UI-07、G-UI-08 去掉置顶、免打扰、删除会话的"不做"（G-UI-07 的"不做仅本地置顶"保留，F-CVS-04 规则 2）；F-UI-04 规则 9 改成会话菜单（长按、右键、键盘，AC-CVS-01-6），规则 4 的免打扰小红点、规则 5 的"[N 条]"、规则 7 的置顶排序；F-UI-23：**AC-UI-23-1、23-2 加注 F-CVS-02 规则 4**（没有免打扰时结果不变，第 16.2 节），TC-UI-23-01、02 的说明同步；第 6.1 节新增置顶背景 token（浅色、深色，带对比度计算），第 6.6 节加免打扰图标（第 13.3 节，frontend-chat 第 57 条）。
+  3. PRD-admin、PRD-social、PRD-ops：第 16.1 节没有 C5 的行，第 14.2 节 C5 没有新指标和配置检查项，不改。
+  4. `docs/sdk/README.md`：`setConvPinned`、`setConvNotifyOff`、`deleteConv`，`conversations` 的新排序，`totalUnread()` 的口径，`convs.deleted` 和本地清除（随 FE-680～682）。
+  5. `docs/reports/privacy-notice-checklist-draft.md` 增加 C5 的告知项：删除会话只是自己这边不再显示，对方和其他成员不受影响，平台仍然保存消息（后台查询不受影响，F-CVS-03 规则 2）；置顶、免打扰按账号保存、多端同步。**只是清单草稿，不代替法律文本**。第 82 条 Frank 定了之后补注销的处理。
+  6. `tools/trace.py` 已加 C5 里程碑（本次分发）；PRD 升版时改 `PRDS` 文件名。
+- 工作量：0.5 人日（文档）
+
+### BE-489 C5 后端验收
+- 优先级：P0
+- 批次：C5
+- 仓库：tianting-server（`server/e2e`）
+- 依赖：BE-485、BE-486、BE-487、CS-205
+- AC：AC-CHAT-90-2、AC-CHAT-90-10、AC-CVS-01-1、AC-CVS-03-1、AC-CVS-03-2、AC-CVS-04-1
+- 内容：
+  1. 按 [TC-CVS](../testcases/TC-CVS.md) 落地后端 e2e，`cvs_*_test.go`，用例名带 TC 编号；"只影响自己"和清除的特征串检查（`ZXQ-CVS-*`）单独一个文件。
+  2. 【全部】的 C5 部分（第 15 节累计表）：AC-CHAT-90-2 C5 开关关（TC-CHAT-90-35）；90-10 新帧（TC-CHAT-90-38，服务端部分随 BE-482）。90-1、90-3 在 C5 不变，90-5、90-17 是"—"，不另跑。
+  3. 写验收报告 `docs/reports/c5-backend-acceptance-<日期>.md`：写明 **AC-CVS-02-1、02-8、04-3，AC-MEN-03-2、03-3，AC-APN-04-4 挡在 C3（BE-490）**，状态"未执行（等 C3）"；AC-CVS-02-1 的 `unread` 部分记"部分通过"。这 6 条怎么算要 Frank 定（文末第 72 条，建议同 P-43 ②）。
+- 工作量：2 人日（测试）
+
+### BE-490 免打扰和推送的衔接（依赖 C3，C3 恢复后做）
+- 优先级：P0
+- 批次：C5（**C3 恢复、BE-406、BE-455、BE-456 完成后才能做**；C5 其余任务不等它）
+- 仓库：tianting-server（`push`、`testhook`）
+- 依赖：BE-484、BE-406、BE-455、BE-456
+- AC：AC-CVS-02-1、AC-CVS-02-8、AC-CVS-04-3、AC-MEN-03-2、AC-MEN-03-3、AC-APN-04-4
+- 内容：
+  1. F-CVS-02 规则 2，F-MEN-03 规则 4、5：worker 按消息批量取收件人的免打扰（BE-483 第 1 条的批量接口，F-APN-02 规则 7，和令牌、拉黑一起取齐，不逐人查）。免打扰会话：普通消息不推，@ 所有人不推，@ 我推（AC-MEN-03-2）；被我拉黑的人在群里 @ 我不打断免打扰（`mentionUnread` 照常增加，令牌无调用，AC-MEN-03-3）；单聊免打扰不推（AC-CVS-02-1）。判定写成纯函数，矩阵单测。
+  2. F-CVS-02 异常：设置读取失败按没有免打扰推送（宁可多推），消息正常；`POST /admin/test/faults` 增加 `convSettingsRead`（第 4.5 节"设置读取失败"），只在测试模式生效（AC-CVS-02-8，AC-CHAT-90-18 的生产拒绝不变）。`convs` 读设置失败不降级（文末第 90 条）。
+  3. 角标（F-APN-04 规则 2、F-CVS-02 规则 4）：用 BE-484 第 5 条的聚合，`badge` = 普通会话未读之和 + 免打扰会话 `mentionUnread` 之和（AC-APN-04-4：`badge=5`）；聚合的 60 秒缓存（F-APN-02 规则 7）订阅 `convSettings` 主题（BE-483 第 4 条），`convSet`、`convDelete` 之后立即失效。
+  4. 改完立即生效（F-CVS-04 规则 3）：worker 每条消息读库，不缓存免打扰（第 89 条）。AC-CVS-04-3 用双节点 `twoNodes` 加每个节点一个假通道：节点 1 设免打扰后断开，1 秒后节点 2 发消息，节点 2 的假通道无调用（哨兵法）。第 15 节"第一批推送只支持单节点"不受影响，这条验的是节点 2 读到新设置（第 83 条）。
+  5. 用例 TC-CVS-02-01、02-08、04-03，TC-MEN-03-02、03-03，TC-APN-04-04；环境 E1 + 假通道（AC-CVS-04-3 是双节点 + 假通道）。C3 恢复前状态写"未执行（等 C3）"。
+- 工作量：0.5 人日（服务端；从第 18 节 C5 行服务端 5 里拆出）
+
+---
+
 ## PRD 问题的处理
 
 分发时发现的矛盾和缺口已在 [PRD-chat v1.1](../prd/PRD-chat-v1.1.md) 第 22 节修正。实现 C1 时发现的（PRD 冻结，没有改，都按最保守的理解实现，等 Frank 决定）：
@@ -1027,6 +1166,30 @@ C4 后端第一波实现时发现的（2026-11-10，PRD 冻结，没有改；按
 | 69 | BE-479 第 2 条、PRD-ops F-OPS-10 | PRD-chat 第 14.2 节的配置检查一行没有列撤回的检查项；BE-479、BE-471 有 `msg_actions`（开关状态、隔离密钥已设置、隐私说明版本） | 按 BE-471 的实现写进 PRD-ops v1.5 F-OPS-10 的说明，依据写 PRD-chat 第 4.1 节（开启要求 `IM_QUARANTINE_KEY`）和 F-ACC-10 规则 4；PRD-chat 第 14.2 节已冻结，没有改 |
 | 70 | PRD-chat 第 16.1 节、PRD-admin 第 12 节 | 第 16.1 节这一行有两件事："宿主 App"改为天听；门槛适用撤回隔离和举报证据。BE-479 只列"门槛适用撤回隔离"，"宿主 App 改为天听"不属于某个里程碑，BE-408 和 BE-479 都没列 | PRD-admin v1.4 第 12 节只加了"撤回原文的隔离"一行（门槛同第二批那一行，C4 在 ②③④ 完成前不能在生产打开，CH-17）；"宿主 App（fx-sport / ab77 / android）"的原文没改。**要协调方定**：随 C6（举报证据）一起改，还是单独改。**2026-11-10 协调方定**：第 16.1 节已写定，不是新决定，现在改进 PRD-admin v1.4 第 12 节（"宿主 App"改为天听，第 4 问加注按天听重新看）；举报证据仍随 C6 |
 | 71 | BE-479 第 2 条、PRD-core | BE-479 列的 PRD-core 部分没有 F-MSG-05 规则 7 和 F-CONV-01 规则 1 的 `lastMsg.recalled`，但第 16.1 节的 PRD-core 行（"F-MSG-01 规则 6、F-MSG-05 规则 7…→ 第 4.3、11.1 节"、"F-CONV-01 规则 1、2、3 → `convs` 增加字段"）包括它们 | 按 PRD-chat F-RCL-01 规则 5a、F-RCL-03 规则 2、2a、4 和第 11.1 节的原文在 PRD-core v1.6 加了说明（撤回的消息同时 `deleted=true`、`recalled=true`；`lastMsg` 增加 `recalled`、`recalledBy`），AC 不变。F-MSG-01 规则 6 同时写了第 4.3 节第 1 步的结构校验和第 10 步的 @ 所有人计数（同是 C4 的部分） |
+
+C5 分发时发现的（2026-11-10，PRD 冻结，没有改；按"建议"一列实现，Frank 不同意再改）。**要 Frank 定的是第 72、81、82、86 条**；第 77、88 条是"PRD 别处已写明"，按原文实现，不算新决定；其余是缺口或记录：
+
+| # | 位置 | 问题 | 建议 |
+|---|---|---|---|
+| 72 | AC-CVS-02-1、02-8、04-3，AC-MEN-03-2、03-3，AC-APN-04-4 | 6 条标【C5】，预期都是"假通道 / 假 APNs 有没有调用、`badge` 是多少"，要 C3 的推送 worker 和假通道（BE-406、BE-455、BE-456），C3 已暂停。main 上没有 `push` 包和假通道（只有不能直接用的本机草稿分支），C1、C2 的设施（假 S3、故障注入、双节点）里没有推送通道，哨兵法的哨兵也调不到 | 放进 BE-490，C3 恢复后做，C5 其余任务不依赖 C3 代码；能先验的部分在 C5（`unread`、`mentionUnread` 增加，角标聚合函数单测，失效广播的发布端）。AC-CVS-02-6 留在 C5（只是客户端前台行为）。**这 6 条 P0 未执行时 C5 能不能验收，要 Frank 定**：建议同 P-43 ②（记"未执行（等 C3）"、不算失败，C5 先内部验收，C3 恢复后补跑再关闭） |
+| 73 | F-CVS-04 规则 4、F-CVS-03 规则 6、第 4.1 节 | "每人每秒 5 次"没有变量名，没说 `convSet`、`convDelete` 是不是一个计数、在校验的哪一步；`deleted` 的 2000 上限没有变量名 | `IM_CONV_SETTINGS_RATE_PER_SEC`（5），两个命令共用一个计数，格式之后、查库之前，不计入发送限流；`IM_CONV_DELETED_MAX`（2000）（BE-483、BE-484） |
+| 74 | F-CVS-03 规则 3 | "有新消息时重新出现……清除置顶"没说什么时候清：删除时还是重新出现时 | 删除时同一事务清（`pinned_at=0`），隐藏的会话不占置顶名额；AC-CVS-03-6 的结果相同（BE-485 第 2 条） |
+| 75 | 第 4.1 节共同规则 | "`GET /v1/config` 的 `features` 告诉客户端隐藏入口"，C5 的字段名没写 | `features.convSettings`（同 C4 的 `msgActions`，老服务端没有按 false），`http-client.schema.json` 同步（BE-482 第 3 条） |
+| 76 | 第 12.1 节 | C3 计划的迁移没有提交，C4 已用 `0018` | C5 用 `0019_conv_settings.sql`；C3 恢复时 BE-451 用下一个空号（同第 52 条） |
+| 77 | F-CVS-03 规则 2 | "`sync` 和文件地址都按这个 `minSeq`"：现在单聊 `minSeq` 固定 1（`toConversation`、`authorize`），文件地址的 `canAccess` 自己算、不经过 `authorize`；撤回、引用清除范围内的消息报什么错没单独写 | **按 PRD 原文实现，不是新决定**：四处一起改（BE-485 第 4 条）。撤回按"看不到的消息"4044（同第 65 条），引用按 F-QUO-01 已写的"`seq ≥` 发送者的 `minSeq`"返回 4040 `quoteUnavailable` |
+| 78 | F-CVS-01 规则 5、F-CVS-03 规则 8 | 没有消息的单聊：`convSet` 是 4040，`convDelete` 是幂等成功 | 两条都是原文，照写，不统一（记录） |
+| 79 | F-CVS-03 规则 6 | `deleted`"最多最近 2000 条"：按什么算"最近"、已经重新出现的会话在不在里面没写 | 只列当前隐藏的，按 `deleted_at` 倒序；重新出现的不在里面（AC-CVS-03-2、03-12"`deleted` 不再含"也要求这样） |
+| 80 | 第 11.5 节 4220 | 文案"最多置顶 20 个会话"写死 20，`IM_CONV_PIN_MAX` 可以配置 | 按 PRD：4220 不带 `details`，文案固定；改默认值时要同步三端文案（部署说明写明）。带 `details.max` 是改冻结接口，不在本批 |
+| 81 | 第 4.1 节共同规则、F-CVS-03 规则 2 | `IM_CONV_SETTINGS_ENABLED` 打开过、又关掉以后，已有的置顶、免打扰、删除（隐藏和 `clearedSeq`）还生不生效没写；共同规则只说"新命令返回 4030""不影响已有消息的显示和读取" | **要 Frank 定**。建议：照常生效，只拦 `convSet`、`convDelete`（4030）和隐藏入口。理由：否则关开关会让用户删掉的历史重新可见（规则 2"我这边这段历史也不再可见"），置顶顺序也会突然变。另一个选项是关开关时全部忽略，代价就是这两点 |
+| 82 | F-ACC-08 规则 3、5 | 注销到期的 `account_cleanup` 逐群退出时会按 F-CVS-01 规则 6 删掉群的 `conv_settings` 行，但**单聊的行**（置顶、免打扰、删除位置）不在数据处理表里 | **要 Frank 定**（改"如实告知"的数据处理表）。建议：第 ② 步一并删除这个用户的全部 `conv_settings` 行（和好友、黑名单同属"删除"），隐私清单草稿加一行；不删的代价是留一份没有用处的个人设置 |
+| 83 | AC-CVS-04-3、第 15 节集群一行 | AC 是双节点，第 15 节写"第一批推送只支持单节点部署" | 不矛盾：这条验的是节点 2 读到新设置（共享库 + 失效广播），不承诺集群推送；用现有 `twoNodes` 加每个节点一个假通道（BE-490 第 4 条） |
+| 84 | F-CVS-03 规则 2、3，F-CVS-04 规则 1 | 删除时"已读推进到 `upToSeq`"、"清除置顶"，其他设备要不要另收 `readUpdated`、`convSettingsChanged` 没写，只写了 `convDeleted` | 只发 `convDeleted`：它已经意味着已读到 `clearedSeq`、置顶清除、`minSeq = clearedSeq + 1`，SDK 按这个更新（frontend-chat 第 55 条，`chat-sync.json` 有用例） |
+| 85 | F-CVS-01、F-CVS-03 | 对已隐藏（删除后还没有新消息）的会话 `convSet` 怎么办没写；客户端没有入口，只有直接调接口能做到 | 允许，照常写设置，隐藏条件不变（只看 `deleted_at`、`cleared_seq`）；置顶占名额，重新出现时保持置顶（删除时已经清过一次，这是删除之后新设的） |
+| 86 | F-CVS-03 规则 2、F-QUO-02 规则 6 | u1 删除会话后，u2 的新消息引用了被清除范围内的旧消息：u1 收到的 `quote` 带旧消息的摘要（最多 100 码点），删掉的历史露出一小段；AC-CVS-03-10 只要求"本地搜不到旧特征串" | **要 Frank 定**（产品行为）。建议：接受，和 F-QUO-02 规则 6（看不到入群前消息的新成员也能看到引用摘要）一致，也是常见 IM 的做法，引用是对方新发的内容。另一个选项：按查看者的 `minSeq` 把 `quote.state` 改成 `deleted`、不带 `text`（引用组装要按查看者区分，C4 的批量组装要改，约 0.5 人日）。TC-CVS-03-10 里 u2 的新消息不引用旧消息 |
+| 87 | F-CVS-03 规则 2 | "后台查询不受影响"没有单独的 AC | 不加 AC：TC-CVS-03-01 第 4 步验后台元数据和正文，console 一侧 CS-205 回归（console-chat 问题 19） |
+| 88 | AC-CONV-01-2、01-4、01-7，AC-UI-23-1、23-2 | 这几条写的是"移到列表顶部""最近更新的 500 个""总未读是全部之和"，有置顶、免打扰时字面不成立 | **按 PRD 处理，不是新决定**：AC 的输入里没有置顶和免打扰，结果不变（第 16.2 节已对 AC-UI-23-1、23-2 写明"没有免打扰时结果不变，口径加注"；AC-CONV-01-* 的依据是 F-CVS-01 规则 3、4 和第 16.1 节 F-CONV-01 一行）。BE-488 在 PRD-core、PRD-ui 加注，AC 不改 |
+| 89 | F-CVS-04 规则 3、F-APN-02 规则 7 | 规则 3 写"缓存走 `cache.Invalidator`，TTL 60 秒"，F-APN-02 规则 7 写 worker 按消息批量查库 | 不矛盾：worker 每条消息批量读免打扰（不缓存，改完立即生效）；有缓存的是角标聚合（60 秒），它订阅 `convSettings` 主题（BE-483 第 4 条发布，BE-490 第 3 条订阅） |
+| 90 | F-CVS-02 异常、第 4.5 节 | "设置读取失败按没有免打扰处理"只说推送；`convs` 读设置失败怎么办没写 | `convs` 读设置失败是普通的 500 / 5000（和读会话失败一样），不降级成"没有设置"（否则删掉的会话会重新出现）；推送路径的降级在 BE-490 第 2 条 |
 
 ### C3 暂停时的状态（2026-11-10）
 

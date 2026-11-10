@@ -1,9 +1,9 @@
-# console-server 任务单：天听聊天产品第一批（后台配合，C1、C2、C3、C4）
+# console-server 任务单：天听聊天产品第一批（后台配合，C1、C2、C3、C4、C5）
 
 | 项 | 内容 |
 |---|---|
-| 依据 | [PRD-chat v1.7](../prd/PRD-chat-v1.7.md)（冻结）第 11.6、14 节、F-ACC-09、F-APN-01 规则 4 和 F-RCL-04；[PRD-admin v1.2](../prd/PRD-admin-v1.4.md) 基座（权限点、两阶段审计、错误码）；[errors.json](../../protocol/errors.json) |
-| 范围 | **C1、C2、C3、C4**（CH-27）。C3 是 Frank 2026-11-10 决定按顺序继续的，同一天又决定"推送后续做，先做功能"，**C3 已暂停**（CS-203 保留）；C4 同一天决定接着做（CS-202 从 C2 挪来，CS-204 新增）。词库、举报（`moderation.words`、`report.*`、`console-msgread` 增加 `report.evidence`）属于 C6，这里不做 |
+| 依据 | [PRD-chat v1.7](../prd/PRD-chat-v1.7.md)（冻结）第 11.6、14 节、F-ACC-09、F-APN-01 规则 4、F-RCL-04 和 F-CVS-03 规则 2；[PRD-admin v1.2](../prd/PRD-admin-v1.4.md) 基座（权限点、两阶段审计、错误码）；[errors.json](../../protocol/errors.json) |
+| 范围 | **C1、C2、C3、C4、C5**（CH-27）。C3 是 Frank 2026-11-10 决定按顺序继续的，同一天又决定"推送后续做，先做功能"，**C3 已暂停**（CS-203 保留）；C4 同一天决定接着做（CS-202 从 C2 挪来，CS-204 新增）；C5 是 Frank 2026-11-10 说"开始 C5"后分发的（CS-205，QUEUE Q29）。词库、举报（`moderation.words`、`report.*`、`console-msgread` 增加 `report.evidence`）属于 C6，这里不做 |
 | 负责 | 后端（AI） |
 | 仓库 | tianting-console-server（Go）。管理后台页面在 tianting-admin，见 [frontend-chat.md](frontend-chat.md)；im-server 接口见 [backend-chat.md](backend-chat.md) |
 | 编号 | **CS-200 起** |
@@ -20,6 +20,7 @@
 | CS-203 | ⬜ 未开始 | 2026-11-10 分发（C3） |
 | CS-204 | ✅ 完成（console 一侧，页面随 FE-671） | console-server@427131e（**本地结果，CI 不运行**：真实 Postgres 17、真实 im-server `IM_MSG_ACTIONS_ENABLED=1`、`IM_FILES_ENABLED=1` + 假 S3，`go test -race -count=1 ./...` 全过）。元数据白名单 `messageMeta`、正文白名单 `bodyMessage` 加 `recalled`、`recalledAt`、`recalledBy`（`omitempty`）；`body` 原样透传（`quote`、`mentions` 在里面）。新增 `e2e/recall_test.go` 3 个用例：`TestTC_RCL_04_07_MetaRecalled`（AC-RCL-04-7：撤回的文本、文件两层响应都有 `recalled*`，没有 `body`、文件名、`fileSize`，字段只在白名单内）、`TestTC_RCL_04_03_BodyRecalled`（AC-RCL-04-3：普通授权撤回的 `deleted` 没有、`recalled=true`、没有 `body`；隔离授权有原文；`quote`、`mentions` 透传；引用文字不进元数据、console 审计和日志）、`TestTC_RCL_04_01_DeleteRecalled`（AC-RCL-04-1 经 console 的一次：200、元数据仍是撤回、没有 `msgDeleted`（哨兵法）、两边审计都有；响应丢失 504 / 5040 后对账补 `success`、不是 `localOnly` 或不一致）。单聊 `IM_C2C_BODY_ACCESS` 没有在 console 另测（im-server TC-RCL-04-05 覆盖，console 透传）。变异见 CS-202 一行 |
 | CS-202 | ✅ 完成（console 一侧，页面随 FE-671；批次 C4） | console-server@427131e（**本地结果**，同上）。新路由 `POST /console/api/files/{fileId}/fetch`（`msg.quarantine.read`、POST、请求体 `{convId, msgId, variant?}`），用 `console-msgread` 调 im-server 的 fetch；`imclient.Stream` 流式透传（不落盘、不缓存，超时只算到响应头）；固定 `Content-Disposition: attachment`（不带文件名）、`nosniff`、`no-store`，CSP 不变；两阶段审计 `msg.file.fetch`（intent 记 `fileId`、`msgId`、`variant`、授权前 8 位，result 记字节数；不记文件名）。授权按这个浏览器会话的隔离授权查、并比到期时间（问题 14）。新增 `TestTC_RCL_04_09_FetchViaConsole`（AC-RCL-04-9 console 一侧：没有权限点 4030、没有授权 / 只有普通授权 / 换浏览器会话 / 过期 4039 且不调用 im-server；有授权原图、缩略图 SHA-256 一致；没撤回、`fileId` 不属于 `msgId` 404 / 4048；主凭证直接调 im-server 4030；intent 写失败 5031 不调用；审计、全库、日志、请求都没有文件名）、`imclient.TestStream`；矩阵（AC-ADM-05-1）加了这个路由的样本（矩阵世界改成打开撤回和文件）。**变异 13 项全部被发现**（到期判断、`attachment`、隔离标志、路由权限点、元数据和正文的 `recalled`、审计 `fileId`、intent 失败、Stream 超时、Content-Type、对账按 localOnly、`nosniff`、本地过期不解绑）。单聊 `IM_C2C_BODY_ACCESS=off` 没有在 console 另测（im-server TC-RCL-04-09 单聊部分覆盖，console 透传 4030） |
+| CS-205 | ⬜ 未开始 | 2026-11-10 分发（C5） |
 
 ## 总览
 
@@ -29,9 +30,10 @@
 | C2 | CS-201、CS-202 | 1.5 | 2.5（这里 1.5，页面 FE-639 1） | 合计一致 |
 | C3 | CS-203 | 0.5 | 0.5 | 一致 |
 | C4 | CS-204（另做从 C2 挪来的 CS-202） | 0.5 | 1.5（这里 0.5，页面 FE-671 1） | 合计一致；CS-202 的 0.5 仍算在 C2 行（第 18 节按 C2 估的），C4 实际要做 1 |
+| C5 | CS-205 | 0.5 | 0.5（管理后台页面没有改动） | 一致 |
 | 公共 | — | 0 | 0 | 一致 |
 
-**依赖顺序**：BE-421 → CS-200；BE-434 → CS-201；BE-453、BE-457 → CS-203 → BE-459（C3 暂停）；BE-474 → CS-204、CS-202 → FE-671 → BE-480。
+**依赖顺序**：BE-421 → CS-200；BE-434 → CS-201；BE-453、BE-457 → CS-203 → BE-459（C3 暂停）；BE-474 → CS-204、CS-202 → FE-671 → BE-480；BE-485 → CS-205 → BE-489（C5）。
 
 ---
 
@@ -103,6 +105,18 @@
   4. 页面见 FE-671。
 - 工作量：0.5 人日（console + 后台页面列，撤回行）
 
+### CS-205 后台查询不受删除会话、置顶、免打扰影响
+- 优先级：P0
+- 批次：C5
+- 仓库：tianting-console-server
+- 依赖：BE-485
+- AC：AC-CVS-03-1
+- 内容：
+  1. F-CVS-03 规则 2"后台查询不受影响"（没有单独的 AC，用 TC-CVS-03-01 第 4 步覆盖，问题 19）：console-server e2e（真实 im-server，`IM_CONV_SETTINGS_ENABLED=1`）里 u1 删除和 u2 的单聊、删除 g1 的会话之后，客服的 `msg.meta` 查询、正文授权读取（`msg.read.group`）、隔离读取照常返回全部消息；u1 的置顶、免打扰不出现在用户详情和元数据（第 14.1 节没有列，console 是白名单结构，不透传）。
+  2. 代码预计不用改（console 不读 `conv_settings`，im-server 的管理接口不经过 `authorize`）。im-server 改了 `minSeq`（BE-485 第 4 条）之后跑一遍现有 console e2e，确认没有回归。
+  3. 管理后台页面没有 C5 的改动（第 14.1 节没有 C5 的行），运维后台也没有（AC-CHAT-90-17 的 C5 列是"—"）。
+- 工作量：0.5 人日（console + 后台页面列）
+
 ---
 
 运维后台（第 14.2 节）的配置检查和指标都由 im-server 提供（BE-423、BE-438、BE-457），`tianting-ops` 的配置检查页按接口数据显示。C1、C2 没有页面改动；C3 的推送项见 CS-203。C4 的撤回指标 `im_recalls_total{by}` 和配置检查项 `msg_actions` 由 im-server 提供（BE-471），运维后台按接口数据通用显示，C4 不改页面（如果配置检查页是写死的项，随 FE-672 走查时补）。治理的项随 C6。
@@ -131,3 +145,4 @@
 16. **代理响应的 Content-Type 和文件名**（CS-202）：`Content-Disposition` 固定 `attachment`、不带文件名（文件名按正文对待，R-CS-14）；`Content-Type` 用 im-server 给的类型（解析不了是 `application/octet-stream`），加 `nosniff`，浏览器不会按它渲染。页面（FE-671）下载时用正文接口（隔离授权）里的文件名命名。
 17. **传到一半断了**（CS-202）：状态码 200 已经发出去，没法改成错误；审计 result 记 `failure`、`params.incomplete=true` 和已传字节数。PRD 没有写。
 18. **取文件不另限次数**（CS-202）：PRD 没有写配额；每次取文件都写一条两阶段审计，授权本身的配额在 im-server（申请时）。如果要限次数，改第 14.1 节。
+19. **"后台查询不受影响"没有 AC**（CS-205，C5 分发时记）：F-CVS-03 规则 2 写了，PRD 没有单独的 AC。CS-205 的 AC 行挂 AC-CVS-03-1，用例 TC-CVS-03-01 第 4 步验后台元数据和正文，不新增 AC（backend-chat 第 87 条）。

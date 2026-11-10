@@ -1,7 +1,7 @@
-# 测试用例：@ 提及（MEN，C4）
+# 测试用例：@ 提及（MEN，C4；TC-MEN-03-02、03-03 是 C5）
 
 > 依据：[PRD-chat v1.7](../prd/PRD-chat-v1.7.md)（冻结）第 4.1、4.3 节第 8、10 步、第 8 节 F-MEN-01～03、第 11～13 节的 C4 部分。任务单：[backend-chat](../tasks/backend-chat.md) BE-470、BE-471、BE-476、BE-477、BE-478、BE-480，[frontend-chat](../tasks/frontend-chat.md) FE-660～FE-672。
-> 范围：标了【C4】的 AC-MEN。**AC-MEN-03-2、03-3 标的是【C5】（免打扰推送），TC-MEN-03-02、03-03 留给它们**。
+> 范围：标了【C4】的 AC-MEN。**AC-MEN-03-2、03-3 标的是【C5】（免打扰推送），用例 TC-MEN-03-02、03-03 是 C5 分发时写的，依赖 C3 的推送 worker 和假通道（backend-chat BE-490），C3 恢复后执行**；环境 **E1 + 假通道（等 C3）** 见 [TC-CVS](TC-CVS.md)。
 >
 > 通用约定：环境、层级、时钟、哨兵法同 [TC-RCL](TC-RCL.md)（**E1** 是 `IM_TEST_MODE=1`、SQLite、`IM_MSG_ACTIONS_ENABLED=1`）；**EP 性能**是目标机（P-12），开发机只记录，不算通过。故障注入 `mentionWrite`、`mentionAllCounter`（BE-471）。**CI 现在不运行（PENDING P-21）**，结果都是本地结果。
 > - 记号：群 `g1`：群主 `o`、管理员 `a`、成员 `m`、`u1`、`u2`、`u3`；u9 不是成员。
@@ -31,6 +31,8 @@
 | TC-MEN-02-08 | 撤回不退次数；计数器故障 503 | AC-MEN-02-8 | 后端 e2e | P0 |
 | TC-MEN-02-09 | 并发 10 条 @ 所有人：恰好 3 条成功 | AC-MEN-02-9 | 后端 e2e | P0 |
 | TC-MEN-03-01 | mentionUnread 和 firstMentionSeq：含 @ 所有人，已读后前移 | AC-MEN-03-1 | 后端 e2e | P0 |
+| TC-MEN-03-02 | 免打扰群：只有 @ 我推送，@ 所有人和普通消息不推（等 C3） | AC-MEN-03-2 | 后端 e2e | P0 |
+| TC-MEN-03-03 | 被我拉黑的人在免打扰群 @ 我：mentionUnread 增加，令牌无调用（推送部分等 C3） | AC-MEN-03-3 | 后端 e2e | P0 |
 | TC-MEN-03-04 | @ u2 的消息被撤回：mentionUnread 减 1 | AC-MEN-03-4 | 后端 e2e | P0 |
 | TC-MEN-03-05 | 有提及又有草稿：列表显示"[有人@我]" | AC-MEN-03-5 | Playwright（H5）+ 原生 UI 测试 | P0 |
 | TC-MEN-03-06 | 未读 100 条，提及在第 10 条：跳转按钮 | AC-MEN-03-6 | Playwright（H5）+ 原生 UI 测试 | P0 |
@@ -353,6 +355,38 @@
   1. `mentionUnread=3`、`firstMentionSeq=5`
   2. `mentionUnread=2`、`firstMentionSeq=7`
 
+### TC-MEN-03-02 免打扰群：只有 @ 我推送，@ 所有人和普通消息不推（等 C3）
+- 关联 AC：AC-MEN-03-2
+- 优先级：P0
+- 批次：C5（随 backend-chat BE-490，等 C3）
+- 层级：后端 e2e
+- 环境：E1 + 假通道（等 C3），`IM_CONV_SETTINGS_ENABLED=1`
+- 前置条件：u2 用账号登录、有令牌，把 g1 设为免打扰后离线；哨兵 `s` 离线、有令牌
+- 步骤：
+  1. o 在 g1 依次发普通消息、@ 所有人、@ u2，每条之间用 [IM 钟] 隔开超过 `IM_PUSH_MERGE_SECONDS`
+  2. 给 `s` 发一条，等假通道记录到 `s` 的调用
+  3. u2 上线 `convs`
+- 预期结果：
+  1. u2 的令牌只有 1 次调用，对应 @ u2 那条
+  2. `unread=3`、`mentionUnread=2`（@ 所有人也计入，F-MEN-03 规则 1）
+  3. C3 恢复前记"未执行（等 C3）"；`mentionUnread` 的计算 C4 已验（TC-MEN-03-01）
+
+### TC-MEN-03-03 被我拉黑的人在免打扰群 @ 我：mentionUnread 增加，令牌无调用（推送部分等 C3）
+- 关联 AC：AC-MEN-03-3
+- 优先级：P0
+- 批次：C5（推送部分随 backend-chat BE-490，等 C3）
+- 层级：后端 e2e
+- 环境：E1 + 假通道（等 C3）；`mentionUnread` 部分 E1
+- 前置条件：u2 拉黑了 u1，两人都在 g1；u2 用账号登录、有令牌，把 g1 设为免打扰后离线；哨兵 `s`
+- 步骤：
+  1. u1 在 g1 @ u2
+  2. 给 `s` 发一条，等假通道记录到
+  3. u2 上线 `convs`
+- 预期结果：
+  1. 消息正常保存（群里拉黑不生效，F-SOC-07）；u2 的 `mentionUnread` 增加 1，列表显示"[有人@我]"
+  2. u2 的令牌没有调用（不打断免打扰，F-MEN-03 规则 5）
+  3. C3 恢复前：第 3 步在 E1 先验（记"部分通过"），推送部分记"未执行（等 C3）"
+
 ### TC-MEN-03-04 @ u2 的消息被撤回：mentionUnread 减 1
 - 关联 AC：AC-MEN-03-4
 - 优先级：P0
@@ -427,6 +461,6 @@
 
 ## 说明
 
-- 用例编号按 AC 编号对齐（TC-MEN-0X-YY 对应 AC-MEN-0X-Y），所以有空号：TC-MEN-03-02、03-03（【C5】）。
+- 用例编号按 AC 编号对齐（TC-MEN-0X-YY 对应 AC-MEN-0X-Y）。TC-MEN-03-02、03-03（【C5】）是 C5 分发时补的，等 C3 恢复后执行。
 - TC-MEN-02-02 的小时窗口按滚动 60 分钟写（backend-chat 第 58 条），Frank 改口径时同步改用例。
 

@@ -1,14 +1,14 @@
-# 前端任务单：天听聊天产品第一批（三套 SDK、H5、Android、iOS、管理后台页面，C1、C2、C3、C4）
+# 前端任务单：天听聊天产品第一批（三套 SDK、H5、Android、iOS、管理后台页面，C1、C2、C3、C4、C5）
 
 | 项 | 内容 |
 |---|---|
-| 依据 | [PRD-chat v1.7](../prd/PRD-chat-v1.7.md)（冻结）第 5～8、13、14.1、15、20.3 节；[PRD-ui v1.2](../prd/PRD-ui-v1.4.md)（界面规则 B-1～B-8，第 6 节视觉）；[SDK 设计说明](../sdk/README.md)；[errors.json](../../protocol/errors.json) |
-| 范围 | **C1、C2、C3、C4 和公共部分**（CH-27）。C3 是 Frank 2026-11-10 决定按顺序继续的，同一天又决定"推送后续做，先做功能"，**C3 已暂停**（任务和用例保留）；C4（撤回、引用、@）同一天决定接着做。置顶、举报的接口和界面不做（C5、C6）；设备通知（C3）只有原生端，H5 没有离线通知（第 13.2 节）；【全部】的 AC 验证到 C4 为止的页面（第 15 节累计表，C3 那一列等 C3 恢复） |
+| 依据 | [PRD-chat v1.7](../prd/PRD-chat-v1.7.md)（冻结）第 5～9、13、14.1、15、20.3 节；[PRD-ui v1.2](../prd/PRD-ui-v1.4.md)（界面规则 B-1～B-8，第 6 节视觉）；[SDK 设计说明](../sdk/README.md)；[errors.json](../../protocol/errors.json) |
+| 范围 | **C1、C2、C3、C4 和公共部分**（CH-27）。C3 是 Frank 2026-11-10 决定按顺序继续的，同一天又决定"推送后续做，先做功能"，**C3 已暂停**（任务和用例保留）；C4（撤回、引用、@）同一天决定接着做；**C5（置顶、免打扰、删除会话）是 Frank 2026-11-10 说"开始 C5"后分发的**（QUEUE Q29）。举报的接口和界面不做（C6）；设备通知（C3）只有原生端，H5 没有离线通知（第 13.2 节）；【全部】的 AC 验证到 C5 为止的页面（第 15 节累计表，C3 那一列等 C3 恢复） |
 | 负责 | 前端（AI） |
 | 仓库 | tianting-sdk-ts、tianting-sdk-kotlin（`sdk-core` 纯 JVM）、tianting-sdk-swift、tianting-web（H5）、tianting-android、tianting-ios、tianting-admin |
-| 编号 | **FE-600 起**。公共 FE-600～602，C1 FE-610～620，C2 FE-630～640，C3 FE-650～656，C4 FE-660～672 |
+| 编号 | **FE-600 起**。公共 FE-600～602，C1 FE-610～620，C2 FE-630～640，C3 FE-650～656，C4 FE-660～672，C5 FE-680～686 |
 | 端的范围 | PC（Tauri）排除：`tianting-web` 宽屏界面照常实现，不验收打包形态（第 2.5 节）。Web Push、拍照不做 |
-| 完成定义 | 任务内的 AC 有通过的测试（SDK：假 HTTP + `FakeTransport` + 假时钟 + 共享向量；H5：Vitest、Playwright；原生：Compose UI Test、XCUITest），用例编号见 [TC-ACC](../testcases/TC-ACC.md)、[TC-FILE](../testcases/TC-FILE.md)、[TC-APN](../testcases/TC-APN.md)、[TC-RCL](../testcases/TC-RCL.md)、[TC-QUO](../testcases/TC-QUO.md)、[TC-MEN](../testcases/TC-MEN.md)、[TC-CHAT](../testcases/TC-CHAT.md)。**CI 现在不运行（P-21），原生 CI 也缺 P-15，真机和其他浏览器在 P-13**，结果都要标明环境。**C3 收到真实系统通知要 Frank 先做第 20.3 节的 APNs、FCM 步骤**（PENDING P-40），之前原生端用令牌和授权的测试替身 + 服务端假通道 |
+| 完成定义 | 任务内的 AC 有通过的测试（SDK：假 HTTP + `FakeTransport` + 假时钟 + 共享向量；H5：Vitest、Playwright；原生：Compose UI Test、XCUITest），用例编号见 [TC-ACC](../testcases/TC-ACC.md)、[TC-FILE](../testcases/TC-FILE.md)、[TC-APN](../testcases/TC-APN.md)、[TC-RCL](../testcases/TC-RCL.md)、[TC-QUO](../testcases/TC-QUO.md)、[TC-MEN](../testcases/TC-MEN.md)、[TC-CVS](../testcases/TC-CVS.md)、[TC-CHAT](../testcases/TC-CHAT.md)。**CI 现在不运行（P-21），原生 CI 也缺 P-15，真机和其他浏览器在 P-13**，结果都要标明环境。**C3 收到真实系统通知要 Frank 先做第 20.3 节的 APNs、FCM 步骤**（PENDING P-40），之前原生端用令牌和授权的测试替身 + 服务端假通道 |
 
 格式说明：每个任务的 `- AC：` 一行列出它负责满足的验收标准，追溯矩阵由 `tools/trace.py` 从这一行生成。工具只查"有一个任务"，**端到端 AC 和【前端】AC 按端拆开列**，所以同一条 AC 会出现在多个任务里。标了（Android、iOS）的只进原生任务，标了（H5）的只进 H5 任务，（三套 SDK）的只进 SDK 任务。
 
@@ -55,26 +55,27 @@
 | FE-670 | ✅ 完成（iOS，AC-MEN-01-9 手工未执行） | 同 FE-669 的提交。输入模型 `Core/Mentions.swift`（文本 + `[{start, len, userId}]`，按 UTF-16 下标，和 H5、Android 同语义）：行首或空白后敲 `@`、`＠` 才打开（`a@b.com`、粘贴的不打开）；`markedTextRange` 不为空（组字中）不改模型、不打开，上屏后按组字前的文字算一次；光标不进 @ 内部；光标在 @ 后的退格整段删除；单聊、开关关闭时不打开。成员选择是底部面板（`searchGroupMembers`，`GroupMembersModel` 加了 keyword，停 300 毫秒再搜）：加载中、无结果、加载失败（点了重试；关掉后 @ 留作普通文字）、"加载更多"，显示备注优先的显示名、头像和 userId，不含自己；插入公开昵称，不用备注；"所有人"只给群主、管理员。草稿结构化（`Draft{text, mentions, quote}`，只在内存，问题 15）。列表前缀"[有人@我]" > "[草稿]"，有提及时跟最后一条摘要（问题 38，读屏文本同步）；被 @ 的气泡品牌色描边，读屏多读"提到了你"；打开会话时只取一次 `firstMentionSeq`，"有人@我"按钮点了一页页翻到那条、滚动并高亮，点了或那条进了视口都消失（问题 40）。4293 由 App 统一提示"@所有人次数已用完"，消息失败，断线重连后不自动重发（真实服务端）。AC 都有用例（TC 编号在用例名里，用例数见 FE-669）。**未执行（要人工）**：AC-MEN-01-9 系统中文输入法组字中输入 @（模拟器 + 真机 P-13），自动化部分是单测 `testTC_MEN_01_09_…`（组字事件）；XCUITest 用英文键盘，没有真实组字 |
 | FE-672 | ✅ 完成（AC-MEN-01-9 手工未执行，推送等 C3） | 报告 [c4-frontend-acceptance-2026-11-10](../reports/c4-frontend-acceptance-2026-11-10.md)（**本地；CI 不运行**，H5、后台 Chrome，iOS 模拟器 iPhone 16 Pro；真机、WebKit 未执行）。先落实问题 52（sdk-swift@c953dde、tianting-ios@4e6ecdb）和 P-45（PRD-chat v1.7，tianting-server@8527b7b，sdk-swift@c97d08e、sdk-kotlin@d6603f5、sdk-ts@7739c55、tianting-ios@62e3355）。45 条 AC：**通过 39、部分通过 4、未执行 2、失败 0**（第一轮 AVD 被 emulator-5554 占用，通过 16、部分通过 27；Frank 关掉 5554 后同日补跑 Android，23 条有了实测证据改为通过）。跨端（新用例 tianting-web@3cd6e96 `xp-c4.spec.ts`、tianting-android@fd5058a `CrossPlatformC4E2e`、tianting-ios@ee522bc `CrossPlatformC4E2ETests`）：6 个方向都通过；反证三次（H5、iOS、Android 各一次）。全量回归（本地）：im-server、console-server 全过；sdk-ts 766 + 集成 63，sdk-kotlin 1017 + 集成 82 + Android 5，sdk-swift 482 + 集成 82；H5 单测 354、e2e 176 过；后台单测 125、e2e 58 过；Android 单测 64、lint、`checkTianting` 过，补跑 ui 278 全过、e2e 71 个 67 过 2 跳过 2 失败（C2 的 `FilesE2eTest` 两个，单独重跑通过）、kill 6 个全过；C4E2eTest 的登录重试实测没有掩盖慢登录（14 次 1.2～2.5 秒，tianting-android@def3170 记录用时）；iOS XCUITest 184 个 175 过、2 失败（04-10 重跑通过；ACC-03-40 改动前也失败，问题 53）、Kit 148 个通过。AC-MEN-01-9 手工未执行（要人工）；推送等 C3（P-43 ②），新消息播报不做（P-43 ③）。新问题 53 |
 | FE-671 | ✅ 完成（页面部分） | tianting-admin@f3db9c6（**Chrome，本地；CI 不运行**：push 时 GitHub Actions 按 `on: push` 自动排了一次，没有手动触发）。元数据页状态列显示"已撤回（撤回人，时间）"，和"已删除"分开，没有文件名、引用文字（AC-RCL-04-7）；正文页普通授权的撤回显示"该消息已被撤回（撤回人，时间）"、不显示正文（响应里就没有，万一带了也不显示），勾选删除照旧（问题 29），隔离授权显示撤回原文和"撤回人 …，时间"；`quote` 显示"引用：{摘要}"（F-QUO-02 规则 3 的文案）、`mentions` 显示"提及：所有人、userId…"（去重），都按纯文本（AC-RCL-04-3）。隔离模式下撤回或后台删除的图片、文件有"下载查看"：`POST /console/api/files/{fileId}/fetch`（`{convId, msgId, variant:"original"}`，CS-202），字节进内存后用隐藏链接按 `attachment` 另存，文件名取隔离正文里的文件名（console 问题 16，图片见问题 28），文件名不进 URL、请求和日志，blob 地址 1 秒后撤销，不内联渲染，CSP 没有改；4039 弹"工单号 + 理由 + 动态码"，授权后接着下载；4048 提示"文件不存在或已过了保留期"；传到一半断了按网络错误，不保存残缺文件。`apiBlob` 和 `api` 共用 CSRF、4037 重放、4038 step-up。Vitest 123 个（新增 12 个，`src/pages/Recall.test.tsx`，用例名带 TC-RCL-04-03、04-07、04-09）；全量 Playwright 61 个：58 过、3 个跳过（截图等默认跳过的用例），其中新增 `e2e/recall.spec.ts` 2 个对真实 console-server@427131e + im-server（`IM_MSG_ACTIONS_ENABLED=1`、`IM_FILES_ENABLED=1`，假 S3）+ 临时 Postgres 17，生产 CSP：下载的文件名和 SHA-256 与原文件一致，代理响应 `attachment`、`nosniff`，请求 URL 和请求体、控制台都没有文件名和原文，blob 地址都撤销了，没有 CSP 违规、没有请求对象存储。e2e 环境打开了 `IM_MSG_ACTIONS_ENABLED`（测试隔离密钥也加进了 dist 和 HAR 扫描）。typecheck、lint、format:check、build、check:dist 通过。**变异 26 项全部被 Vitest 发现**（撤回状态显示、撤回人字段、普通/隔离分支、撤回文案、引用摘要、提及去重、引用改成 HTML、按钮的隔离/撤回/过期/类型条件、请求体 `variant`、文件名进 URL、4039 后不续下载、日志打印文件名、撤回的不能勾选、不撤销 blob、立即撤销、链接不移除、不设 `download`、文件名不清理、错误响应当文件、断流不按网络错误、4048 文案），其中 5 项另用 e2e 跑过，也都被发现。**没有验收的部分**：后台删除（未撤回）的图片、文件下载只有 Vitest，e2e 只做了撤回的；单聊 `IM_C2C_BODY_ACCESS=off` 没有在页面另测（console 透传 4030，页面显示"单聊正文查看未开启"照旧） |
+| FE-680～FE-686 | ⬜ 未开始 | 2026-11-10 分发（C5，QUEUE Q29） |
 | 其余 | ⬜ 未开始 | Kotlin、Swift 照 [SDK 设计说明第 6 节](../sdk/README.md) 做 |
 
 ## 总览
 
-| 第 18 节的列 | 公共 | C1 | C2 | C3 | C4 | 任务 |
-|---|---|---|---|---|---|---|
-| sdk-ts | 1 | 3.5 | 3.5 | 0 | 3 | FE-600、FE-610、FE-630；C3 只同步协议副本（BE-450）；C4 FE-660 |
-| sdk-kotlin | 1 | 4 | 5.5 | 3 | 4.5 | FE-601、FE-611、FE-631、FE-650、FE-661（3）、FE-662（1.5） |
-| sdk-swift | 1 | 4 | 5.5 | 3 | 4.5 | FE-602、FE-612、FE-632、FE-651、FE-663（3）、FE-664（1.5） |
-| H5 | 0 | 5 | 6 | 0 | 5 | FE-613（2.5）、FE-614（2.5）；FE-633（3）、FE-634（3）；C3 没有（H5 无离线通知）；FE-665（3）、FE-666（2） |
-| Android | 0 | 5.5 | 8 | 5 | 6 | FE-615（2.5）、FE-616（3）；FE-635（4）、FE-636（4）；FE-652（2.5）、FE-653（2.5）；FE-667（3.5）、FE-668（2.5） |
-| iOS | 0 | 5.5 | 8 | 5 | 6 | FE-617（2.5）、FE-618（3）；FE-637（4）、FE-638（4）；FE-654（2.5）、FE-655（2.5）；FE-669（3.5）、FE-670（2.5） |
-| console + 后台页面（页面部分） | 0 | 1 | 1 | 0 | 1 | FE-619、FE-639；其余 CS-200～203；C4 FE-671，console 部分 CS-204（CS-202 人日在 C2） |
-| 测试（前端部分） | 0 | 3.5 | 4 | 2.5 | 3.5 | FE-620、FE-640、FE-656；其余 BE-422、BE-440、BE-459；C4 FE-672，其余 BE-478、BE-480 |
-| 文档（前端部分） | 0 | 0.5 | 0 | 0 | 0 | FE-620；C4 的 `docs/sdk/README.md` 在 BE-479 |
-| **本单合计** | **3** | **32.5** | **41.5** | **18.5** | **33.5** | **129** |
+| 第 18 节的列 | 公共 | C1 | C2 | C3 | C4 | C5 | 任务 |
+|---|---|---|---|---|---|---|---|
+| sdk-ts | 1 | 3.5 | 3.5 | 0 | 3 | 1.5 | FE-600、FE-610、FE-630；C3 只同步协议副本（BE-450）；C4 FE-660；C5 FE-680 |
+| sdk-kotlin | 1 | 4 | 5.5 | 3 | 4.5 | 2.5 | FE-601、FE-611、FE-631、FE-650、FE-661（3）、FE-662（1.5）；FE-681（2.5） |
+| sdk-swift | 1 | 4 | 5.5 | 3 | 4.5 | 2.5 | FE-602、FE-612、FE-632、FE-651、FE-663（3）、FE-664（1.5）；FE-682（2.5） |
+| H5 | 0 | 5 | 6 | 0 | 5 | 2 | FE-613（2.5）、FE-614（2.5）；FE-633（3）、FE-634（3）；C3 没有（H5 无离线通知）；FE-665（3）、FE-666（2）；FE-683（2） |
+| Android | 0 | 5.5 | 8 | 5 | 6 | 3 | FE-615（2.5）、FE-616（3）；FE-635（4）、FE-636（4）；FE-652（2.5）、FE-653（2.5）；FE-667（3.5）、FE-668（2.5）；FE-684（3） |
+| iOS | 0 | 5.5 | 8 | 5 | 6 | 3 | FE-617（2.5）、FE-618（3）；FE-637（4）、FE-638（4）；FE-654（2.5）、FE-655（2.5）；FE-669（3.5）、FE-670（2.5）；FE-685（3） |
+| console + 后台页面（页面部分） | 0 | 1 | 1 | 0 | 1 | 0 | FE-619、FE-639；其余 CS-200～203；C4 FE-671，console 部分 CS-204（CS-202 人日在 C2）；C5 没有页面改动，console 部分 CS-205（0.5） |
+| 测试（前端部分） | 0 | 3.5 | 4 | 2.5 | 3.5 | 1.5 | FE-620、FE-640、FE-656；其余 BE-422、BE-440、BE-459；C4 FE-672，其余 BE-478、BE-480；C5 FE-686，其余 BE-487、BE-489 |
+| 文档（前端部分） | 0 | 0.5 | 0 | 0 | 0 | 0 | FE-620；C4 的 `docs/sdk/README.md` 在 BE-479；C5 的 `docs/sdk/README.md` 在 BE-488 |
+| **本单合计** | **3** | **32.5** | **41.5** | **18.5** | **33.5** | **16** | **145** |
 
-**差异说明**：和第 18 节一致（按列拆分，不是独立重估，**低置信**）。三份任务单合计 145（C1 + C2 + 公共），加 C3 38.5 共 183.5，再加 C4 48.5（本单 33.5、backend-chat 14.5、console-chat 0.5）共 232，对照见 [backend-chat](backend-chat.md)。把每个端拆成两个任务只是为了每个任务不超过 4 人日，两个任务的 SDK 接口是同一套。
+**差异说明**：和第 18 节一致（按列拆分，不是独立重估，**低置信**）。三份任务单合计 145（C1 + C2 + 公共），加 C3 38.5 共 183.5，再加 C4 48.5（本单 33.5、backend-chat 14.5、console-chat 0.5）共 232，再加 C5 24.5（本单 16、backend-chat 8、console-chat 0.5）共 256.5，对照见 [backend-chat](backend-chat.md)。把每个端拆成两个任务只是为了每个任务不超过 4 人日，两个任务的 SDK 接口是同一套。
 
-**依赖顺序**：BE-400 → FE-600 → FE-601、FE-602 → FE-610 → FE-611、FE-612 → FE-613、FE-615、FE-617 → FE-614、FE-616、FE-618 → FE-619 → FE-620 →（C1 校准）→ BE-403 → FE-630 → FE-631、FE-632 → FE-633、FE-635、FE-637 → FE-634、FE-636、FE-638 → FE-639 → FE-640 →（C2 校准，Frank 决定 C3）→ BE-450 → FE-650、FE-651（先用 `FakeTransport`，BE-452、BE-454 好了接真实 im-server）→ FE-652、FE-654 → FE-653、FE-655 → FE-656（真机部分等第 20.3 节和 P-13）。**C3 暂停后先做 C4**：BE-470、BE-478 → FE-660 → FE-661、FE-663（可以并行）→ FE-662、FE-664；FE-660 → FE-665 → FE-666；FE-661 → FE-667 → FE-668；FE-663 → FE-669 → FE-670；CS-204、CS-202 → FE-671；全部 → FE-672。
+**依赖顺序**：BE-400 → FE-600 → FE-601、FE-602 → FE-610 → FE-611、FE-612 → FE-613、FE-615、FE-617 → FE-614、FE-616、FE-618 → FE-619 → FE-620 →（C1 校准）→ BE-403 → FE-630 → FE-631、FE-632 → FE-633、FE-635、FE-637 → FE-634、FE-636、FE-638 → FE-639 → FE-640 →（C2 校准，Frank 决定 C3）→ BE-450 → FE-650、FE-651（先用 `FakeTransport`，BE-452、BE-454 好了接真实 im-server）→ FE-652、FE-654 → FE-653、FE-655 → FE-656（真机部分等第 20.3 节和 P-13）。**C3 暂停后先做 C4**：BE-470、BE-478 → FE-660 → FE-661、FE-663（可以并行）→ FE-662、FE-664；FE-660 → FE-665 → FE-666；FE-661 → FE-667 → FE-668；FE-663 → FE-669 → FE-670；CS-204、CS-202 → FE-671；全部 → FE-672。**C5**：BE-482、BE-487 → FE-680 → FE-681、FE-682（可以并行）；FE-680 → FE-683；FE-681 → FE-684；FE-682 → FE-685；BE-489 和三端 → FE-686。
 
 ---
 
@@ -682,6 +683,109 @@
 
 ---
 
+## C5 会话置顶、免打扰、删除
+
+> 2026-11-10 分发（Frank 2026-11-10"开始 C5"，QUEUE Q29）。依据 PRD 第 9 节 F-CVS-01～04，第 13.1～13.4、15 节的 C5 部分。服务端任务见 [backend-chat](backend-chat.md) BE-482～BE-490，后台见 [console-chat](console-chat.md) CS-205（管理后台页面没有改动）。
+> **不依赖 C3**：免打扰对推送的影响、App 图标角标都在服务端和 C3（BE-490，第 60 条）；客户端本批只做 App 内的显示。AC-CVS-02-6（前台不响铃）留在本批（第 58 条）。
+> 现状（2026-11-10 调查，各仓 HEAD：sdk-ts `7739c55`、sdk-kotlin `d6603f5`、sdk-swift `c97d08e`、tianting-web `3cd6e96`、tianting-android `def3170`、tianting-ios `ee522bc`）：七个仓都**没有** `pinned`、`notifyOff`、`convSet`、`convDelete`、`deleted`；排序只按 `updatedAt`（sdk-ts `store.ts` 第 474～477 行）；总未读是全部 `unread` 之和（sdk-ts `client.ts` 第 1551 行，sdk-kotlin `IMClient.kt` 第 2267 行，sdk-swift `Client.swift` 第 589 行）；`convs` 里消失的群一律推断为"你已不在该群"（sdk-ts `client.ts` 第 1303、1320 行，sdk-kotlin `IMClient.kt` 第 2040 行，sdk-swift `Client.swift` 第 1016 行）；`minSeq` 只用来算补拉起点，不清本地（F-CVS-03 规则 6 ②）。三端会话项没有长按、右键菜单；Android、iOS 没有任何系统通知、提示音代码。
+> 文案：确认框"删除后聊天记录不再显示，确定删除？"；4220"最多置顶 20 个会话"；免打扰摘要前缀"[N 条]"，优先级"[有人@我]" > "[草稿]" > "[N 条]"（F-MEN-03 规则 2）。
+
+### FE-680 sdk-ts：会话设置、删除、多端同步
+- 优先级：P0
+- 批次：C5
+- 仓库：tianting-sdk-ts
+- 依赖：BE-482、BE-487
+- AC：AC-CVS-03-2、AC-CVS-03-5、AC-CVS-04-1、AC-CVS-04-2、AC-CVS-04-5、AC-CHAT-90-10、AC-CHAT-90-15
+- 内容：
+  1. 模型（第 11.1 节）：`src/protocol.ts` 的 `ServerConversation` 加 `pinned`、`pinnedAt`、`notifyOff`，`convs` ack 加 `deleted`、`deletedTruncated`，事件 `convSettingsChanged`、`convDeleted`；`src/store.ts` 的 `Conversation` 同步。
+  2. 接口（第 13.1 节）：`setConvPinned(convId, pinned)`、`setConvNotifyOff(convId, on)`、`deleteConv(convId)`（`upToSeq` 取本地看到的最大 seq）。**乐观更新**：先改本地，失败（5000、4220、4290、4030）回滚并把错误交给页面，不自动重试（第 56 条）；ack 的 `{conv}` 覆盖本地。
+  3. 排序（F-CVS-01 规则 3）：`conversations()` 改成置顶在前（`pinnedAt` 倒序），其余 `updatedAt` 倒序，同时间 `convId`；稳定引用（G-UI-19）不变。
+  4. 总未读（F-CVS-02 规则 4）：`totalUnread()` = 普通会话 `unread` 之和 + 免打扰会话 `mentionUnread` 之和；`totalUnread` 事件同口径。
+  5. **`convs` 的 `deleted`**（F-CVS-03 规则 6）：`setConversations` 算出的"消失的会话"先查 `deleted`，在里面的从列表移除，**不发 `convRemoved`、不生成 `removed` 快照**（AC-CVS-03-5）；不在里面的群照旧推断；`truncated` 或 `deletedTruncated` 为 true 时不推断（第 54 条）。对 `deleted` 里的和列表里的每个会话：清除 `seq < minSeq` 的消息、引用这些消息的 `quote.text`，通过 `filesExpired` 让页面丢掉缓存的 `blob:`（sdk-ts 只有内存，D4）。
+  6. 事件：`convSettingsChanged` 覆盖本地的 `pinned*`、`notifyOff`（AC-CVS-04-1）；`convDeleted`：`minSeq = clearedSeq + 1`、`readSeq = max(readSeq, clearedSeq)`、不再置顶、保留免打扰，按第 5 条清除，从列表移除，并发一个事件让页面清草稿（AC-CVS-04-5，第 55 条）。之后来了 seq > `clearedSeq` 的消息照常出现（AC-CVS-03-2）；重连靠 `convs`（AC-CVS-04-2）。
+  7. 共享向量：同步 `protocol/` 副本到 BE-487 之后的提交，跑 `chat-sync.json` 的置顶、`deleted`、清除、总未读用例（AC-CHAT-90-15，`test/chat-sync-vectors.test.ts`）和 `frames.json` 新帧的 Schema 校验（AC-CHAT-90-10，`test/frames-schema.test.ts`）。
+- 工作量：1.5 人日（sdk-ts）
+
+### FE-681 sdk-kotlin：会话设置、删除、本地库物理清除
+- 优先级：P0
+- 批次：C5
+- 仓库：tianting-sdk-kotlin（`sdk-core`、`sdk-android`）
+- 依赖：FE-680
+- AC：AC-CVS-03-2、AC-CVS-03-5、AC-CVS-03-10、AC-CVS-04-1、AC-CVS-04-2、AC-CVS-04-5、AC-CHAT-90-10、AC-CHAT-90-15
+- 内容：
+  1. 语义同 FE-680 第 1～6 条。模型在 `Protocol.kt`、`Store.kt`；`setConversations`（`Store.kt` 第 493 行，调用处 `IMClient.kt` 第 2040 行）；总未读（`IMClient.kt` 第 2267 行，现在是 `sumOf { it.unread }`）。
+  2. **本地库物理清除**（F-CVS-03 规则 6 ②，AC-CVS-03-10，R-CB-02）：处理 `convs` 和 `convDeleted` 时对任何会话删除 `seq < minSeq` 的消息行和引用文字，缓存目录删掉对应的 `fileId + variant` 文件（已有的 `forgetFiles`）；SQLite 空闲页按 C4 的做法处理（同 FE-661 第 3 条）；用例对本地库文件（含 `-wal`）和缓存目录做字节搜索。本地清除失败下次启动再清（F-CVS-03 异常）：本地库记"待清除"（版本 +1，原地升级，有用例）。
+  3. 置顶、免打扰进本地库，冷启动先显示，`convs` 回来以服务端为准（F-CVS-04 规则 2）。
+  4. `sdk-android` 的 `AndroidLocalDatabase.kt` 走同样的升级和清除路径。
+  5. 共享向量和 `frames.json`（`ChatSyncVectorsTest.kt`、`VectorsTest.kt`）。
+- 工作量：2.5 人日（sdk-kotlin）
+
+### FE-682 sdk-swift：会话设置、删除、本地库物理清除
+- 优先级：P0
+- 批次：C5
+- 仓库：tianting-sdk-swift
+- 依赖：FE-680
+- AC：AC-CVS-03-2、AC-CVS-03-5、AC-CVS-03-10、AC-CVS-04-1、AC-CVS-04-2、AC-CVS-04-5、AC-CHAT-90-10、AC-CHAT-90-15
+- 内容：
+  1. 语义同 FE-681。`setConversations`（`Store.swift` 第 556 行，调用处 `Client.swift` 第 1016 行）、`totalUnread()`（`Client.swift` 第 589 行）；`setConvPinned(_:_:)` 等用 `async throws`。
+  2. 本地库：已有"有清除的行时 `VACUUM`"的路径，物理清除走同一路径；缓存走 `forgetFile`；"待清除"标记同 FE-681 第 2 条。
+  3. 共享向量（`ChatSyncVectorTests.swift`）、`frames.json`（`VectorTests.swift`、`SchemaValidator.swift`）。
+- 工作量：2.5 人日（sdk-swift）
+
+### FE-683 H5：会话菜单、置顶和免打扰显示、删除、总未读
+- 优先级：P0
+- 批次：C5
+- 仓库：tianting-web
+- 依赖：FE-680
+- AC：AC-CVS-01-6、AC-CVS-02-2、AC-CVS-02-3、AC-CVS-02-4、AC-CVS-02-5、AC-CVS-03-2、AC-CVS-03-8、AC-CVS-04-1、AC-CVS-04-2、AC-CVS-04-5、AC-CHAT-90-8、AC-CHAT-90-9
+- 内容：
+  1. **会话菜单**（F-UI-04 规则 9 改写，第 13.3 节）：`pages/ChatsPage.tsx` 的会话项窄屏长按、宽屏右键、键盘（会话项可聚焦，菜单键或 Shift+F10 打开，方向键选，Esc 关，同 C4 消息菜单的做法）；菜单"置顶 / 取消置顶""免打扰 / 取消免打扰""删除"，文字按当前状态；`features.convSettings` 关时没有菜单（AC-CVS-01-6）。4220 提示"最多置顶 20 个会话"，4290 提示"操作过于频繁"，其他失败按 SDK 回滚后提示。
+  2. 置顶项背景区分（新 token，深色模式，第 57 条）；免打扰：未读显示小红点（无数字），摘要前"[N 条]"，右侧免打扰图标（有可读名称，AC-CVS-02-3）；前缀优先级和 C4 的"[有人@我]""[草稿]"合并（第 61 条）。
+  3. 标签角标和 `document.title`（`App.tsx` 第 266 行）按 SDK 的 `totalUnread`：AC-CVS-02-2 显示 5，02-4 标题"天听"，02-5 显示 3。
+  4. 删除：确认框；确认后清除草稿（`im/drafts.ts`）、失败消息、内存里的 `blob:`、这个会话正在上传和排队的附件（第 59 条）；取消时都不变（AC-CVS-03-8）。从"我的群聊"进入已删除的群显示空的聊天页，可以发言（规则 4）。收到 `convDeleted` 时同样清这个标签页的草稿。
+  5. 多端：另一个标签页（独立连接）或设备的改动 2 秒内反映到列表（AC-CVS-04-1、04-5）；重连后和服务端一致（AC-CVS-04-2）；删除后对方再发，会话重新出现、只有新消息（AC-CVS-03-2）。
+  6. 新增图标进 PRD-ui 6.6 节清单、颜色走 token（AC-CHAT-90-8、90-9，TC-CHAT-90-36、37）。
+- 工作量：2 人日（H5）
+
+### FE-684 Android：会话菜单、置顶和免打扰显示、删除、总未读
+- 优先级：P0
+- 批次：C5
+- 仓库：tianting-android
+- 依赖：FE-681
+- AC：AC-CVS-01-6、AC-CVS-02-2、AC-CVS-02-3、AC-CVS-02-5、AC-CVS-02-6、AC-CVS-03-2、AC-CVS-03-8、AC-CVS-04-1、AC-CVS-04-2、AC-CVS-04-5、AC-CHAT-90-8、AC-CHAT-90-9
+- 内容：
+  1. 同 FE-683 第 1、2、4、5 条：`ui/pages/ChatsPage.kt` 的会话项加长按（`combinedClickable`）和菜单（`DropdownMenu`），辅助操作（`customActions`，第 13.4 节"长按菜单要有辅助操作"）；"消息"标签角标在 `ui/pages/Common.kt` 第 64～65 行，读 `ImSession.totalUnread`（SDK 新口径）。
+  2. 删除：确认框；草稿（`core/ImSession.kt` 的 `drafts`）、失败消息、缓存文件（`core/Attachments.kt`）、正在上传和排队的附件都清除；AC-CVS-03-10 的界面部分（冷启动后只显示新消息，本地库搜不到特征串，`AccountKillE2e` 那套真实杀进程的写法）。
+  3. **AC-CVS-02-6**：App 前台收到免打扰会话的消息，列表更新，不响铃、不弹通知。现在 App 没有通知和提示音代码，用例断言 `NotificationManager.getActiveNotifications()` 为空、提示音替身没有调用；C3 加了通知后 FE-653 补跑（第 58 条）。
+  4. 可读名称、深色、token。
+- 工作量：3 人日（Android）
+
+### FE-685 iOS：会话菜单、置顶和免打扰显示、删除、总未读
+- 优先级：P0
+- 批次：C5
+- 仓库：tianting-ios
+- 依赖：FE-682
+- AC：AC-CVS-01-6、AC-CVS-02-2、AC-CVS-02-3、AC-CVS-02-5、AC-CVS-02-6、AC-CVS-03-2、AC-CVS-03-8、AC-CVS-04-1、AC-CVS-04-2、AC-CVS-04-5、AC-CHAT-90-8、AC-CHAT-90-9
+- 内容：
+  1. 同 FE-684。`Kit/Sources/TiantingAppKit/UI/Pages/ChatsPage.swift` 的会话项加 `.contextMenu` 和 `accessibilityAction`；"消息"标签角标在 `UI/RootView.swift` 第 179 行，`Model/IMStore.swift` 第 55 行取 SDK 的 `totalUnread()`。
+  2. 删除：草稿（`Core/Drafts.swift`）、失败消息、缓存、上传都清除；AC-CVS-03-10 的界面部分。
+  3. **AC-CVS-02-6**：断言 `UNUserNotificationCenter` 已送达的通知为空、提示音替身没有调用；C3 加了通知后 FE-655 补跑。**App 图标角标 C5 不设**（随 C3，第 60 条）。
+- 工作量：3 人日（iOS）
+
+### FE-686 C5 三端验收
+- 优先级：P0
+- 批次：C5
+- 仓库：tianting-web、tianting-android、tianting-ios、三套 SDK
+- 依赖：FE-683、FE-684、FE-685、BE-489
+- AC：AC-CVS-01-6、AC-CVS-03-2、AC-CVS-03-5、AC-CVS-03-10、AC-CVS-04-1、AC-CVS-04-2、AC-CVS-04-5、AC-CHAT-90-8、AC-CHAT-90-9、AC-CHAT-90-15
+- 内容：
+  1. 按 TC-CVS 落地三端用例（Playwright、Compose UI Test、XCUITest，真实 im-server 测试模式，`IM_CONV_SETTINGS_ENABLED=1`；涉及 @ 的再开 `IM_MSG_ACTIONS_ENABLED=1`）；端到端 AC（AC-CVS-03-2、04-1、04-2、04-5）三端轮换 D1、D2 和对方，各留结果。
+  2. 【全部】的 C5 部分：AC-CHAT-90-8、90-9（会话菜单、置顶背景、免打扰图标、删除确认框，TC-CHAT-90-36、37）；90-15（TC-CHAT-90-39）。
+  3. 写验收报告 `docs/reports/c5-frontend-acceptance-<日期>.md`，写明推送相关的 AC 挡在 C3（BE-490），AC-CVS-02-6 C3 加通知后补跑，新消息播报按 P-39 ① 仍是已知缺口。
+- 工作量：1.5 人日（测试）
+
+---
+
 ## 实现时发现的问题
 
 PRD 冻结，没有改，都按最保守的理解实现，等 Frank 决定。第 1 条是协议文件和服务端不一致，SDK 跟服务端走。S1、S3、K5、K7 已处理，三套 SDK 的提交是 tianting-sdk-ts@20be2f0、tianting-sdk-kotlin@4feed19、tianting-sdk-swift@5f3f614，结果是本地的，CI 不运行。
@@ -883,3 +987,16 @@ C4 分发时发现的（2026-11-10，PRD 冻结，没有改；按"建议"一列�
 | 51 | F-FILE-04 规则 5、AC-RCL-03-12（FE-669） | 下载被中止（撤回）时，系统的 CFNetwork 日志会记下被取消请求的完整预签名地址，地址里服务端加的 `response-content-disposition` 带着文件名。App 关不掉系统日志（同 C2 的 I11），C4 让"下载中被取消"变成常见情况 | iOS 端照记：`check_e2e_leftovers.py` 把 CFNetwork 带签名地址的行算系统日志，计数报告、不判失败（本次 1 行）；App 自己的日志没有文件名。**要 Frank 定**：要不要让服务端给原生客户端的下载地址不带文件名（客户端本来就不用它；H5 下载要用，可以按平台区分），这是协议和服务端的改动。**P-45 已落实（tianting-server@8527b7b、tianting-sdk-swift@c97d08e、tianting-sdk-kotlin@d6603f5、tianting-sdk-ts@7739c55、tianting-ios@62e3355）**：PRD-chat v1.7 F-FILE-03 规则 4，`/v1/files/urls` 可选 `bareDisposition`，两套原生 SDK 带 `true`，文件地址只签 `attachment`；`check_e2e_leftovers.py` 改成有一行就失败，`C4FilesE2ETests` 复跑 0 行（原来 1 行，本地） |
 | 52 | AC-RCL-03-12、问题 33、44（FE-663 遗留，FE-669 发现） | sdk-swift 的 `URLSessionObjectStoreTransport.get` 用 `URLSession.download(for:)`：撤回时 SDK 取消下载，SDK 自己的缓存和 `.part-` 都删了，但 URLSession 放在 App 临时目录里的 `CFNetworkDownload_*.tmp` 留着（模拟器上每取消一次多一个，重启 App 也不清），所以 iOS 上"不留部分文件"只做到 SDK 管的部分 | 页面不碰 URLSession 的临时文件（同时在下载的别的文件也在那里）。`testTC_RCL_03_12_…` 断言 SDK 缓存不留，URLSession 临时文件用 `XCTExpectFailure` 标成已知问题。建议 sdk-swift 改成边下边写到 `.part-`（例如 `bytes(for:)`）或取消后删掉临时文件，另开任务；不改产品口径。**已修（tianting-sdk-swift@c953dde、tianting-ios@4e6ecdb）**：GET 改成 data task 边下边写 SDK 自己的 `.part-`，失败或取消时删除，不再有 `CFNetworkDownload_*.tmp`；sdk-swift `ObjectStoreDownloadTests` 5 个（真实 socket，取消、断连、完整、403、启动前取消；改回旧实现 4 个失败），`TC_RCL_03_12` 去掉 `XCTExpectFailure` 后通过（本地） |
 | 53 | AC-ACC-03-37 前半（TC-ACC-03-40，FE-672 全量回归发现） | iOS `AccountE2ETests.testTC_ACC_03_40_real4290StaysHere` 在本机稳定失败：[IM 钟] 前进 61 分钟后 45 秒内等不到"退避重试成功"（会话保存次数没有增加）。单独重跑仍失败；把 sdk-swift 切回 C4 改动前的 b73dd2e 也失败，和问题 52、P-45 的改动无关 | 没有查清是用例、App 的退避还是服务端限流窗口（[IM 钟]）的问题，不属于 C4 范围，本次没有改。要另开任务查（先在 C1 验收时的提交上复跑确认是不是回归） |
+
+C5 分发时发现的（2026-11-10，PRD 冻结，没有改；按"建议"一列实现，Frank 不同意再改）。都是缺口或记录，**要 Frank 定的在 backend-chat 第 72、81、82、86 条**（第 86 条影响 AC-CVS-03-10 用例的写法）。编号接着上面第 53 条：
+
+| # | 位置 | 问题 | 建议 |
+|---|---|---|---|
+| 54 | F-CVS-03 规则 6、F-GRP-03 规则 4 | 规则 6 只写了"`truncated` 时不推断"；`deletedTruncated=true` 时，不在 `convs` 也不在 `deleted` 里的群可能只是被截掉的删除记录 | `truncated` 或 `deletedTruncated` 为 true 都不推断"你已不在该群"（BE-487 的向量有用例） |
+| 55 | F-CVS-03 规则 2、3、7，F-CVS-04 规则 1 | 收到 `convDeleted` 的其他设备怎么更新本地没写全 | `minSeq = clearedSeq + 1`、`readSeq = max(readSeq, clearedSeq)`、不再置顶、保留免打扰；按规则 6 ② 物理清除；**这台设备上这个会话的草稿也清除**（规则 7 的"清除本地草稿"按会话算，不只是操作的那台） |
+| 56 | F-CVS-01 异常 | "写入失败 5000，客户端回滚乐观显示"；4290 在 `errors.json` 是可重试 | 乐观更新，任何错误（5000、4220、4290、4030）回滚并提示，**不自动重试**（自动重试加上"后到的覆盖"会让用户看到状态来回跳）；4290 提示"操作过于频繁" |
+| 57 | 第 13.3 节、PRD-ui 第 6 节 | 置顶背景色、免打扰图标都不在 PRD-ui 的 token 和图标清单里 | 按第 13.3 节"新图标加入 6.6 节清单，新增的颜色要有深色 token"：BE-488 第 2 条在 PRD-ui 6.1、6.6 节加（带对比度），三端用同一个 token 名 |
+| 58 | AC-CVS-02-6 | 留在 C5 还是挪到 C3：预期是"不响铃不弹通知" | 留在 C5：只验客户端前台行为，不要推送通道；三端现在没有任何系统通知、提示音代码（2026-11-10 调查），用例断言没有通知、提示音替身没有调用；C3 恢复加通知后 FE-653、FE-655 补跑 TC-CVS-02-06 |
+| 59 | F-CVS-03 规则 7 | "清除本地消息、草稿、缓存文件"没提这个会话正在上传、排队的附件 | 取消正在上传的（`cancelUpload`，服务端删临时对象）、丢弃排队的，和失败消息一样清除 |
+| 60 | F-APN-04 规则 2、F-CVS-02 规则 4 | iOS App 图标角标的口径写在推送里（C3） | C5 只做 App 内"消息"标签角标和 H5 标题；App 图标角标随 C3（要 `.badge` 授权，R-CF-20），C5 不设 |
+| 61 | F-CVS-02 规则 5 | "[N 条]"的 N 超过 99 怎么显示没写；免打扰会话有 @ 我时是红点还是数字没写 | N 照实显示（这是摘要不是角标，F-UI-04 规则 4 的"99+"只管角标）；有 @ 我时仍是小红点，前缀"[有人@我]"（规则 5 没有例外，总未读里计入提及） |

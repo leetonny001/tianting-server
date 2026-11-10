@@ -1,7 +1,7 @@
-# 测试用例：聊天产品非功能（CHAT，C1、C2、C3、C4 部分）
+# 测试用例：聊天产品非功能（CHAT，C1～C5 部分）
 
 > 依据：[PRD-chat v1.7](../prd/PRD-chat-v1.7.md)（冻结）第 15 节 F-CHAT-90。任务单：[backend-chat](../tasks/backend-chat.md)、[frontend-chat](../tasks/frontend-chat.md)。
-> 范围：标了【C1】【C2】【C3】【C4】【全部】的 AC-CHAT（CH-27）。**【全部】的 AC 每个里程碑发布前跑一次，这里写到 C3 为止的范围**（第 15 节累计表）：C1、C2 是 TC-CHAT-90-01～17，C3 增加的部分是 TC-CHAT-90-19～25（C3 已暂停），C4 的 AC-CHAT-90-7 和 C4 增加的部分是 TC-CHAT-90-26～34（AC-CHAT-90-3 在 C4 没有新增依赖，不另写），C5、C6 增加的部分随对应里程碑。
+> 范围：标了【C1】【C2】【C3】【C4】【全部】的 AC-CHAT（CH-27）。**【全部】的 AC 每个里程碑发布前跑一次，这里写到 C3 为止的范围**（第 15 节累计表）：C1、C2 是 TC-CHAT-90-01～17，C3 增加的部分是 TC-CHAT-90-19～25（C3 已暂停），C4 的 AC-CHAT-90-7 和 C4 增加的部分是 TC-CHAT-90-26～34（AC-CHAT-90-3 在 C4 没有新增依赖，不另写），C5 增加的部分是 TC-CHAT-90-35～39（90-1、90-3 在 C5 不变，90-5、90-17 是"—"，不另写），C6 增加的部分随对应里程碑。
 > 判定（R-CQ-22）：主判据用绝对值，增幅只记录；每条写明负载和样本数（≥ 1000），生产配置，3 次取最差，报告写基线提交号。**所有数字都未校准；开发机结果只记录，不算通过，发布判定等 P-12**。
 >
 > 通用约定：
@@ -48,6 +48,11 @@
 | TC-CHAT-90-32 | 新帧向量（C4）：服务端和三套 SDK 都跑 | AC-CHAT-90-10 | 单测（四方） | P0 |
 | TC-CHAT-90-33 | 共享用例（C4：撤回、引用、提及） | AC-CHAT-90-15 | SDK 单测（三套） | P0 |
 | TC-CHAT-90-34 | 指标和配置检查（C4） | AC-CHAT-90-17 | 后端 e2e | P0 |
+| TC-CHAT-90-35 | 开关全关（C5：IM_CONV_SETTINGS_ENABLED 关） | AC-CHAT-90-2 | 后端 e2e + 性能 | P0 |
+| TC-CHAT-90-36 | 会话菜单、置顶、免打扰显示符合 B-1 和 B-3，图标在清单 | AC-CHAT-90-8 | Playwright（H5）+ 原生 UI 测试 | P0 |
+| TC-CHAT-90-37 | C5 页面：axe-core、深色模式、键盘打开会话菜单 | AC-CHAT-90-9 | Playwright（H5）+ 原生 UI 测试 | P0 |
+| TC-CHAT-90-38 | 新帧向量（C5）：服务端和三套 SDK 都跑 | AC-CHAT-90-10 | 单测（四方） | P0 |
+| TC-CHAT-90-39 | 共享用例（C5：置顶、删除、总未读） | AC-CHAT-90-15 | SDK 单测（三套） | P0 |
 
 ---
 
@@ -520,3 +525,70 @@
   1. `im_recalls_total{by}` 三个取值都增加
   2. 配置检查有开关状态、隔离密钥已设置、隐私说明版本，不含密钥
   3. 标签没有 userId、`convId`、`msgId`
+
+### TC-CHAT-90-35 开关全关（C5：IM_CONV_SETTINGS_ENABLED 关）
+- 关联 AC：AC-CHAT-90-2
+- 优先级：P0
+- 批次：C5（【全部】，C5 增加的部分）
+- 层级：后端 e2e + 性能
+- 环境：E1；TC-PERF 在 EP（P-12）
+- 前置条件：`IM_CONV_SETTINGS_ENABLED=0`，其他新开关也关
+- 步骤：
+  1. 跑现有 `server/e2e` 全部用例（不改代码）
+  2. 跑 TC-PERF
+- 预期结果：
+  1. e2e 全过；`convs` 没有 `deleted`、`deletedTruncated`、`pinned`、`notifyOff` 等新字段
+  2. TC-PERF 判定不变（开发机只记录）
+
+### TC-CHAT-90-36 会话菜单、置顶、免打扰显示符合 B-1 和 B-3，图标在清单
+- 关联 AC：AC-CHAT-90-8
+- 优先级：P0
+- 批次：C5（【全部】，C5 增加的部分）
+- 层级：Playwright（H5）+ 原生 UI 测试
+- 环境：Playwright（H5）+ 模拟器
+- 前置条件：C5 新增界面：会话菜单（置顶、免打扰、删除）、删除确认框、置顶背景、免打扰图标和小红点、"[N 条]"前缀
+- 步骤：
+  1. 扫描文案和构建产物（PRD-ui B-1、B-3 的检查脚本）
+  2. 核对新增图标
+- 预期结果：
+  1. 符合 B-1、B-3
+  2. 免打扰图标在 PRD-ui 6.6 节清单里（backend-chat BE-488 第 2 条加入）
+
+### TC-CHAT-90-37 C5 页面：axe-core、深色模式、键盘打开会话菜单
+- 关联 AC：AC-CHAT-90-9
+- 优先级：P0
+- 批次：C5（【全部】，C5 增加的部分）
+- 层级：Playwright（H5）+ 原生 UI 测试
+- 环境：Playwright（H5）+ 模拟器
+- 前置条件：同 TC-CHAT-90-36 的页面
+- 步骤：
+  1. H5 跑 axe-core（浅色、深色）；原生跑等价检查（Android 语义树、iOS 系统审计）
+  2. H5 只用键盘：Tab 到会话项，菜单键或 Shift+F10 打开会话菜单，方向键、回车、Esc；原生用辅助操作打开
+- 预期结果：
+  1. 没有 `button-name` 违规（免打扰图标、菜单项有可读名称）；置顶背景等新增颜色都来自 token
+  2. 键盘和辅助操作都能打开菜单并执行"置顶"
+  3. 新消息播报按 P-39 ① 不在本批，记已知缺口
+
+### TC-CHAT-90-38 新帧向量（C5）：服务端和三套 SDK 都跑
+- 关联 AC：AC-CHAT-90-10
+- 优先级：P0
+- 批次：C5（【全部】，C5 增加的部分）
+- 层级：单测（四方）
+- 环境：本地（服务端、sdk-ts、sdk-kotlin、sdk-swift）
+- 前置条件：第 15 节累计表 C5：`convSet`、`convDelete`、`convSettingsChanged`、`convDeleted`，`Conversation` 的 `pinned`、`pinnedAt`、`notifyOff`，`convs` 的 `deleted`、`deletedTruncated`；`frames.json` 已有 BE-482 的用例
+- 步骤：
+  1. 服务端、三套 SDK 跑 `protocol/vectors/frames.json`；sdk-ts 做 Schema 校验
+- 预期结果：
+  1. 全部通过（含 `convSet` 都不带字段、`upToSeq` 为负的非法用例）
+
+### TC-CHAT-90-39 共享用例（C5：置顶、删除、总未读）
+- 关联 AC：AC-CHAT-90-15
+- 优先级：P0
+- 批次：C5（【全部】，C5 增加的部分）
+- 层级：SDK 单测（三套）
+- 环境：本地（三套 SDK）
+- 前置条件：`chat-sync.json` 已有 BE-487 的用例
+- 步骤：
+  1. 三套 SDK 跑 `chat-sync.json`、`account-session.json`
+- 预期结果：
+  1. 全部通过，含置顶排序、`deleted` 判断（不生成 `removed` 快照，`deletedTruncated` 时不推断）、`seq < minSeq` 的本地清除、`convDeleted` 之后的状态、总未读

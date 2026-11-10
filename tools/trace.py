@@ -5,7 +5,7 @@
       python3 tools/trace.py --check    # 只检查，有缺口时退出码为 1（可用于 CI）
 
 规则：
-- PRD：PRD-core v1.6 和它的组成部分（PRD-social v1.2、PRD-ui v1.4、PRD-admin v1.4、PRD-ops v1.5），PRD-live v1.2 已冻结的部分，PRD-chat v1.7 的 C1、C2、C3、C4 和【全部】。
+- PRD：PRD-core v1.6 和它的组成部分（PRD-social v1.2、PRD-ui v1.4、PRD-admin v1.4、PRD-ops v1.5），PRD-live v1.2 已冻结的部分，PRD-chat v1.7 的 C1、C2、C3、C4、C5 和【全部】。
 - PRD-live v1.0 只统计 3.3 节冻结、且归属 L1 或“随 CS-044”的 AC-PUSH（FROZEN_PUSH_EXCLUDE 排除 L2、L3）；聊天室和迁移仍是草稿，随里程碑定稿后再纳入。
 - 任务单：docs/tasks/*.md 里的 `### BE-xxx`（im-server）、`### CS-xxx`（console-server）、`### FE-xxx`（SDK、H5、两个后台前端）。
 - 带【后端】的 AC 必须有 BE 或 CS 任务；带【前端】的 AC 必须有 FE 任务；
@@ -21,8 +21,8 @@ ROOT = Path(__file__).resolve().parent.parent
 PRDS = [ROOT / "docs/prd" / n for n in (
     "PRD-core-v1.6.md", "PRD-social-v1.2.md", "PRD-ui-v1.4.md", "PRD-admin-v1.4.md", "PRD-ops-v1.5.md",
     "PRD-live-v1.2.md", "PRD-chat-v1.7.md")]
-# PRD-chat CH-27：C1、C2、公共部分，加上 Frank 2026-11-10 决定继续的 C3（已暂停，AC 和用例保留）和 C4（"先做功能"）。C5、C6 决定继续时把里程碑加进来
-CHAT_MILESTONES = ("【C1】", "【C2】", "【C3】", "【C4】", "【全部】")
+# PRD-chat CH-27：C1、C2、公共部分，加上 Frank 2026-11-10 决定继续的 C3（已暂停，AC 和用例保留）、C4（"先做功能"）和 C5（"开始 C5"）。C6 决定继续时把里程碑加进来
+CHAT_MILESTONES = ("【C1】", "【C2】", "【C3】", "【C4】", "【C5】", "【全部】")
 # PRD-live v1.0 3.2 节：L2、L3 的 AC 随对应里程碑分发任务和用例
 FROZEN_PUSH_EXCLUDE = {
     "AC-PUSH-02-7", "AC-PUSH-06-17",

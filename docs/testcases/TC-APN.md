@@ -1,7 +1,7 @@
 # 测试用例：离线推送（APN，C3）
 
 > 依据：[PRD-chat v1.7](../prd/PRD-chat-v1.7.md)（冻结）第 4.4、4.5、7 节，第 13、15 节的 C3 部分，第 20.3 节；官方文档核对见 [backend-chat](../tasks/backend-chat.md) 文末第 34～46 条（PENDING P-40）。任务单：[backend-chat](../tasks/backend-chat.md) BE-406、BE-450～BE-460，[console-chat](../tasks/console-chat.md) CS-203，[frontend-chat](../tasks/frontend-chat.md) FE-650～FE-656。
-> 范围：标了【C3】的 AC-APN（CH-27，Frank 2026-11-10 决定继续 C3）。AC-APN-03-3（【C4】撤回替换通知）是 C4 分发时写的 TC-APN-03-03，**依赖 C3 的推送实现，C3 恢复后执行**（backend-chat BE-481）；AC-APN-04-4（【C5】角标口径）随 C5，编号 TC-APN-04-04 留给它。AC-APN-02-11 已废弃（第 16.3 节），TC-APN-02-11 不使用。AC-ACC-04-26 的用例在 [TC-ACC](TC-ACC.md)（TC-ACC-04-30），AC-CHAT-90-13 和【全部】的 C3 部分在 [TC-CHAT](TC-CHAT.md)（TC-CHAT-90-18～25）。
+> 范围：标了【C3】的 AC-APN（CH-27，Frank 2026-11-10 决定继续 C3）。AC-APN-03-3（【C4】撤回替换通知）是 C4 分发时写的 TC-APN-03-03，**依赖 C3 的推送实现，C3 恢复后执行**（backend-chat BE-481）；AC-APN-04-4（【C5】角标口径）是 C5 分发时写的 TC-APN-04-04，同样依赖 C3 的推送实现，C3 恢复后执行（backend-chat BE-490）。AC-APN-02-11 已废弃（第 16.3 节），TC-APN-02-11 不使用。AC-ACC-04-26 的用例在 [TC-ACC](TC-ACC.md)（TC-ACC-04-30），AC-CHAT-90-13 和【全部】的 C3 部分在 [TC-CHAT](TC-CHAT.md)（TC-CHAT-90-18～25）。
 >
 > 通用约定：
 > - 环境：**E1 + 假通道**（E1 单节点：1 个 im-server，development，`IM_TEST_MODE=1`，SQLite 独立库；再加 `IM_OFFLINE_PUSH_ENABLED=1` 和 BE-406 的假 APNs、假 FCM，`IM_APNS_ENDPOINT`、`IM_FCM_ENDPOINT` 指向它们；`.p8` 和服务账号 JSON 由测试在临时目录现场生成，权限 0600）；**E1 + 假通道 + console-server**（`CON_TEST_MODE=1`，Postgres）；**SDK 单测**（sdk-kotlin、sdk-swift：`FakeTransport` + 假时钟 + 授权、Play 服务、令牌三个替身）；**模拟器 + 替身**（Android 模拟器、iOS Simulator，App 里注入同样的替身，连真实 im-server 测试模式 + 假通道）；**真机 + 真实通道**（P-13 真机 + 第 20.3 节 Frank 的 APNs Key、Firebase 项目和服务账号 + 服务器能访问 Apple、Google）；**EP 性能**（目标机，P-12）。开发机不安装软件。
@@ -55,6 +55,7 @@
 | TC-APN-04-01 | 真机：隐藏模式点通知冷启动进会话列表 | AC-APN-04-1 | 手工 | P0 |
 | TC-APN-04-02 | 真机：详情模式点通知进会话 | AC-APN-04-2 | 手工 | P0 |
 | TC-APN-04-03 | deep link 的 convId 不属于当前账号：进会话列表 | AC-APN-04-3 | 原生 UI 测试 | P0 |
+| TC-APN-04-04 | 角标口径：普通未读加免打扰会话的提及（等 C3） | AC-APN-04-4 | 后端 e2e | P0 |
 | TC-APN-04-05 | 300 个离线设备的群：不带 badge | AC-APN-04-5 | 后端 e2e | P0 |
 | TC-APN-04-06 | 回到前台清除本 App 的通知 | AC-APN-04-6 | 原生 UI 测试 | P0 |
 | TC-APN-05-01 | 生产缺密钥、密钥 0644：拒绝启动，不泄露密钥 | AC-APN-05-1 | 后端单测 + e2e | P0 |
@@ -668,6 +669,22 @@
   1. 进会话列表，不显示任何该会话的内容，没有请求它的消息
   2. 未登录先到登录页，登录后进会话列表（账号不同）；未知路由忽略
 
+### TC-APN-04-04 角标口径：普通未读加免打扰会话的提及（等 C3）
+- 关联 AC：AC-APN-04-4
+- 优先级：P0
+- 批次：C5（随 backend-chat BE-490，等 C3）
+- 层级：后端 e2e
+- 环境：E1 + 假通道，`IM_CONV_SETTINGS_ENABLED=1`、`IM_MSG_ACTIONS_ENABLED=1`
+- 前置条件：u2 用账号登录、有 APNs 令牌、离线；普通会话共 3 条未读；免打扰的群 g1 未读 2 条，其中 1 条 @ u2
+- 步骤：
+  1. u1 给 u2 再发 1 条普通单聊消息
+  2. 看假 APNs 记录的请求
+  3. u2 用另一台在线设备把 g1 取消免打扰（`convSet`），u1 再发 1 条普通消息
+- 预期结果：
+  1. 第 1 条请求 `aps.badge=5`（3 + 新 1 + 提及 1，F-CVS-02 规则 4）
+  2. 第 3 步之后的请求 `aps.badge=7`（普通 5 + g1 的 2），角标缓存已被 `convSettings` 失效，不等 60 秒
+  3. C3 恢复前记"未执行（等 C3）"；聚合函数的单测在 C5（BE-484 第 5 条）
+
 ### TC-APN-04-05 300 个离线设备的群：不带 badge
 - 关联 AC：AC-APN-04-5
 - 优先级：P0
@@ -870,6 +887,6 @@ C1 的 3 条 AC 写了"推送令牌部分 C3 上线时验"（PRD v1.1 变更记�
 
 ## 说明
 
-- 用例编号按 AC 编号对齐（TC-APN-0X-YY 对应 AC-APN-0X-Y），所以有空号：TC-APN-02-11（AC 已废弃）、TC-APN-04-04（C5）。TC-APN-03-03 是 C4 的，等 C3 恢复后执行。
+- 用例编号按 AC 编号对齐（TC-APN-0X-YY 对应 AC-APN-0X-Y），所以有空号：TC-APN-02-11（AC 已废弃）。TC-APN-04-04 是 C5 分发时补的，和 TC-APN-03-03 一样等 C3 恢复后执行。TC-APN-03-03 是 C4 的，等 C3 恢复后执行。
 - TC-APN-01-02、02-09、05-04、05-05 里按 backend-chat 第 34～46 条"建议"一列写的断言（410 的 `timestamp`、重试间隔、JWT 重签、`ExpiredProviderToken`），Frank 改口径后同步改用例，不改 AC。
 - 真机用例（01-06、03-05、04-01、04-02、05-03、06-02）共 6 条，挡在 P-13；其中除 06-02 外都还挡在第 20.3 节（PENDING P-40）。
