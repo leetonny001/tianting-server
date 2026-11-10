@@ -2,7 +2,7 @@
 
 > 2026-11-05：依据升为 PRD-admin v1.1，AC-ADM-50-1～8 的预期不变（push 协议已冻结，对齐表见 PRD-live 4.7 节），用例不用改；协议层的用例见 [TC-PUSH](TC-PUSH.md)。
 
-> 依据：[PRD-admin v1.0](../prd/PRD-admin-v1.0.md) 第 5、6 节、第 9 节性能 AC（冻结）；[PRD-social v1.0](../prd/PRD-social-v1.1.md)（社交管理接口、解散群）；[ERRORS.md](../../protocol/ERRORS.md)。任务：[backend-admin.md](../tasks/backend-admin.md)、[console.md](../tasks/console.md) CS-020～CS-060、[frontend-admin.md](../tasks/frontend-admin.md) FE-410～FE-440，社交接口见 backend-social.md BE-114、BE-115、BE-122、BE-136。
+> 依据：[PRD-admin v1.0](../prd/PRD-admin-v1.0.md) 第 5、6 节、第 9 节性能 AC（冻结）；[PRD-social v1.0](../prd/PRD-social-v1.2.md)（社交管理接口、解散群）；[ERRORS.md](../../protocol/ERRORS.md)。任务：[backend-admin.md](../tasks/backend-admin.md)、[console.md](../tasks/console.md) CS-020～CS-060、[frontend-admin.md](../tasks/frontend-admin.md) FE-410～FE-440，社交接口见 backend-social.md BE-114、BE-115、BE-122、BE-136。
 >
 > 通用约定：
 > - 环境：console-server（Postgres，`CON_TEST_MODE=1`）+ im-server（`IM_TEST_MODE=1`，SQLite；性能 AC 另注明 Postgres）+ H5（tianting-web，验证客户端表现时）。console 以 `console` 调用方签名调用 im-server 管理地址；第二批用例另配 `console-msgread`，并设 `IM_V13_ADMIN_FEATURES=1`。
@@ -1480,6 +1480,7 @@
 
 ### TC-ADM-31-06 删除的边界错误码
 - 关联 AC：AC-ADM-31-6
+- 关联说明：PRD-admin v1.4 起 AC-ADM-31-6 的幂等扩展到已撤回的消息，那部分和 PRD-chat 的撤回用例同一个断言，由 [TC-RCL-04-01](TC-RCL.md) 覆盖（关联 AC-RCL-04-1）；本用例的 4 步不变
 - 优先级：P0
 - 层级：后端 e2e
 - 前置条件：无。

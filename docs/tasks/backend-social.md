@@ -2,7 +2,7 @@
 
 | 项 | 内容 |
 |---|---|
-| 依据 | [PRD-social v1.0](../prd/PRD-social-v1.1.md)（已冻结，204 条 AC）、[PRD-core v1.3](../prd/PRD-core-v1.3.md) 第 11～13 节、[ARCH-v1](../arch/ARCH-v1.md)、[协议](../../protocol/README.md)、[错误码](../../protocol/ERRORS.md)、[管理接口](../../protocol/ADMIN.md) |
+| 依据 | [PRD-social v1.0](../prd/PRD-social-v1.2.md)（已冻结，204 条 AC）、[PRD-core v1.3](../prd/PRD-core-v1.3.md) 第 11～13 节、[ARCH-v1](../arch/ARCH-v1.md)、[协议](../../protocol/README.md)、[错误码](../../protocol/ERRORS.md)、[管理接口](../../protocol/ADMIN.md) |
 | 负责 | 后端（AI） |
 | 仓库 | im-server（GitHub 仓库 `tianting-server`，本地 `im-mvp/server/`）；协议文档在同仓库 `protocol/` |
 | 起点 | M2 代码：B0～B5 全部完成（[backend.md](backend.md)），迁移到 0003，`store/storetest` 契约测试、`delivery.Router`、`cache.Invalidator`、`ratelimit.Limiter` 接口已就位 |

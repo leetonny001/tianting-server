@@ -2,7 +2,7 @@
 
 | 项 | 内容 |
 |---|---|
-| 依据 | [PRD-admin v1.0](../prd/PRD-admin-v1.0.md)（冻结）第 3 节 F-KEY-01～05、第 6 节、第 8.1 节 G-ADM-xx、第 10、11 节；[PRD-core v1.3](../prd/PRD-core-v1.3.md)；[PRD-social v1.0](../prd/PRD-social-v1.1.md)（社交管理接口、`DissolveGroup`）；[ARCH-v1](../arch/ARCH-v1.md)；[ADMIN.md](../../protocol/ADMIN.md)、[ERRORS.md](../../protocol/ERRORS.md)、[errors.json](../../protocol/errors.json) |
+| 依据 | [PRD-admin v1.0](../prd/PRD-admin-v1.0.md)（冻结）第 3 节 F-KEY-01～05、第 6 节、第 8.1 节 G-ADM-xx、第 10、11 节；[PRD-core v1.3](../prd/PRD-core-v1.3.md)；[PRD-social v1.0](../prd/PRD-social-v1.2.md)（社交管理接口、`DissolveGroup`）；[ARCH-v1](../arch/ARCH-v1.md)；[ADMIN.md](../../protocol/ADMIN.md)、[ERRORS.md](../../protocol/ERRORS.md)、[errors.json](../../protocol/errors.json) |
 | 负责 | 后端（AI） |
 | 仓库 | tianting-server（本仓库 `server/`、`protocol/`） |
 | 起点 | 一期代码：`server/internal/admin`（静态密钥 `X-Admin-Key`，与 `/ws` 共用一个 mux，见 `server/internal/app/app.go`）、`store` 迁移 0001～0003、`hub`（单节点在线表）、BE-003 测试模式与 `POST /admin/test/clock`（[IM 钟]） |

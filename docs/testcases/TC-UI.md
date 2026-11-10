@@ -1,6 +1,6 @@
 # 测试用例：客户端 UI（UI，M3）
 
-> 依据：[PRD-ui v1.0](../prd/PRD-ui-v1.0.md)（冻结），本文件覆盖【M3】AC；数据与规则见 [PRD-core v1.3](../prd/PRD-core-v1.3.md)、[PRD-social v1.0](../prd/PRD-social-v1.1.md)、[PRD-admin v1.0](../prd/PRD-admin-v1.0.md)（第一批解散群）；SDK 行为见 [SDK 设计说明](../sdk/README.md)；任务见 [frontend-ui.md](../tasks/frontend-ui.md)。
+> 依据：[PRD-ui v1.0](../prd/PRD-ui-v1.0.md)（冻结），本文件覆盖【M3】AC；数据与规则见 [PRD-core v1.3](../prd/PRD-core-v1.3.md)、[PRD-social v1.0](../prd/PRD-social-v1.2.md)、[PRD-admin v1.0](../prd/PRD-admin-v1.0.md)（第一批解散群）；SDK 行为见 [SDK 设计说明](../sdk/README.md)；任务见 [frontend-ui.md](../tasks/frontend-ui.md)。
 >
 > 通用约定：
 > - 测试用户同 PRD-ui 2.1 节：alice、bob、carol、dave、eve 已导入，昵称与 userId 相同（另有说明除外）；`zhangsan` 昵称"张三"；`nobody` 不存在；frank 已导入但与 alice 没有任何关系。"开放模式 / 好友制"同 PRD-social 第 6 节，默认开放模式。
@@ -837,15 +837,17 @@
 - 关联 AC：AC-UI-09-1
 - 优先级：P0
 - 层级：Playwright
-- 前置条件：已登录（alice），窄屏 375×812，测试模式 im-server（`IM_TEST_MODE=1 IM_DEMO_LOGIN=1`），Vite proxy 同源。一条已发送消息。
+- 前置条件：已登录（alice），窄屏 375×812，测试模式 im-server（`IM_TEST_MODE=1 IM_DEMO_LOGIN=1`），Vite proxy 同源。一条已发送消息。第 1～3 步 C4 开关关闭（`IM_MSG_ACTIONS_ENABLED=0`，`features.msgActions=false`）；第 4 步开关开启（`IM_MSG_ACTIONS_ENABLED=1`，配好 `IM_QUARANTINE_KEY`），alice 1 分钟内刚发的一条文本消息。（PRD-ui v1.4 改写 AC-UI-09-1）
 - 步骤：
   1. CDP 长按 500ms
   2. 关闭后按下 300ms 松开
   3. 按下后移动 15px 再保持 600ms
+  4. 开关开启后重新登录，长按那条刚发的消息 500ms
 - 预期结果：
   1. 第一次弹出菜单且只有"复制"
   2. 第二次不弹出
   3. 第三次不弹出
+  4. 菜单按消息状态：有"复制""引用""撤回"（PRD-ui F-UI-09 规则 3、4；"举报"随 C6）
 
 ### TC-UI-09-02 长按状态机单元测试
 - 关联 AC：AC-UI-09-1

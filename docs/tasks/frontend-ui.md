@@ -2,7 +2,7 @@
 
 | 项 | 内容 |
 |---|---|
-| 依据 | [PRD-ui v1.0](../prd/PRD-ui-v1.0.md)（冻结，280 条 AC）；背景：[PRD-core v1.3](../prd/PRD-core-v1.3.md)、[PRD-social v1.0](../prd/PRD-social-v1.1.md)（社交页面的数据和规则）、[PRD-admin v1.0](../prd/PRD-admin-v1.0.md)（第二批客户端提示）、[SDK 设计说明](../sdk/README.md)、[PLAN](../PLAN.md) 第 4 节（多仓库） |
+| 依据 | [PRD-ui v1.0](../prd/PRD-ui-v1.0.md)（冻结，280 条 AC）；背景：[PRD-core v1.3](../prd/PRD-core-v1.3.md)、[PRD-social v1.0](../prd/PRD-social-v1.2.md)（社交页面的数据和规则）、[PRD-admin v1.0](../prd/PRD-admin-v1.0.md)（第二批客户端提示）、[SDK 设计说明](../sdk/README.md)、[PLAN](../PLAN.md) 第 4 节（多仓库） |
 | 负责 | 前端（AI） |
 | 技术栈 | tianting-web：React + Vite + TypeScript，测试 Vitest + Testing Library（组件）、Playwright ≥ 1.48（Chromium + WebKit，`page.routeWebSocket`）、axe-core；tianting-sdk-ts：TypeScript，Vitest + `FakeTransport` / `FakeClock`；tianting-desktop：Tauri 2（macOS WKWebView、Windows WebView2）；原生端：Kotlin + Compose（Compose UI Test）、Swift + SwiftUI（XCUITest） |
 | 在已有任务之上 | H5 基础 FE-010～FE-020（[frontend.md](frontend.md)，Q13）不重复；本单的任务在其上补充。PRD-social 的 sdk-ts 社交协议层（好友、申请、黑名单、搜索、`users`、`myGroups`、M4 群命令、`tip`、`convRemoved.reason`）在 [frontend-social.md](frontend-social.md) 的 FE-100～FE-149，本单只做 PRD-ui 第 7 节的 SDK 缺口 G-UI-xx 和界面 |

@@ -1,6 +1,6 @@
 # 测试用例：社交关系与群聊补缺（SOC）
 
-> 依据：[PRD-social v1.0](../prd/PRD-social-v1.1.md)（已冻结）F-SOC-01～13（M3）、F-SOC-20～30（M4），5.4 节"操作 × ver"、5.6 节测试设施、8.3 节加锁规则、8.7 节并发测试、11.2 节存在性探测预算；[PRD-core v1.3](../prd/PRD-core-v1.3.md) 第 11～13 节；[ERRORS.md](../../protocol/ERRORS.md)。任务见 [backend-social.md](../tasks/backend-social.md)、[frontend-social.md](../tasks/frontend-social.md)。
+> 依据：[PRD-social v1.0](../prd/PRD-social-v1.2.md)（已冻结）F-SOC-01～13（M3）、F-SOC-20～30（M4），5.4 节"操作 × ver"、5.6 节测试设施、8.3 节加锁规则、8.7 节并发测试、11.2 节存在性探测预算；[PRD-core v1.3](../prd/PRD-core-v1.3.md) 第 11～13 节；[ERRORS.md](../../protocol/ERRORS.md)。任务见 [backend-social.md](../tasks/backend-social.md)、[frontend-social.md](../tasks/frontend-social.md)。
 >
 > 通用约定：
 > - 服务端测试模式（`IM_TEST_MODE=1`）；每个用例使用独立数据库，用例开始时对涉及的用户调用 `POST /admin/test/limits/reset`。社交管理接口在 X-5 落地前只在测试模式注册，用例经旧管理密钥调用；X-5 之后改发到 `IM_ADMIN_ADDR`。
