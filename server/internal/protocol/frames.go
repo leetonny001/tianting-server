@@ -475,12 +475,20 @@ type Conversation struct {
 	// IM_MSG_ACTIONS_ENABLED 开启时每个会话都带 mentionUnread（可以是 0），firstMentionSeq 只在有提及时出现；关闭时都没有。
 	MentionUnread   *int64 `json:"mentionUnread,omitempty"`
 	FirstMentionSeq int64  `json:"firstMentionSeq,omitempty"`
+	// Pinned、PinnedAt、NotifyOff：置顶和免打扰（C5，F-CVS-01、02）。没有设置时都不出现（BE-483 第 5 条）；PinnedAt 只在置顶时出现。
+	Pinned    bool  `json:"pinned,omitempty"`
+	PinnedAt  int64 `json:"pinnedAt,omitempty"`
+	NotifyOff bool  `json:"notifyOff,omitempty"`
 }
 
 // ConvsAck 是 convs 的应答。
 type ConvsAck struct {
 	Convs     []Conversation `json:"convs"`
 	Truncated bool           `json:"truncated"`
+	// Deleted、DeletedTruncated：当前被我删除、还没有新消息的会话（C5，F-CVS-03 规则 6），单聊和群都有，按删除时间倒序，
+	// 最多 IM_CONV_DELETED_MAX 个，超出时 DeletedTruncated=true。没有时都不出现。
+	Deleted          []DeletedConv `json:"deleted,omitempty"`
+	DeletedTruncated bool          `json:"deletedTruncated,omitempty"`
 }
 
 // 事件。

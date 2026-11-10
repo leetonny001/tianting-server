@@ -54,6 +54,7 @@ const (
 	CodeStrangerMsgLimit         = 4137
 	CodeFileTooLarge             = 4139 // details.maxBytes
 	CodeFileTypeNotAllowed       = 4150
+	CodePinLimitExceeded         = 4220 // 置顶数量已满，不带 details，文案固定「最多置顶 20 个会话」（C5，F-CVS-01 规则 2）
 	CodeRateLimited              = 4290
 	CodeQuotaExceeded            = 4292
 	CodeMentionAllLimited        = 4293 // @ 所有人次数用完，details.retryAfterSeconds，不自动重试（C4，F-MEN-02 规则 2）
@@ -118,6 +119,7 @@ var codes = map[int]codeInfo{
 	CodeStrangerMsgLimit:         {"STRANGER_MSG_LIMIT", 0},
 	CodeFileTooLarge:             {"FILE_TOO_LARGE", 413},
 	CodeFileTypeNotAllowed:       {"FILE_TYPE_NOT_ALLOWED", 415},
+	CodePinLimitExceeded:         {"PIN_LIMIT_EXCEEDED", 0},
 	CodeRateLimited:              {"RATE_LIMITED", 429},
 	CodeQuotaExceeded:            {"QUOTA_EXCEEDED", 429},
 	CodeMentionAllLimited:        {"MENTION_ALL_LIMITED", 0},

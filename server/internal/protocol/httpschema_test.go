@@ -72,6 +72,9 @@ func TestHTTPClientSchema(t *testing.T) {
 		{"ErrorResponse", `{"msg":"x"}`, false},
 		{"ConfigResponse", `{"registerMode":"invite","demoLogin":false,"features":{"files":false},"limits":{"usernameMinLen":4,"usernameMaxLen":32,"passwordMinLen":8,"passwordMaxLen":128,"nicknameMaxLen":32,"deviceNameMaxLen":64}}`, true},
 		{"ConfigResponse", `{"registerMode":"public","demoLogin":false,"features":{"files":false},"limits":{}}`, false},
+		// C5（BE-482 第 3 条）：features.convSettings 是布尔。
+		{"ConfigResponse", `{"registerMode":"invite","demoLogin":false,"features":{"files":true,"msgActions":true,"convSettings":true},"limits":{"usernameMinLen":4,"usernameMaxLen":32,"passwordMinLen":8,"passwordMaxLen":128,"nicknameMaxLen":32,"deviceNameMaxLen":64}}`, true},
+		{"ConfigResponse", `{"registerMode":"invite","demoLogin":false,"features":{"files":true,"convSettings":"on"},"limits":{"usernameMinLen":4,"usernameMaxLen":32,"passwordMinLen":8,"passwordMaxLen":128,"nicknameMaxLen":32,"deviceNameMaxLen":64}}`, false},
 	} {
 		v, err := jsonschema.UnmarshalJSON(jsonReader(tc.json))
 		if err != nil {

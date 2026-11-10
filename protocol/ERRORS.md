@@ -18,6 +18,7 @@
 | 409x | 冲突 | 不重试 |
 | 413x | 数量超出上限（HTTP 状态用 400，沿用 4130、4131；4139 文件过大用 413） | 不重试 |
 | 415x | 不支持的类型（HTTP 415，C2 起） | 不重试 |
+| 422x | 业务状态不允许（C5 起） | 不重试 |
 | 429x | 频率限制 | 稍后重试（例外：4291、4294 登录锁定、4292 配额用完、4293 @ 所有人次数用完不自动重试） |
 | 500x～503x | 服务端错误 | 可以重试 |
 | 504x | 结果未知 | **不**自动重试（操作可能已经生效） |
@@ -55,6 +56,10 @@
 | `recall` | 4044 | 消息不存在或已被删除（C4） |
 | `recall` | 4290 | 操作太频繁，请稍后再试（C4，每人每分钟 20 次） |
 | `groupMembers`（带 `keyword`） | 4290 | 搜索太频繁，请稍后再试（C4，每人每分钟 30 次） |
+| `convSet` | 4220 | 最多置顶 20 个会话（C5，文案固定，不带 `details`） |
+| `convSet` | 4040 | 内容不存在（C5，没有消息的单聊） |
+| `convSet` / `convDelete` | 4290 | 操作太频繁，请稍后再试（C5，每人每秒 5 次，两个命令共用） |
+| `convSet` / `convDelete` | 4030 | 不提示，隐藏入口（C5，`reason: featureDisabled`） |
 | `friendApply` / `friendRespond` | 4132 | 你的好友数量已达上限 |
 | `friendRespond` / `friendApply` | 4133 | 对方好友数量已达上限 |
 | `friendRespond` | 4045 | 该申请已过期（刷新列表） |
@@ -105,7 +110,7 @@
 | 4037 | CSRF_INVALID | 403 | console | 否 | CSRF 令牌缺失或错误，或 Origin 不匹配 | 重新取会话信息后重放一次，仍失败提示刷新 |
 | 4038 | STEP_UP_REQUIRED | 403 | console | 否 | 该操作需要重新验证 | 弹 TOTP 框，通过后自动重放 |
 | 4039 | MSG_READ_GRANT_REQUIRED | 403 | admin / console | 否 | 没有该会话有效的正文 / 隔离原文查看授权 | 弹「工单号 + 理由 + 动态码」框 |
-| 4040 | NOT_FOUND | 404 | ws / admin / console | 否 | 资源不存在（通用） | 提示「内容不存在」 |
+| 4040 | NOT_FOUND | 404 | ws / admin / console | 否 | 资源不存在（通用）；`convSet`（C5）：没有消息的单聊 | 提示「内容不存在」 |
 | 4041 | NOT_IN_ROOM | — | ws | 否 | 未加入聊天室（二期） | 重新进房 |
 | 4042 | USER_NOT_FOUND | 404 | ws / admin | 否 | 用户不存在 | 提示「用户不存在」 |
 | 4043 | GROUP_NOT_FOUND | 404 | ws / admin | 否 | 群不存在 | 提示「群聊不存在或已解散」 |
@@ -130,7 +135,8 @@
 | 4137 | STRANGER_MSG_LIMIT | — | ws | 否 | 开放模式下对方回复前的条数用完 | 见第 2 节映射表 |
 | 4139 | FILE_TOO_LARGE | 413 | client | 否 | 超过大小限制（`details.maxBytes`） | 提示「文件过大，最大 {N}」 |
 | 4150 | FILE_TYPE_NOT_ALLOWED | 415 | client | 否 | 禁止的类型或内容与声明不符 | 提示「不支持发送这种文件」 |
-| 4290 | RATE_LIMITED | 429 | ws / admin / console / client | 是 | 操作过于频繁 | 提示「发送太频繁」，1 秒后可重试 |
+| 4220 | PIN_LIMIT_EXCEEDED | — | ws | 否 | 置顶数量已满（C5，`IM_CONV_PIN_MAX`，不带 `details`） | 提示「最多置顶 20 个会话」 |
+| 4290 | RATE_LIMITED | 429 | ws / admin / console / client | 是 | 操作过于频繁（C5 起含会话设置 `convSet`、`convDelete`，每人每秒 5 次） | 提示「发送太频繁」，1 秒后可重试 |
 | 4291 | CONSOLE_LOGIN_LOCKED | 429 | console | 否 | 登录失败过多，该账号名（或账号名 + IP）暂时锁定 | 提示「尝试次数过多，请 N 分钟后再试」，不自动重试 |
 | 4292 | QUOTA_EXCEEDED | 429 | ws / admin / console / client | **否** | 配额用完：每日（好友申请、搜索、拉黑、新对象被拒）或每小时（新对象） | 见第 2 节映射表，不自动重试 |
 | 4293 | MENTION_ALL_LIMITED | — | ws | **否** | @ 所有人次数用完（`details.retryAfterSeconds`，C4） | 提示「@所有人次数已用完」，不自动重发 |
@@ -163,7 +169,7 @@
 | 4030 | `accountSessionRequired` | 没有 `sid` 的 token 调用账号接口 |
 | 4030 | `accountExists` | 有账号的用户调用 `/demo/login` |
 | 4030 | `accountDeletionPending` | 注销冷静期内密码正确（`details.deleteAt`） |
-| 4030 | `featureDisabled` | 新命令的开关关闭（C2 起用；C3 的 `deviceNotificationRegister`、`deviceNotificationUnregister`、`deviceNotificationSettings`、`presence` 同样；C4 的 `recall`，以及 `send` 带 `quote`、`mentions`） |
+| 4030 | `featureDisabled` | 新命令的开关关闭（C2 起用；C3 的 `deviceNotificationRegister`、`deviceNotificationUnregister`、`deviceNotificationSettings`、`presence` 同样；C4 的 `recall`，以及 `send` 带 `quote`、`mentions`；C5 的 `convSet`、`convDelete`） |
 | 4030 | `mentionAllForbidden` | 普通成员 `mentions.all=true`，或托管群没有群主（C4，F-MEN-02 规则 1），消息不保存 |
 | 4040 | `quoteUnavailable` | 引用的消息在其他会话、不存在、已撤回、已删除、是 `tip` 或在发送者入群之前，响应完全相同（C4，F-QUO-01 规则 2），消息不保存 |
 | 4290 | `recoverLimited` | 用最新一代恢复码成功 `recover` 超过每小时次数（**PRD 第 11.5 节有列，F-ACC-05 规则 2**） |

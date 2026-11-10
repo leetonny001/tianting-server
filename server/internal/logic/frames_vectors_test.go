@@ -323,3 +323,138 @@ func TestTC_CHAT_90_32_C4FrameVectorsServerParse(t *testing.T) {
 		}
 	}
 }
+
+// TC-CHAT-90-38（AC-CHAT-90-10 的 C5 服务端部分，BE-482）：frames.json 里名字以"C5）"结尾的用例用服务端真实的解析跑一遍。
+// 上行 convSet、convDelete 走严格解码 + Validate；valid 必须通过、invalid 必须被拒绝（4000、4007 或缺 id 的 4003），
+// 所以"都不带字段""upToSeq 为负"这类判断 Schema 和服务端一致。下行的 ack convSet / convDelete / convs、convSettingsChanged、
+// convDeleted 用服务端的模型解码再编码，结果和用例逐字段相同（服务端发得出这些帧：没有设置时不带 pinned、notifyOff）。
+func TestTC_CHAT_90_38_C5FrameVectorsServerParse(t *testing.T) {
+	raw, err := os.ReadFile("../../../protocol/vectors/frames.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var vf struct {
+		Valid, Invalid []struct {
+			Name  string          `json:"name"`
+			Frame json.RawMessage `json:"frame"`
+		}
+	}
+	if err := json.Unmarshal(raw, &vf); err != nil {
+		t.Fatal(err)
+	}
+	type head struct {
+		ID   string          `json:"id"`
+		Cmd  string          `json:"cmd"`
+		Data json.RawMessage `json:"data"`
+	}
+	isUp := func(cmd string) bool { return cmd == protocol.CmdConvSet || cmd == protocol.CmdConvDelete }
+	parseUp := func(h head) *protocol.Error {
+		if h.ID == "" {
+			return protocol.Errorf(protocol.CodeMissingRequestID, "missing id")
+		}
+		switch h.Cmd {
+		case protocol.CmdConvSet:
+			req, perr := decode[protocol.ConvSetReq](h.Data)
+			if perr != nil {
+				return perr
+			}
+			return req.Validate()
+		case protocol.CmdConvDelete:
+			req, perr := decode[protocol.ConvDeleteReq](h.Data)
+			if perr != nil {
+				return perr
+			}
+			return req.Validate()
+		}
+		return nil
+	}
+	roundTrip := func(t *testing.T, name string, h head) string {
+		t.Helper()
+		check := func(v any) {
+			t.Helper()
+			if err := json.Unmarshal(h.Data, v); err != nil {
+				t.Errorf("%s: decode: %v", name, err)
+				return
+			}
+			got, _ := json.Marshal(v)
+			if !sameJSON(t, got, h.Data) {
+				t.Errorf("%s: server encodes\n%s\nwant\n%s", name, got, h.Data)
+			}
+		}
+		var probe map[string]json.RawMessage
+		_ = json.Unmarshal(h.Data, &probe)
+		switch h.Cmd {
+		case protocol.CmdAck:
+			switch {
+			case probe["convs"] != nil:
+				check(&protocol.ConvsAck{})
+				return "convs"
+			case probe["conv"] != nil:
+				check(&protocol.ConvSetAck{})
+				return "convSet"
+			case probe["clearedSeq"] != nil:
+				check(&protocol.ConvDeleteAck{})
+				return "convDelete"
+			}
+		case protocol.CmdEvent:
+			var ev struct{ Type string }
+			_ = json.Unmarshal(h.Data, &ev)
+			switch ev.Type {
+			case protocol.EventConvSettingsChanged:
+				check(&protocol.ConvSettingsChangedEvent{})
+				return ev.Type
+			case protocol.EventConvDeleted:
+				check(&protocol.ConvDeletedEvent{})
+				return ev.Type
+			}
+		}
+		if !isUp(h.Cmd) {
+			t.Errorf("%s: C5 vector not checked by the server (cmd %s)", name, h.Cmd)
+		}
+		return ""
+	}
+	seen := map[string]int{}
+	for _, v := range vf.Valid {
+		if !strings.Contains(v.Name, "C5）") {
+			continue
+		}
+		var h head
+		_ = json.Unmarshal(v.Frame, &h)
+		seen["valid/"+h.Cmd]++
+		if isUp(h.Cmd) {
+			if perr := parseUp(h); perr != nil {
+				t.Errorf("valid/%s: server rejects: %v", v.Name, perr)
+			}
+			continue
+		}
+		if kind := roundTrip(t, "valid/"+v.Name, h); kind != "" {
+			seen["down/"+kind]++
+		}
+	}
+	for _, v := range vf.Invalid {
+		if !strings.Contains(v.Name, "C5）") {
+			continue
+		}
+		var h head
+		_ = json.Unmarshal(v.Frame, &h)
+		seen["invalid/"+h.Cmd]++
+		if !isUp(h.Cmd) {
+			continue // 下行的非法帧只给 Schema 和 SDK 用
+		}
+		switch perr := parseUp(h); {
+		case perr == nil:
+			t.Errorf("invalid/%s: server accepts", v.Name)
+		case perr.Code != protocol.CodeBadRequest && perr.Code != protocol.CodeInvalidConvID && perr.Code != protocol.CodeMissingRequestID:
+			t.Errorf("invalid/%s: code %d, want 4000 / 4007 / 4003", v.Name, perr.Code)
+		}
+	}
+	// BE-482 第 4 条：convSet 只带 pinned、只带 notifyOff、都带、都不带；convDelete 的 upToSeq 为负；下行带设置的 Conversation、
+	// 带 deleted / deletedTruncated 的 convs ack、两个新事件。
+	for k, n := range map[string]int{"valid/convSet": 4, "invalid/convSet": 8, "valid/convDelete": 3, "invalid/convDelete": 6,
+		"down/convSet": 3, "down/convDelete": 2, "down/convs": 2, "down/convSettingsChanged": 2, "down/convDeleted": 2,
+		"invalid/ack": 6, "invalid/event": 4} {
+		if seen[k] < n {
+			t.Errorf("frames.json has %d C5 vectors of %s, want >= %d (BE-482 第 4 条): %v", seen[k], k, n, seen)
+		}
+	}
+}
