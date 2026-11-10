@@ -1,4 +1,4 @@
-# 隐私告知清单草稿（BE-424）
+# 隐私告知清单草稿（BE-424，C4 部分 BE-479）
 
 > **这不是法律文本，也不是法律意见。** 按 PRD-chat F-ACC-10 规则 1，文字由 Frank 或法务提供（第 20.3 节），这里只列要告知哪些事实。事实依据是代码和 PRD，标"未校准"的数字可能调整。
 
@@ -24,6 +24,19 @@
 | 11 | 申请注销后 7 天冷静期（未校准），期间可以撤销；到期后删除密码、恢复码、设备会话、好友、黑名单、头像；已发的消息和文件保留，文件按原保留期 | F-ACC-08 规则 2、5 |
 | 12 | 收集的设备信息：平台、设备名（用户可见，不进日志）；登录时间、最近活跃时间 | F-ACC-03 规则 1 |
 
+## C4 还要告知的事实（PRD-chat F-RCL-04 规则 4，BE-479 第 4 条，2026-11-10）
+
+措辞用"不再显示"，不说"删除"（R-CS-34：备份和数据库的旧页里原文按备份保留期留存）。
+
+| # | 事实 | 当前实现 | 依据 |
+|---|---|---|---|
+| 13 | 撤回后对方**不再显示**这条消息，但平台把原文和文件名加密留存 30 天，用于处理投诉；到期物理删除 | `message_quarantine`（AES-256-GCM，`IM_QUARANTINE_KEY`），`quarantine_purge` 到期删除；撤回的图片、文件对象同样保留 30 天后由 `file_purge` 删除 | F-RCL-01 规则 5、F-RCL-04 规则 4，CH-17 |
+| 14 | 已经被对方下载到相册、文件夹的内容，以及已显示的系统通知，撤回收不回 | 客户端清除本地库和缓存，系统相册和已显示的通知不在 App 控制范围 | F-RCL-03 规则 5 |
+| 15 | 后台在什么条件下能看撤回的原文：要单独的隔离授权（工单号 + 理由 + 动态码，15 分钟），单聊默认不可看（`IM_C2C_BODY_ACCESS=off`）；每次查看都有审计 | `POST /admin/msg-grants`（`quarantine=true`）、`/admin/convs/messages/body`、`/admin/files/{fileId}/fetch` | F-RCL-04 规则 3，PRD-admin F-ADM-08、32 |
+| 16 | 群主、管理员可以撤回群里成员的消息（7 天内），撤回记录里有操作者 | `messages.recalled_by`，后台元数据可以查到 | F-RCL-02 规则 1、5 |
+| 17 | 引用会把被引用消息的前 100 个字显示给群里的人，包括入群前看不到历史的新成员 | 下发时组装 `quote.text`，被引用的撤回或删除后不再显示 | F-QUO-02 规则 2、6 |
+| 18 | "@"会记录被提及的人，用于"有人@我"提醒；撤回后提醒随之消失 | `conv_mentions`、`group_mention_all`，已读之前的定时清理 | F-MEN-03 规则 1 |
+
 ## 给法务的问题里和 C1、C2 相关的项（第 20.1a 节）
 
 **这些还没有答案，实现按 PRD 的表做了，法务要求不同就要改（F-ACC-08 规则 6，CH-23）：**
@@ -34,4 +47,4 @@
 
 ## 启动保护
 
-规则 4：`IM_ENV=production` 且 `IM_MSG_ACTIONS_ENABLED=1` 或 `IM_MOD_ENABLED=1` 时，`IM_PRIVACY_NOTICE_VERSION` 为空拒绝启动。依赖的开关属于 C4、C6，这里不做。C1 只把版本写进 `accounts.notice_version`（AC-ACC-10-2）。
+规则 4：`IM_ENV=production` 且 `IM_MSG_ACTIONS_ENABLED=1` 或 `IM_MOD_ENABLED=1` 时，`IM_PRIVACY_NOTICE_VERSION` 为空拒绝启动。C1 把版本写进 `accounts.notice_version`（AC-ACC-10-2）。**C4 的部分已实现**（BE-471，AC-ACC-10-4）：配置检查项 `msg_actions` 显示开关、隔离密钥是否设置和隐私说明版本；`IM_MOD_ENABLED` 的部分随 C6。
