@@ -7,7 +7,6 @@
 
 | # | 日期 | 事项 | 为什么需要你 | 不处理的影响 | 建议 |
 |---|---|---|---|---|---|
-| P-44 | 2026-11-10 | C4 SDK 和页面实现时的待决定项：① **后台下载撤回文件要不要限次数**（console-chat.md 问题 18）：PRD 没写，现在不限次数、每次都记审计；② **后台正文页撤回的消息能不能勾选删除**（frontend-chat.md 问题 29）：现在能勾，删除是幂等的、状态仍是撤回，但页面提示"已删除 N 条"和实际不符；③ **老版本 sdk-ts 的引用副本**（frontend-chat.md 问题 21）：老版本不认识 `quote`，别的消息里引用被撤回消息的原文副本要等下次重拉才清（被撤回的消息本身会立即清）；④ **下载授权绑定能再收紧**（console-chat.md 问题 14）：im-server 的 fetch 按调用方 + 操作人 + 会话找授权，不认具体授权单；console 已按"授权绑定当前浏览器会话"挡住，剩下两边时钟差几秒的空隙，彻底解决要给 fetch 接口加 `grantId`（改冻结接口） | 改产品行为或冻结接口 | 都不阻塞 C4 开发 | ① 先不限次数，靠审计和隔离授权有效期约束，上线后看审计再定；② 撤回的消息不能勾选（提示和实际一致，改动小，三处页面不受影响）；③ 接受（还没发布过老版本，F-RCL-03 规则 7 允许）；④ 现在加：fetch 接受可选 `grantId`，console 带上，im-server 校验它属于这个会话且未过期；PRD-chat 升小版本写明，改动小 |
 | P-41 | 2026-11-10 | **C3 要你亲自做的事**（PRD-chat 第 20.3 节、P-13、P-28）：⑤ APNs：付费 Apple Developer 账号、给 `com.tianting.im` 开 Push、建 APNs Key 下载 `.p8`、记 Key ID 和 Team ID、`.p8` 放服务器 0600；⑥ FCM：建 Firebase 项目、加 Android 应用 `com.tianting.app`、`google-services.json`（只在发布时注入，不进仓库）、服务账号 JSON 放服务器 0600；⑦ 服务器网络：部署地能访问 `api.push.apple.com`、`api.sandbox.push.apple.com`、`fcm.googleapis.com` 和 Google OAuth；⑧ 真机：Android 13+（有谷歌服务）、iPhone、一台没有谷歌服务的国内 Android；~~⑨ P-28 第 3 问~~（2026-11-10 已答：主要中国大陆，见 P-42） | 要你的账号、付费、设备和服务器；AI 不接触账号和密钥；⑨ 只有你知道 | 不做时 C3 的 34 条后端 AC 用假 APNs、假 FCM 验收，11 条前端 AC 在模拟器用替身验收；6 条手工 AC（AC-APN-01-6、03-5、04-1、04-2、05-3、06-2）记未执行，"后台收通知"演示做不了 | ⑤⑥ 在 C3 三端验收（FE-656）前办好；⑦ 随部署；⑧ 和 P-13 一起 |
 | P-9 | 2026-11-04 | M3 手工验收（FE-248 及任务单记录的手工项）：iPhone 15 Safari 安全区截图、macOS / iOS Safari 拼音输入录屏、VoiceOver | 需要真机和人工操作，AI 无法独立完成 | 不阻塞开发，但 M3 不能算验收完成 | 社交页面完成后一起做，一次跑完 M3 演示路径；回复"社交页面完成后我来做"或指定其他人 |
 | P-10 | 2026-11-04 | 下载 SecLists 的 `10-million-password-list-top-10000.txt` 作为弱密码表（PRD-admin F-CON-04 规则 1，约 80KB，来自 github.com/danielmiessler/SecLists） | 下载外部文件需要确认 | 目前用手写的 406 条暂行表，能拦住常见长口令，但覆盖不如正式列表；不阻塞开发，上线前必须换 | 回复"可以下载"，或自己放到 `tianting-console-server/assets/weak-passwords.txt` |
@@ -29,6 +28,7 @@
 
 | # | 日期 | 事项 | 结论 |
 |---|---|---|---|
+| P-44 | 2026-11-10 | C4 SDK 和页面实现时的待决定项（console-chat.md 问题 14、18，frontend-chat.md 问题 21、29） | Frank 回复"都按建议"：① 后台下载撤回文件先不限次数，靠审计和隔离授权有效期约束，上线后看审计再定；② 后台正文页撤回的消息不能勾选删除；③ 接受老版本 sdk-ts 引用副本等下次重拉才清（F-RCL-03 规则 7）；④ `POST /admin/files/{fileId}/fetch` 增加可选 `grantId`，console 带上，im-server 校验属于该会话且未过期，PRD-chat 升 v1.6 |
 | P-43 | 2026-11-10 | C4 分发的待决定项（backend-chat 第 61 条、frontend-chat 第 14 条） | Frank 回复"都按建议"：① PRD-admin 第 12 节 ②③④ 在 C4 生产打开前完成，开发照常；② 依赖 C3 的 AC-APN-03-3、AC-RCL-03-9 在 C4 验收记"未执行（等 C3）"、不算失败，C4 先内部验收，C3 恢复后补跑再关闭；③ 撤回的新消息播报按 P-39 ① 继续推后 |
 | P-42 | 2026-11-10 | CH-13 重新决定：目标用户主要在中国大陆，大陆 Android 没有谷歌服务、C3 做完仍收不到离线通知 | Frank 回复"C3 后加厂商通道"（选项 B）：C3 按计划做（APNs、FCM）；C3 之后新增"国内厂商推送通道"批次（华为、荣耀、小米、OPPO、vivo 直连），先写 PRD 和工作量估算再排期（QUEUE Q27）；厂商账号由 Frank 按要求准备。PRD-chat F-APN-06 规则 4 的"开放前重新决定"由新 PRD 落实 |
 | P-40 | 2026-11-10 | C3 分发时官方文档和 PRD 的不一致（backend-chat.md 第 34～46 条） | Frank 回复"都按建议"：① 删令牌按 Apple 文档区分（410 两种 reason、400 `BadDeviceToken`，配置错误类不删）；② 重试间隔按官方（APNs 5xx 15、30 分钟，429 和 FCM 按 `Retry-After`）；③ 401 / 403 按原因区分（APNs `ExpiredProviderToken` 重签重试，FCM `SENDER_ID_MISMATCH` 不删令牌）；④ FCM `INVALID_ARGUMENT` 也删令牌。其余 9 条一并写进 [PRD-chat v1.5](../prd/PRD-chat-v1.5.md)。B 部分（要你亲自做的事）转为 P-41 |
