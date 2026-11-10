@@ -62,7 +62,13 @@ im.messageActions(message, myRole?);        // 'copy' | 'quote' | 'recall' 的�
 im.recallText(convId, messageOrLastMsg);    // F-RCL-02 规则 1a 的文案，聊天页和列表摘要同一张表；recallNotice 给判断数据
 await im.searchGroupMembers(groupId, keyword, cursor?); // groupMembers 的 keyword：userId 或昵称前缀，每人每分钟 30 次（4290 不重试）
 im.on('messages', …);                       // msgDeleted 带 recalled {by, at} 时，消息 deleted + recalled + recalledBy；不带是后台删除
+await im.downloadUrl(fileId);               // 原文件地址；取地址期间被撤回、删除、过期抛 DownloadAbortedError(fileId, recalled)（Kotlin 是 download）
+im.on('downloadAborted', (fileId, recalled) => …); // 同时发，先于 filesExpired（Kotlin IMEvent.DownloadAborted）
+(await account.getConfig()).features.msgActions; // 可选布尔，老服务端没有按关闭（Kotlin Features.msgActions 默认 false）
 ```
+
+- `convs` 的 `lastMsg` 带 `deleted` + `recalled`（错过了 `msgDeleted`）：本地已加载的那条直接按撤回清（单调，只能从假变真，frontend-chat 问题 32）。
+- 下载中止（AC-RCL-03-12，问题 33）：H5 的下载交给浏览器之后停不了（问题 16），sdk-ts 中止的是取地址这一段；Kotlin 中止传输并删掉部分文件。
 
 - `msgDeleted` 的 `recalled`：清除原文、文件名，**本地所有引用这条消息的 `quote.text` 清掉、`state` 改成 `recalled`**（后台删除是 `deleted`），文件通过 `filesExpired` 让页面丢缓存；`lastMsg` 同样带 `recalled`、`recalledBy`。
 - `Conversation.mentionUnread`、`firstMentionSeq`：来自 `convs`；实时收到 @ 我（或 @ 所有人）的未读消息本地加 1，本端读到最新清零；本地 `mentionUnread > 0` 时收到 `readUpdated`、`msgDeleted` 重新拉 `convs`，每 5 秒最多一次，窗口内的事件在窗口结束时补拉一次。
