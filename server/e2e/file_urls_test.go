@@ -4,6 +4,7 @@ package e2e
 
 import (
 	"bytes"
+	"encoding/json"
 	"fmt"
 	"io"
 	"log/slog"
@@ -218,6 +219,60 @@ func TestTC_FILE_01_25_Disposition(t *testing.T) {
 	if !strings.HasSuffix(disp, ".txt") {
 		t.Fatalf("the saved name would not end with .txt: %s", disp)
 	}
+}
+
+// TC-FILE-01-25 第 3 步（PRD-chat v1.7 F-FILE-03 规则 4，P-45）：原生客户端带 `bareDisposition: true`，文件签入的
+// Content-Disposition 只有 `attachment`，地址的查询串里搜不到文件名和它的百分号编码；同一批的图片仍是 inline；
+// 不带或 false 时和原来一样带文件名；非布尔值 400 / 4000。
+func TestTC_FILE_01_25_BareDispositionForNative(t *testing.T) {
+	e := newFileEnv(t, nil)
+	tok := e.token("u1")
+	const name = "报告ZQX-P45.pdf"
+	id := e.uploadFile(tok, name, "application/pdf", []byte("%PDF-1.4 x"))
+	img := e.uploadImage(tok, "a.png", fakePNG(100, 100, 100), smallThumb())
+	call := func(body map[string]any) (int, []urlItem, []byte) {
+		code, b := e.call(http.MethodPost, "/v1/files/urls", tok, body)
+		var r struct {
+			Items []urlItem `json:"items"`
+		}
+		_ = json.Unmarshal(b, &r)
+		return code, r.Items, b
+	}
+	items := []map[string]string{{"fileId": id, "variant": "original"}, {"fileId": img, "variant": "original"}}
+	encoded := url.PathEscape(name)
+	for _, bare := range []bool{true, false} {
+		body := map[string]any{"items": items}
+		if bare {
+			body["bareDisposition"] = true
+		}
+		code, res, b := call(body)
+		if code != 200 || len(res) != 2 || res[0].URL == "" || res[1].URL == "" {
+			t.Fatalf("bare=%v: %d %s", bare, code, b)
+		}
+		pu, _ := url.Parse(res[0].URL)
+		disp := pu.Query().Get("response-content-disposition")
+		raw, _ := url.QueryUnescape(pu.RawQuery)
+		hasName := strings.Contains(res[0].URL, "ZQX-P45") || strings.Contains(raw, "ZQX-P45") ||
+			strings.Contains(strings.ToUpper(res[0].URL), encoded[:12]) || strings.Contains(strings.ToUpper(raw), encoded[:12])
+		_, h, _ := download(t, res[0].URL)
+		if bare {
+			if disp != "attachment" || hasName || h.Get("Content-Disposition") != "attachment" {
+				t.Fatalf("bare: disposition %q, header %q, name in url %v", disp, h.Get("Content-Disposition"), hasName)
+			}
+		} else if !strings.HasPrefix(disp, "attachment; filename=") || !hasName || h.Get("Content-Disposition") != disp {
+			t.Fatalf("default: disposition %q, header %q", disp, h.Get("Content-Disposition"))
+		}
+		ip, _ := url.Parse(res[1].URL)
+		if d := ip.Query().Get("response-content-disposition"); d != "inline" {
+			t.Fatalf("bare=%v image disposition %q", bare, d)
+		}
+	}
+	code, res, b := call(map[string]any{"items": items[:1], "bareDisposition": false})
+	if code != 200 || len(res) != 1 || !strings.Contains(res[0].URL, "ZQX-P45") {
+		t.Fatalf("bareDisposition=false: %d %s", code, b)
+	}
+	code, _, b = call(map[string]any{"items": items[:1], "bareDisposition": "yes"})
+	wantErr(t, "non-boolean bareDisposition", code, b, 400, protocol.CodeBadRequest, "")
 }
 
 // TC-FILE-05-05（AC-FILE-05-5）：开头是合法 png、后面是 HTML 的文件（kind=image），接收方取原图地址下载：Content-Type: image/png，不是 text/html。

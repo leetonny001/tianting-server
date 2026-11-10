@@ -15,9 +15,11 @@ type URLItem struct {
 	Variant string `json:"variant"`
 }
 
-// URLsInput 是 POST /v1/files/urls（F-FILE-04 规则 1）。
+// URLsInput 是 POST /v1/files/urls（F-FILE-04 规则 1）。BareDisposition：原生客户端带 true，文件的
+// Content-Disposition 只签 `attachment`，不带文件名（F-FILE-03 规则 4，PRD-chat v1.7，P-45）；不带或 false 时不变（H5）。
 type URLsInput struct {
-	Items []URLItem `json:"items"`
+	Items           []URLItem `json:"items"`
+	BareDisposition bool      `json:"bareDisposition,omitempty"`
 }
 
 // URLResult 是一项的结果：有地址，或 code=4048。
@@ -83,7 +85,7 @@ func (s *Service) URLs(ctx context.Context, uid string, in URLsInput) (*URLsResp
 				allowed[it.FileID] = can
 			}
 			if can {
-				if u, exp, ok := s.sign(a.File, it.Variant); ok {
+				if u, exp, ok := s.sign(a.File, it.Variant, in.BareDisposition); ok {
 					res = URLResult{FileID: it.FileID, Variant: it.Variant, URL: u, ExpiresAt: exp}
 					issued++
 				}
@@ -141,11 +143,15 @@ func (s *Service) canAccess(ctx context.Context, uid string, a store.FileAccess)
 	return false, nil
 }
 
-// sign 预签名一个变体的 GET：签入服务端记录的类型和 Content-Disposition（F-FILE-03 规则 4）。图片 inline，其他 attachment。
+// sign 预签名一个变体的 GET：签入服务端记录的类型和 Content-Disposition（F-FILE-03 规则 4）。图片 inline，其他 attachment，
+// 带清洗后的文件名；bare（原生客户端）时只有 `attachment`，地址里没有文件名（v1.7，P-45）。
 // 有效期：图片和缩略图 120 秒，文件 300 秒（规则 1）。
-func (s *Service) sign(f store.File, v string) (string, int64, bool) {
+func (s *Service) sign(f store.File, v string, bare bool) (string, int64, bool) {
 	key, mt, ttl := f.ObjectKey, f.Mime, s.cfg.URLTTLFile
 	disp := Disposition("attachment", f.Name)
+	if bare {
+		disp = "attachment"
+	}
 	if f.Kind != store.KindFile {
 		ttl, disp = s.cfg.URLTTLImage, Disposition("inline", "")
 	}

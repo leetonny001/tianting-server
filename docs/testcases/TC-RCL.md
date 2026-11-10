@@ -1,6 +1,6 @@
 # 测试用例：撤回（RCL，C4）
 
-> 依据：[PRD-chat v1.6](../prd/PRD-chat-v1.6.md)（冻结）第 4.1、4.3、4.5、8 节 F-RCL-01～04，第 11～15 节的 C4 部分。任务单：[backend-chat](../tasks/backend-chat.md) BE-470～BE-481，[console-chat](../tasks/console-chat.md) CS-202、CS-204，[frontend-chat](../tasks/frontend-chat.md) FE-660～FE-672。
+> 依据：[PRD-chat v1.7](../prd/PRD-chat-v1.7.md)（冻结）第 4.1、4.3、4.5、8 节 F-RCL-01～04，第 11～15 节的 C4 部分。任务单：[backend-chat](../tasks/backend-chat.md) BE-470～BE-481，[console-chat](../tasks/console-chat.md) CS-202、CS-204，[frontend-chat](../tasks/frontend-chat.md) FE-660～FE-672。
 > 范围：标了【C4】的 AC-RCL（CH-27，Frank 2026-11-10"先做功能"）。**TC-RCL-03-09 依赖 C3 的推送 worker 和假通道（BE-481），C3 恢复前记"未执行（等 C3）"**。引用和提及见 [TC-QUO](TC-QUO.md)、[TC-MEN](TC-MEN.md)；AC-FILE-06-3 在 [TC-FILE](TC-FILE.md)（TC-FILE-06-13），AC-APN-03-3 在 [TC-APN](TC-APN.md)（TC-APN-03-03），【全部】的 C4 部分在 [TC-CHAT](TC-CHAT.md)（TC-CHAT-90-26～34）。
 >
 > 通用约定：

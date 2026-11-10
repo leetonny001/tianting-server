@@ -1,6 +1,6 @@
 # 测试用例：@ 提及（MEN，C4）
 
-> 依据：[PRD-chat v1.6](../prd/PRD-chat-v1.6.md)（冻结）第 4.1、4.3 节第 8、10 步、第 8 节 F-MEN-01～03、第 11～13 节的 C4 部分。任务单：[backend-chat](../tasks/backend-chat.md) BE-470、BE-471、BE-476、BE-477、BE-478、BE-480，[frontend-chat](../tasks/frontend-chat.md) FE-660～FE-672。
+> 依据：[PRD-chat v1.7](../prd/PRD-chat-v1.7.md)（冻结）第 4.1、4.3 节第 8、10 步、第 8 节 F-MEN-01～03、第 11～13 节的 C4 部分。任务单：[backend-chat](../tasks/backend-chat.md) BE-470、BE-471、BE-476、BE-477、BE-478、BE-480，[frontend-chat](../tasks/frontend-chat.md) FE-660～FE-672。
 > 范围：标了【C4】的 AC-MEN。**AC-MEN-03-2、03-3 标的是【C5】（免打扰推送），TC-MEN-03-02、03-03 留给它们**。
 >
 > 通用约定：环境、层级、时钟、哨兵法同 [TC-RCL](TC-RCL.md)（**E1** 是 `IM_TEST_MODE=1`、SQLite、`IM_MSG_ACTIONS_ENABLED=1`）；**EP 性能**是目标机（P-12），开发机只记录，不算通过。故障注入 `mentionWrite`、`mentionAllCounter`（BE-471）。**CI 现在不运行（PENDING P-21）**，结果都是本地结果。

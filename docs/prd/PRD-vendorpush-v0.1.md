@@ -8,7 +8,7 @@
 | 日期 | 2026-11-10 |
 | 状态 | **草稿，待评审**。没有独立评审，没有拍板；流程见 [process/README](../process/README.md)。**排期由 Frank 在 C3 之后定**（[QUEUE](../process/QUEUE.md) Q27） |
 | 依据 | PENDING P-42：Frank 2026-11-10 决定"C3 后加厂商通道"，目标用户主要在中国大陆，直连五家，不用第三方聚合 |
-| 对照 | [PRD-chat v1.6](PRD-chat-v1.6.md) 第 7 节（F-APN-01～06）、第 18、20、21 节；[backend-chat](../tasks/backend-chat.md) BE-406、BE-450～460 和文末第 34～46 条；[frontend-chat](../tasks/frontend-chat.md) FE-650～656 |
+| 对照 | [PRD-chat v1.7](PRD-chat-v1.7.md) 第 7 节（F-APN-01～06）、第 18、20、21 节；[backend-chat](../tasks/backend-chat.md) BE-406、BE-450～460 和文末第 34～46 条；[frontend-chat](../tasks/frontend-chat.md) FE-650～656 |
 | 阅读提示 | **厂商资料的可信度分三级，逐条标注**：「已读」= 直接读到官方页面原文；「摘要」= 官方页面是前端渲染读不到，结论来自搜索引擎对该官方页面的索引摘要，**算半核实**；「未核实」= 没查到或页面读不到。**没有一条是凭记忆写成事实的**。标"未校准"的数字没有测过。AC 写法沿用 PRD-chat 第 4.4 节，批次标【V1】（`trace.py` 现有的是 C1～C6、M3、M4、SDK、P1、C，不冲突）；**本草稿不改 `trace.py`**，冻结并决定排期后再加 |
 
 ---

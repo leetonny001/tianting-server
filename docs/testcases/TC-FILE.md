@@ -1,6 +1,6 @@
 # 测试用例：图片和文件消息（FILE，C2）
 
-> 依据：[PRD-chat v1.6](../prd/PRD-chat-v1.6.md)（冻结）第 4、6 节、第 15 节 AC-FILE-90；[GATE-objstore](../review/GATE-objstore-2026-11-06.md)；[tools/objstore-contract](../../tools/objstore-contract/README.md)。任务单：[backend-chat](../tasks/backend-chat.md)、[console-chat](../tasks/console-chat.md)、[frontend-chat](../tasks/frontend-chat.md)。
+> 依据：[PRD-chat v1.7](../prd/PRD-chat-v1.7.md)（冻结）第 4、6 节、第 15 节 AC-FILE-90；[GATE-objstore](../review/GATE-objstore-2026-11-06.md)；[tools/objstore-contract](../../tools/objstore-contract/README.md)。任务单：[backend-chat](../tasks/backend-chat.md)、[console-chat](../tasks/console-chat.md)、[frontend-chat](../tasks/frontend-chat.md)。
 > 范围：标了【C2】【C4】的 AC-FILE（CH-27）。C4 只有 AC-FILE-06-3（撤回的文件 30 天后物理删除，TC-FILE-06-13）；依赖清空、举报的 AC 随 C5、C6。
 >
 > 通用约定：
@@ -490,9 +490,11 @@
 - 步骤：
   1. 接收方 `/v1/files/urls`；解码 URL 的 `response-content-disposition`
   2. Playwright 下载，查保存的文件名
+  3. （PRD-chat v1.7 F-FILE-03 规则 4，P-45）同一批里放这个文件和一张图片，请求体分别带 `bareDisposition: true`、`false`、不带、非布尔值；在地址的查询串（原样和解码一次）里搜文件名特征串和它的百分号编码；下载看响应头。原生 SDK（sdk-kotlin、sdk-swift）单测断言请求体带 `bareDisposition: true`，sdk-ts 不带
 - 预期结果：
   1. 带 `filename*=UTF-8''…` 百分号编码；ASCII 回退名不含 `"` `;` `%`
   2. H5 保存的文件名扩展名不是 `.exe`
+  3. 带 `true`：文件签入的是 `attachment`（没有文件名），查询串里搜不到文件名和它的百分号编码，响应头 `Content-Disposition: attachment`；图片仍是 `inline`；`false` 和不带：和第 1 步相同；非布尔值 400 / 4000
 
 ### TC-FILE-01-26 崩溃残留：重试成功后清除；不重试 25 小时后清除
 - 关联 AC：AC-FILE-01-26

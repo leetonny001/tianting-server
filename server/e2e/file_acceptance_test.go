@@ -40,7 +40,7 @@ var fileAttackSequences = map[string][]string{
 	"RS4-17 / RS5-21 PUT 带恶意头和标签：最终对象只有服务端写的 Content-Type":   {"TestTC_FILE_01_21_MaliciousHeaders", "TestTC_ACC_06_07_AvatarExposure"},
 	"RS4-18 Copy 后按 Copy 响应的 ETag 核对，412 重试 1 次":             {"TestTC_FILE_01_15_ReplaceDuringVerify"},
 	"RS4-19 每 15 分钟申请 20 个 100 MiB，集中 complete：当日最多超额一个文件":   {"TestTC_FILE_01_18_QuotaRecheck"},
-	"RS4-20 文件名 evil.exe\"; x=\".txt 进 Content-Disposition":  {"TestTC_FILE_01_25_Disposition"},
+	"RS4-20 文件名 evil.exe\"; x=\".txt 进 Content-Disposition":  {"TestTC_FILE_01_25_Disposition", "TestTC_FILE_01_25_BareDispositionForNative"},
 	"RS4-21 缩略图、头像只由客户端保证尺寸：服务端按头部真实宽高拒绝":                    {"TestTC_FILE_01_22_Dimensions"},
 	"RS4-23 甲 DELETE 别人的、已 ready 的上传：响应相同，不暴露存在性":            {"TestTC_FILE_01_23_CancelHidesExistence"},
 	"RS4-23 乙 complete 在 Copy 之后被 file_purge 抢先改成 purging":   {"TestTC_FILE_01_24_PurgeBeatsComplete"},

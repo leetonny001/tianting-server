@@ -1,6 +1,6 @@
 # 测试用例：引用（QUO，C4）
 
-> 依据：[PRD-chat v1.6](../prd/PRD-chat-v1.6.md)（冻结）第 4.3 节第 7 步、第 8 节 F-QUO-01～02、第 11、13 节的 C4 部分。任务单：[backend-chat](../tasks/backend-chat.md) BE-470、BE-475、BE-478、BE-480，[frontend-chat](../tasks/frontend-chat.md) FE-660～FE-672。
+> 依据：[PRD-chat v1.7](../prd/PRD-chat-v1.7.md)（冻结）第 4.3 节第 7 步、第 8 节 F-QUO-01～02、第 11、13 节的 C4 部分。任务单：[backend-chat](../tasks/backend-chat.md) BE-470、BE-475、BE-478、BE-480，[frontend-chat](../tasks/frontend-chat.md) FE-660～FE-672。
 > 范围：标了【C4】的 AC-QUO。
 >
 > 通用约定：环境、层级、时钟、哨兵法同 [TC-RCL](TC-RCL.md)（**E1** 是 `IM_TEST_MODE=1`、SQLite、`IM_MSG_ACTIONS_ENABLED=1`）。**CI 现在不运行（PENDING P-21）**，结果都是本地结果。特征串：`ZXQ-QUO-1`、`ZXQ-QUO-2`。"搜不到"指对原始字节或完整响应做子串搜索。
