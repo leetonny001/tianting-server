@@ -92,6 +92,8 @@ type MessageMeta struct {
 	FileSize   int64
 	DeletedAt  int64
 	DeletedBy  string
+	RecalledAt int64  // C4
+	RecalledBy string // C4：撤回的操作者 userId
 	TS         int64
 }
 

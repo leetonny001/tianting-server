@@ -56,6 +56,8 @@ type ModerationConfig struct {
 	Cipher         *quarantine.Cipher
 	QuarantineDays int
 	C2CBodyAccess  bool
+	// Objects 是对象存储（IM_FILES_ENABLED 开启时非 nil）：POST /admin/files/{fileId}/fetch 用（C4，PRD-chat 第 11.6 节）。
+	Objects ObjectReader
 }
 
 // WithModeration 打开第二批管理接口。要在 Register 之前调用。
@@ -73,6 +75,7 @@ func (a *Admin) registerModeration(mux *http.ServeMux) {
 	bodyScopes := []adminauth.Scope{adminauth.ScopeMsgBodyGroup, adminauth.ScopeMsgBodyC2C, adminauth.ScopeMsgQuarantine}
 	a.routeAny(mux, "POST", "/admin/msg-grants", bodyScopes, a.createMsgGrant)
 	a.routeAny(mux, "POST", "/admin/convs/messages/body", bodyScopes, a.readMessageBody)
+	a.registerFetch(mux)
 }
 
 // durationField 区分"没传"和"传了 null（永久）"：漏传时长不能变成永久封禁。
@@ -620,11 +623,16 @@ func (a *Admin) readBodies(ctx context.Context, convID string, before int64, lim
 	}
 	pm := make([]protocol.Message, len(rows))
 	for i, m := range rows {
-		pm[i] = logic.ToProto(m)
+		// 后台版序列化（PRD-chat F-RCL-04 规则 3，RC2-21）：deleted 只表示后台删除，撤回的是 deleted=false、recalled=true，都没有 body。
+		pm[i] = logic.ToAdminProto(m)
 	}
 	// 文件消息的 body 带文件名（凭正文授权，R-CS-14 / CS-201）；元数据接口不带。
 	if err := logic.EnrichFiles(ctx, a.store, pm); err != nil {
 		a.log.Error("load files for body read", "err", err)
+		return nil, false, protocol.Errorf(protocol.CodeInternal, "internal error")
+	}
+	if err := logic.EnrichQuotes(ctx, a.store, pm); err != nil {
+		a.log.Error("load quotes for body read", "err", err)
 		return nil, false, protocol.Errorf(protocol.CodeInternal, "internal error")
 	}
 	out := make([]bodyMessageJSON, len(rows))
@@ -653,8 +661,9 @@ func (a *Admin) readQuarantine(ctx context.Context, convID string, before, now i
 		}
 		m := q.Message
 		m.Body = plain
-		out[i] = bodyMessageJSON{logic.ToProto(m), m.DeletedBy}
-		out[i].Body = bodyOf(plain) // ToProto 对已删除的消息不带正文；这里是取证查看，要带上
+		// 隔离区里有被删的和被撤回的（C4，F-RCL-04 规则 3），后台版序列化：撤回的 deleted=false、recalled=true。
+		out[i] = bodyMessageJSON{logic.ToAdminProto(m), m.DeletedBy}
+		out[i].Body = bodyOf(plain) // 被删、撤回的消息本来不带正文；这里是取证查看，要带上（文件消息带文件名）
 	}
 	return out, more, nil
 }

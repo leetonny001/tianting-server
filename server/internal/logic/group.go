@@ -472,6 +472,7 @@ type memberCursor struct {
 	R int    `json:"r"`
 	T int64  `json:"t"`
 	U string `json:"u"`
+	K string `json:"k,omitempty"` // 成员搜索的 keyword（C4）：游标只能用于同一个 keyword
 }
 
 func (s *Service) signed(b []byte) string {
@@ -511,16 +512,27 @@ func (s *Service) groupMembersCmd(ctx context.Context, c delivery.Session, raw j
 	if limit < 1 || limit > protocol.MaxMembersLimit {
 		return nil, protocol.Errorf(protocol.CodeBadRequest, "limit must be 1-%d", protocol.MaxMembersLimit)
 	}
+	// 成员搜索（C4，PRD-chat F-MEN-01 规则 6）：userId 或昵称前缀；空串按没有处理。开关关闭时照常可用（只读，backend-chat 第 59 条）。
+	var keyword string
+	if req.Keyword != nil {
+		keyword = protocol.TrimText(*req.Keyword)
+		if protocol.TextLen(keyword) > protocol.MaxMemberKeywordLen {
+			return nil, protocol.Errorf(protocol.CodeBadRequest, "keyword longer than %d", protocol.MaxMemberKeywordLen)
+		}
+	}
 	var after *store.MemberKey
 	if req.Cursor != nil && *req.Cursor != "" {
 		b, ok := s.verified(*req.Cursor)
 		var cur memberCursor
-		if !ok || json.Unmarshal(b, &cur) != nil || cur.G != req.GroupID {
+		if !ok || json.Unmarshal(b, &cur) != nil || cur.G != req.GroupID || cur.K != keyword {
 			return nil, protocol.Errorf(protocol.CodeBadRequest, "invalid cursor")
 		}
 		after = &store.MemberKey{Rank: cur.R, T: cur.T, User: cur.U}
 	}
 	if !s.social.groupRead.Allow(c.UserID()) {
+		return nil, rateLimited()
+	}
+	if keyword != "" && !s.actions.searchRate.Allow(c.UserID()) { // 每人每分钟 30 次（AC-MEN-01-11）
 		return nil, rateLimited()
 	}
 	if _, err := s.store.GetGroup(ctx, req.GroupID); err != nil {
@@ -529,7 +541,7 @@ func (s *Service) groupMembersCmd(ctx context.Context, c delivery.Session, raw j
 	if _, err := s.memberRole(ctx, req.GroupID, c.UserID()); err != nil {
 		return nil, s.groupErr("group member", err)
 	}
-	rows, next, err := s.store.ListGroupMembers(ctx, req.GroupID, after, limit)
+	rows, next, err := s.store.ListGroupMembersMatching(ctx, req.GroupID, keyword, after, limit)
 	if err != nil {
 		return nil, s.internal("list group members", err)
 	}
@@ -538,7 +550,7 @@ func (s *Service) groupMembersCmd(ctx context.Context, c delivery.Session, raw j
 		out.Members = append(out.Members, protocol.GroupMemberItem{UserID: r.UserID, Role: r.Role, JoinedAt: r.JoinedAt, Nickname: r.Nickname, Avatar: r.Avatar, Official: r.Official})
 	}
 	if next != nil {
-		b, _ := json.Marshal(memberCursor{G: req.GroupID, R: next.Rank, T: next.T, U: next.User})
+		b, _ := json.Marshal(memberCursor{G: req.GroupID, R: next.Rank, T: next.T, U: next.User, K: keyword})
 		out.NextCursor = s.signed(b)
 	}
 	return out, nil

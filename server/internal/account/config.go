@@ -128,9 +128,10 @@ type ConfigResponse struct {
 	PrivacyNotice *PrivacyNotice `json:"privacyNotice,omitempty"`
 }
 
-// Features 告诉客户端隐藏哪些入口。files 跟 IM_FILES_ENABLED。
+// Features 告诉客户端隐藏哪些入口。files 跟 IM_FILES_ENABLED，msgActions 跟 IM_MSG_ACTIONS_ENABLED（C4）。
 type Features struct {
-	Files bool `json:"files"`
+	Files      bool `json:"files"`
+	MsgActions bool `json:"msgActions"`
 }
 
 // Limits 是客户端校验用的长度（PRD 没有定义内容，见任务单的进度说明）。

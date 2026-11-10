@@ -20,6 +20,7 @@ type Faults struct {
 	pushSkipDelivery map[string]bool // pushId
 	pushExit         map[string]bool // pushId
 	pushFailAt       *int
+	actions          msgActionFaults
 }
 
 func NewFaults() *Faults {
@@ -123,4 +124,38 @@ func (f *Faults) takePushFailAt() (int, bool) {
 	i := *f.pushFailAt
 	f.pushFailAt = nil
 	return i, true
+}
+
+// C4 的故障注入（PRD-chat 第 4.5 节，BE-471 第 4 条）：开关式，打开后一直生效，直到关掉（AC-RCL-01-11 的"恢复后重试"）。
+// 只在测试模式有 Faults；生产环境 f 为 nil，全部是空操作。
+type msgActionFaults struct {
+	quarantineWrite, mentionWrite, mentionAllCounter bool
+}
+
+var errInjectedFault = errors.New("injected fault")
+
+// SetMsgActionFaults 设置 C4 的三个故障；nil 表示不改。
+func (f *Faults) SetMsgActionFaults(quarantineWrite, mentionWrite, mentionAllCounter *bool) {
+	if f == nil {
+		return
+	}
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	for _, p := range []struct {
+		dst *bool
+		src *bool
+	}{{&f.actions.quarantineWrite, quarantineWrite}, {&f.actions.mentionWrite, mentionWrite}, {&f.actions.mentionAllCounter, mentionAllCounter}} {
+		if p.src != nil {
+			*p.dst = *p.src
+		}
+	}
+}
+
+func (f *Faults) msgActions() msgActionFaults {
+	if f == nil {
+		return msgActionFaults{}
+	}
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return f.actions
 }

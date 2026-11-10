@@ -351,6 +351,9 @@ type GroupInfoAck struct {
 	CreatedAt      int64  `json:"createdAt"`
 }
 
+// MaxMemberKeywordLen 是成员搜索 keyword 的上限（码点，和 Schema 的 maxLength 一致）。
+const MaxMemberKeywordLen = 64
+
 type GroupMembersPageReq struct {
 	GroupID string  `json:"groupId"`
 	Cursor  *string `json:"cursor"`

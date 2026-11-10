@@ -26,6 +26,10 @@ func TestLabelsAreBounded(t *testing.T) {
 	m.FileUploads.WithLabelValues("image", FileTypeDenied).Inc()
 	m.ObjStoreRequests.WithLabelValues("copy").Inc()
 	m.ObjStoreErrors.WithLabelValues("head").Inc()
+	m.Commands.WithLabelValues(CmdLabel("recall"), Code(4097)).Inc()
+	for _, by := range []string{RecallBySender, RecallByOwner, RecallByAdmin} {
+		m.Recalls.WithLabelValues(by).Inc()
+	}
 	if p := m.LabelProblems(); len(p) != 0 {
 		t.Errorf("problems: %v", p)
 	}

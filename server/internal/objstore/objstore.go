@@ -516,3 +516,13 @@ func escapeQuery(s string) string {
 	}
 	return b.String()
 }
+
+// Get 读私有桶 key 的全部内容（流式，调用方关闭）。后台查看隔离文件用（PRD-chat 第 11.6 节 POST /admin/files/{fileId}/fetch）：
+// im-server 读出来转给 console，不发预签名地址。不存在：ErrNotFound。
+func (c *Client) Get(ctx context.Context, key string) (io.ReadCloser, Info, error) {
+	resp, err := c.do(ctx, http.MethodGet, c.c.Bucket, key, nil, nil, nil)
+	if err != nil {
+		return nil, Info{}, err
+	}
+	return resp.Body, Info{Size: resp.ContentLength, ETag: resp.Header.Get("ETag"), ContentType: resp.Header.Get("Content-Type")}, nil
+}

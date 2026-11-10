@@ -113,7 +113,16 @@ type Metrics struct {
 	FileUploads       *prometheus.CounterVec // complete 尝试的结果，kind × result 都是有界取值
 	ObjStoreRequests  *prometheus.CounterVec // 按 op
 	ObjStoreErrors    *prometheus.CounterVec // 按 op：网络错误和对象存储返回的错误（不含 404、412）
+	// Recalls 是撤回成功的次数（C4，PRD-chat 第 14.2 节、F-OPS-06）：by 取 sender / owner / admin，有界；幂等重试不计。
+	Recalls *prometheus.CounterVec
 }
+
+// 撤回的操作者角色（im_recalls_total 的 by 标签）。
+const (
+	RecallBySender = "sender"
+	RecallByOwner  = "owner"
+	RecallByAdmin  = "admin"
+)
 
 // New 创建并注册全部指标，另外带上 Go 运行时和进程指标。
 func New() *Metrics {
@@ -144,6 +153,9 @@ func New() *Metrics {
 		Messages: prometheus.NewCounterVec(prometheus.CounterOpts{
 			Name: "im_messages_total", Help: "Newly stored messages by conversation type.",
 		}, []string{"conv_type"}),
+		Recalls: prometheus.NewCounterVec(prometheus.CounterOpts{
+			Name: "im_recalls_total", Help: "Recalled messages by who recalled them (sender, group owner, group admin).",
+		}, []string{"by"}),
 		SlowConsumers: prometheus.NewCounter(prometheus.CounterOpts{
 			Name: "im_slow_consumers_total", Help: "Connections closed because their send queue was full.",
 		}),
@@ -201,6 +213,7 @@ func New() *Metrics {
 	f(m.RefreshReissue)
 	f(m.RefreshReplay)
 	f(m.InviteAutoDisabled)
+	f(m.Recalls)
 	f(m.Pushes)
 	f(m.PushDeliveries)
 	f(m.PushInboxRows)
@@ -259,6 +272,8 @@ var knownCmds = map[string]bool{
 	"groupDissolve": true, "groupUpdate": true, "groupInfo": true, "groupMembers": true,
 	// PRD-live L1
 	"pushSync": true,
+	// PRD-chat C4
+	"recall": true,
 }
 
 // CmdLabel 把客户端传来的命令名规整成有限的标签值。
@@ -278,7 +293,7 @@ var forbiddenLabels = map[string]bool{"userid": true, "user_id": true, "uid": tr
 var codeLabel = regexp.MustCompile(`^(\d+|unknown)$`)
 
 var allowedLabelValues = map[string]map[string]bool{
-	"by":        set("client", "server"),
+	"by":        set("client", "server", RecallBySender, RecallByOwner, RecallByAdmin),
 	"phase":     set("handshake", "session"),
 	"platform":  set("android", "ios", "web", "pc", "unknown"),
 	"conv_type": set("c2c", "group", "room", "unknown"),

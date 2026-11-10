@@ -126,16 +126,17 @@ func (s *SQLite) DeleteMessages(ctx context.Context, req DeleteMessagesReq) ([]D
 	}
 	defer tx.Rollback()
 	type row struct {
-		id   string
-		seq  int64
-		body string
+		id    string
+		seq   int64
+		body  string
+		quote string
 	}
 	var todo []row
 	for _, id := range req.MsgIDs {
-		var conv, typ, body string
-		var seq, deletedAt int64
-		err := tx.QueryRowContext(ctx, `SELECT conv_id, seq, type, body, deleted_at FROM messages WHERE msg_id = ?`, id).
-			Scan(&conv, &seq, &typ, &body, &deletedAt)
+		var conv, typ, body, quote string
+		var seq, deletedAt, recalledAt int64
+		err := tx.QueryRowContext(ctx, `SELECT conv_id, seq, type, body, deleted_at, recalled_at, quote_msg_id FROM messages WHERE msg_id = ?`, id).
+			Scan(&conv, &seq, &typ, &body, &deletedAt, &recalledAt, &quote)
 		switch {
 		case errors.Is(err, sql.ErrNoRows):
 			return nil, fmt.Errorf("message %s: %w", id, ErrNotFound)
@@ -147,8 +148,10 @@ func (s *SQLite) DeleteMessages(ctx context.Context, req DeleteMessagesReq) ([]D
 			return nil, fmt.Errorf("message %s: %w", id, ErrMsgNotDeletable)
 		case deletedAt > 0:
 			continue // 幂等：已经删除的不再处理，也不再发事件
+		case recalledAt > 0:
+			continue // 已撤回的同样幂等（PRD-chat F-RCL-04 规则 1）：状态和文案保持撤回，不写 deleted_at，不发事件
 		}
-		todo = append(todo, row{id, seq, body})
+		todo = append(todo, row{id, seq, body, quote})
 	}
 	// PRD-chat F-RCL-03 规则 2：后台删除递增会话 mod_ver，SDK 重连时只重拉 modVer 变了的会话（D1）。
 	// 加锁顺序 conv_seq → 文件行（第 4.3 节），所以先于 revokeMessageFileTx。已删除的不再递增（幂等）。
@@ -165,6 +168,7 @@ func (s *SQLite) DeleteMessages(ctx context.Context, req DeleteMessagesReq) ([]D
 		if err != nil {
 			return nil, err
 		}
+		sealed = withQuote(sealed, m.quote)
 		nonce, ct, kid, err := req.Seal(m.id, req.ConvID, sealed)
 		if err != nil {
 			return nil, fmt.Errorf("seal message %s: %w", m.id, err)
@@ -175,7 +179,11 @@ func (s *SQLite) DeleteMessages(ctx context.Context, req DeleteMessagesReq) ([]D
 			return nil, err
 		}
 		if _, err := tx.ExecContext(ctx,
-			`UPDATE messages SET body = '{}', deleted_at = ?, deleted_by = ? WHERE msg_id = ?`, max(req.Now, 1), req.By, m.id); err != nil {
+			`UPDATE messages SET body = '{}', deleted_at = ?, deleted_by = ?, quote_msg_id = '' WHERE msg_id = ?`, max(req.Now, 1), req.By, m.id); err != nil {
+			return nil, err
+		}
+		// 被删的提及不再计入 mentionUnread（PRD-chat F-MEN-03 规则 1，C4）。
+		if err := deleteMentionsTx(ctx, tx, req.ConvID, m.seq); err != nil {
 			return nil, err
 		}
 		// 被删的是会话最后一条：摘要改成占位，原文不留在 conv_seq 里。
@@ -218,7 +226,7 @@ func revokeMessageFileTx(ctx context.Context, tx *sql.Tx, msgID, body string, no
 
 func (s *SQLite) ListQuarantined(ctx context.Context, convID string, beforeSeq, now int64, limit int) ([]QuarantinedMessage, bool, error) {
 	rows, err := s.db.QueryContext(ctx,
-		`SELECT m.msg_id, m.client_msg_id, m.conv_id, m.seq, m.from_uid, m.type, m.ts, m.deleted_at, m.deleted_by, q.nonce, q.ciphertext, q.kid, q.expires_at
+		`SELECT m.msg_id, m.client_msg_id, m.conv_id, m.seq, m.from_uid, m.type, m.ts, m.deleted_at, m.deleted_by, m.recalled_at, m.recalled_by, q.nonce, q.ciphertext, q.kid, q.expires_at
 		 FROM message_quarantine q JOIN messages m ON m.msg_id = q.msg_id
 		 WHERE q.conv_id = ? AND q.expires_at > ? AND m.seq < ? ORDER BY m.seq DESC LIMIT ?`, convID, now, beforeSeq, limit+1)
 	if err != nil {
@@ -229,7 +237,7 @@ func (s *SQLite) ListQuarantined(ctx context.Context, convID string, beforeSeq, 
 	for rows.Next() {
 		var q QuarantinedMessage
 		m := &q.Message
-		if err := rows.Scan(&m.MsgID, &m.ClientMsgID, &m.ConvID, &m.Seq, &m.From, &m.Type, &m.TS, &m.DeletedAt, &m.DeletedBy, &q.Nonce, &q.Ciphertext, &q.KID, &q.ExpiresAt); err != nil {
+		if err := rows.Scan(&m.MsgID, &m.ClientMsgID, &m.ConvID, &m.Seq, &m.From, &m.Type, &m.TS, &m.DeletedAt, &m.DeletedBy, &m.RecalledAt, &m.RecalledBy, &q.Nonce, &q.Ciphertext, &q.KID, &q.ExpiresAt); err != nil {
 			return nil, false, err
 		}
 		out = append(out, q)
@@ -425,6 +433,13 @@ func (s *SQLite) CreateMsgGrant(ctx context.Context, g MsgGrant, q MsgGrantQuota
 		return err
 	}
 	return tx.Commit()
+}
+
+func (s *SQLite) HasActiveMsgGrant(ctx context.Context, caller, operator, convID string, quarantine bool, now int64) (bool, error) {
+	var ok bool
+	err := s.db.QueryRowContext(ctx, `SELECT EXISTS (SELECT 1 FROM msg_grants WHERE caller = ? AND operator = ? AND conv_id = ? AND quarantine = ? AND expires_at > ?)`,
+		caller, operator, convID, quarantine, now).Scan(&ok)
+	return ok, err
 }
 
 func (s *SQLite) GetMsgGrant(ctx context.Context, grantID string) (MsgGrant, error) {

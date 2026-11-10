@@ -83,6 +83,9 @@ type Config struct {
 	Files files.Config
 	// ObjStore 是对象存储（第 11.3 节），只在 Files.Enabled 时使用。
 	ObjStore objstore.Config
+	// MsgActions 是 C4 撤回、引用、@（PRD-chat 第 4.1 节）：MsgActions.Enabled 关闭时 recall、带 quote / mentions 的 send 返回 4030 featureDisabled。
+	// 开启要求 QuarantineKey（AC-RCL-01-10），不依赖 V13AdminFeatures（RC2-15）。
+	MsgActions logic.MsgActionsConfig
 	// RequireHTTPS：生产环境 /v1/* 只接受 HTTPS（PRD-chat 第 4.2 节第 7 条）。
 	RequireHTTPS bool
 	TestMode     bool // 开启故障注入、时钟注入、短有效期 token（PRD 6.1 节），生产必须关闭
@@ -215,13 +218,20 @@ func New(cfg Config) (*App, error) {
 		}
 	}
 
+	// 隔离加密器：第二批的后台删除和 C4 的撤回都用它，二者之一开启就初始化（第 4.1 节 RC2-15）。
 	var cipher *quarantine.Cipher
-	if cfg.V13AdminFeatures {
+	if cfg.V13AdminFeatures || cfg.MsgActions.Enabled {
 		if cipher, err = quarantine.New(cfg.QuarantineKey); err != nil {
 			st.Close()
 			return nil, fmt.Errorf("IM_QUARANTINE_KEY: %w", err)
 		}
+	}
+	if cfg.V13AdminFeatures {
 		svc.EnableAdminFeatures()
+	}
+	if err := svc.ConfigureMsgActions(cfg.MsgActions, cipher, cmp.Or(cfg.QuarantineDays, defaultQuarantineDays)); err != nil {
+		st.Close()
+		return nil, err
 	}
 	var fileSvc *files.Service
 	var obj *objstore.Client
@@ -350,6 +360,7 @@ func New(cfg Config) (*App, error) {
 		publicConfig.Limits.ImageMaxBytes, publicConfig.Limits.ThumbMaxBytes, publicConfig.Limits.FileMaxBytes = l.ImageMaxBytes, l.ThumbMaxBytes, l.FileMaxBytes
 		publicConfig.Limits.AvatarMaxBytes, publicConfig.Limits.UploadDailyBytes = l.AvatarMaxBytes, l.UploadDailyBytes
 	}
+	publicConfig.Features.MsgActions = cfg.MsgActions.Enabled // 客户端按它隐藏撤回、引用、@ 的入口（第 4.1 节共同规则）
 	v1.Handle(mux, "GET /v1/config", func(w http.ResponseWriter, r *http.Request) { api.WriteJSON(w, publicConfig) })
 	v1.RegisterAccount(mux, accounts)
 	if fileSvc != nil {
@@ -403,7 +414,11 @@ func New(cfg Config) (*App, error) {
 	}
 	adm.WithJobs(jobs)
 	if cfg.V13AdminFeatures {
-		adm.WithModeration(admin.ModerationConfig{Service: svc, Cipher: cipher, QuarantineDays: cmp.Or(cfg.QuarantineDays, defaultQuarantineDays), C2CBodyAccess: cfg.C2CBodyAccess})
+		mc := admin.ModerationConfig{Service: svc, Cipher: cipher, QuarantineDays: cmp.Or(cfg.QuarantineDays, defaultQuarantineDays), C2CBodyAccess: cfg.C2CBodyAccess}
+		if obj != nil {
+			mc.Objects = obj // POST /admin/files/{fileId}/fetch（C4）
+		}
+		adm.WithModeration(mc)
 	}
 	if cfg.Push.Enabled {
 		adm.WithPush(svc)
@@ -450,6 +465,8 @@ func registerJobs(s *scheduler.Scheduler, st *store.SQLite, svc *logic.Service, 
 	s.Register("msg_grants_purge", jobPeriod, func(ctx context.Context) (int, error) {
 		return st.PurgeMsgGrants(ctx, clk.Now().Add(-grantRetention).UnixMilli())
 	})
+	// 提及计数清理到已读之后（PRD-chat 第 12.1 节，C4）。不跟开关：关掉之后表里的行也要清。
+	s.Register("mention_purge", jobPeriod, svc.PurgeMentions)
 }
 
 // DynamicCheck 是要查库的配置检查项（F-ACC-03 规则 3 的密钥台账、F-ACC-09 规则 1 的邀请码总量）。

@@ -104,7 +104,8 @@ func (s *SQLite) FileAccessInfo(ctx context.Context, fileIDs []string) (map[stri
 	for id, f := range files {
 		a := FileAccess{File: f}
 		if f.MsgID != "" {
-			err := s.db.QueryRowContext(ctx, `SELECT seq, deleted_at > 0 FROM messages WHERE msg_id = ?`, f.MsgID).Scan(&a.MsgSeq, &a.MsgDeleted)
+			// 撤回的消息和删除的一样不可访问（C4，AC-RCL-04-6）；撤回时文件已经是 revoked，这里再挡一次。
+			err := s.db.QueryRowContext(ctx, `SELECT seq, deleted_at > 0 OR recalled_at > 0 FROM messages WHERE msg_id = ?`, f.MsgID).Scan(&a.MsgSeq, &a.MsgDeleted)
 			switch {
 			case err == nil:
 				a.MsgFound = true

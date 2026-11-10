@@ -233,6 +233,7 @@ func Load(getenv func(string) string) (cfg Server, warnings []string, err error)
 
 	loadAccount(getenv, a, bad)
 	loadFiles(getenv, a, prod, bad)
+	loadMsgActions(getenv, a, bad)
 
 	a.Account.EnforceKeyLedger = prod
 	cfg.AllowTokenIssue = getenv("IM_ALLOW_TOKEN_ISSUE") == "1"
@@ -356,6 +357,39 @@ func Load(getenv func(string) string) (cfg Server, warnings []string, err error)
 	snapshot := cfg
 	a.ConfigSummary = func(version, nodeID string) any { return Summary(snapshot, version, nodeID) }
 	return cfg, warnings, nil
+}
+
+// loadMsgActions 读取 C4 撤回、引用、@ 的配置（PRD-chat 第 4.1 节，BE-471 第 2、3 条）。撤回、成员搜索的频率 PRD 没有变量名（backend-chat 第 53 条）。
+// 开关打开时 IM_QUARANTINE_KEY 必须显式设置，任何环境都不回退到开发默认值（AC-RCL-01-10，第 54 条）。
+func loadMsgActions(getenv func(string) string, a *app.Config, bad func(string, ...any)) {
+	m := &a.MsgActions
+	m.Enabled = boolEnv(getenv, "IM_MSG_ACTIONS_ENABLED", false, bad)
+	for key, dst := range map[string]*time.Duration{"IM_RECALL_WINDOW_SEC": &m.RecallWindow, "IM_GROUP_RECALL_WINDOW_SEC": &m.GroupRecallWindow} {
+		if v := getenv(key); v != "" {
+			n, err := strconv.Atoi(v)
+			if err != nil || n < 1 || n > 365*24*3600 {
+				bad("%s: must be 1..31536000 seconds, got %q", key, v)
+				continue
+			}
+			*dst = time.Duration(n) * time.Second
+		}
+	}
+	for key, dst := range map[string]*int{
+		"IM_MENTION_MAX": &m.MentionMax, "IM_MENTION_ALL_HOURLY": &m.MentionAllHourly, "IM_MENTION_ALL_DAILY": &m.MentionAllDaily,
+		"IM_RECALL_RATE_PER_MIN": &m.RecallRatePerMin, "IM_MEMBER_SEARCH_RATE_PER_MIN": &m.MemberSearchRatePerMin,
+	} {
+		if v := getenv(key); v != "" {
+			n, err := strconv.Atoi(v)
+			if err != nil || n < 1 || n > 100000 {
+				bad("%s: must be 1..100000, got %q", key, v)
+				continue
+			}
+			*dst = n
+		}
+	}
+	if m.Enabled && getenv("IM_QUARANTINE_KEY") == "" {
+		bad("IM_MSG_ACTIONS_ENABLED=1 requires IM_QUARANTINE_KEY (recalled messages are kept encrypted; no development default)")
+	}
 }
 
 // refreshKidRE：kid 是 refresh token 的第一段（kid.sid.gen.nonce.mac），不能含分隔符。

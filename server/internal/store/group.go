@@ -114,6 +114,9 @@ type GroupStore interface {
 	// UpdateGroupProfile 改群名 / 公告，每改一项一条提示消息（renamed、noticeUpdated）。
 	UpdateGroupProfile(ctx context.Context, groupID, actor string, name, notice *string, now int64) ([]Message, error)
 	ListGroupMembers(ctx context.Context, groupID string, after *MemberKey, limit int) (rows []GroupMemberRow, next *MemberKey, err error)
+	// ListGroupMembersMatching 同 ListGroupMembers，只返回 userId 以 keyword 开头（区分大小写）或昵称以它开头（ASCII 不区分大小写）的成员
+	// （PRD-chat F-MEN-01 规则 6，C4）。keyword 为空时和 ListGroupMembers 相同。
+	ListGroupMembersMatching(ctx context.Context, groupID, keyword string, after *MemberKey, limit int) (rows []GroupMemberRow, next *MemberKey, err error)
 	// SetGroupOwner 是管理接口指定 / 更换 / 收回群主（owner 为空串表示收回）。不是成员返回 ErrTargetNotMember；没有变化时 tip 为 nil。
 	SetGroupOwner(ctx context.Context, groupID, owner string, now int64) (*Message, error)
 	// PurgeGroupReqs 删除 created_at < before 的建群去重记录（保留 7 天）。

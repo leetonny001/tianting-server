@@ -156,15 +156,15 @@ func (s *SQLite) SaveMessage(ctx context.Context, m Message) (Message, bool, err
 		 VALUES (?, 1, ?, ?, ?, ?, ?)
 		 ON CONFLICT (conv_id) DO UPDATE SET max_seq = max_seq + 1,
 		   last_msg_id = excluded.last_msg_id, last_from = excluded.last_from, last_type = excluded.last_type,
-		   last_text = excluded.last_text, last_ts = excluded.last_ts, last_deleted = 0
+		   last_text = excluded.last_text, last_ts = excluded.last_ts, last_deleted = 0, last_recalled = 0, last_recalled_by = ''
 		 RETURNING max_seq`, m.ConvID, m.MsgID, m.From, m.Type, m.Summary, m.TS).Scan(&m.Seq); err != nil {
 		return Message{}, false, fmt.Errorf("allocate seq: %w", err)
 	}
 
 	if _, err := tx.ExecContext(ctx,
-		`INSERT INTO messages (msg_id, conv_id, seq, from_uid, client_msg_id, type, body, ts)
-		 VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-		m.MsgID, m.ConvID, m.Seq, m.From, m.ClientMsgID, m.Type, string(m.Body), m.TS); err != nil {
+		`INSERT INTO messages (msg_id, conv_id, seq, from_uid, client_msg_id, type, body, ts, quote_msg_id)
+		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		m.MsgID, m.ConvID, m.Seq, m.From, m.ClientMsgID, m.Type, string(m.Body), m.TS, m.QuoteMsgID); err != nil {
 		return Message{}, false, fmt.Errorf("insert message: %w", err)
 	}
 	// 绑定文件（第 4.3 节第 10 步），在分配 seq 之后：加锁顺序 conv_seq → 文件行。失败整个事务回滚，消息不保存，文件保持 ready。
@@ -172,6 +172,10 @@ func (s *SQLite) SaveMessage(ctx context.Context, m Message) (Message, bool, err
 		if err := bindFileTx(ctx, tx, m); err != nil {
 			return Message{}, false, err
 		}
+	}
+	// @ 所有人的次数和提及计数（C4，第 4.3 节第 10 步）：在文件之后（加锁顺序 conv_seq → 文件行 → 计数行），失败整个事务回滚。
+	if err := saveMentionsTx(ctx, tx, m); err != nil {
+		return Message{}, false, err
 	}
 	// 单聊：会话进入双方的会话列表。
 	for i, uid := range m.ConvUsers {
@@ -643,7 +647,8 @@ const (
 	SELECT uc.user_id, uc.conv_id, cs.max_seq, COALESCE(rs.seq, 0) AS read_seq, 0 AS join_seq,
 	       '' AS group_name, 0 AS history_visible, uc.peer_id, COALESCE(u.nickname, '') AS peer_nickname, 0 AS member_count, '' AS my_role,
 	       cs.max_seq > 0 AS last_visible, uc.created_at AS joined_at,
-	       cs.last_msg_id, cs.last_from, cs.last_type, cs.last_text, cs.last_ts, cs.last_deleted, cs.mod_ver
+	       cs.last_msg_id, cs.last_from, cs.last_type, cs.last_text, cs.last_ts, cs.last_deleted, cs.mod_ver,
+	       cs.last_recalled, cs.last_recalled_by
 	FROM user_conv uc
 	JOIN conv_seq cs ON cs.conv_id = uc.conv_id
 	LEFT JOIN read_seq rs ON rs.user_id = uc.user_id AND rs.conv_id = uc.conv_id
@@ -658,7 +663,8 @@ const (
 	       gm.joined_at,
 	       COALESCE(cs.last_msg_id, '') AS last_msg_id, COALESCE(cs.last_from, '') AS last_from,
 	       COALESCE(cs.last_type, '') AS last_type, COALESCE(cs.last_text, '') AS last_text,
-	       COALESCE(cs.last_ts, 0) AS last_ts, COALESCE(cs.last_deleted, 0) AS last_deleted, COALESCE(cs.mod_ver, 0) AS mod_ver
+	       COALESCE(cs.last_ts, 0) AS last_ts, COALESCE(cs.last_deleted, 0) AS last_deleted, COALESCE(cs.mod_ver, 0) AS mod_ver,
+	       COALESCE(cs.last_recalled, 0) AS last_recalled, COALESCE(cs.last_recalled_by, '') AS last_recalled_by
 	FROM group_members gm
 	JOIN chat_groups g ON g.group_id = gm.group_id AND g.dissolved_at = 0
 	LEFT JOIN conv_seq cs ON cs.conv_id = 'group:' || gm.group_id
@@ -668,7 +674,7 @@ const (
 	// convColumns 是外层统一选出的列，顺序与 scanConv 一致（第一列 user_id）。
 	convColumns = `user_id, conv_id, max_seq, read_seq, join_seq, group_name, history_visible, peer_id, peer_nickname, member_count, my_role,
 	       last_visible, CASE WHEN last_visible THEN last_ts ELSE joined_at END AS updated_at,
-	       last_msg_id, last_from, last_type, last_text, last_ts, last_deleted, mod_ver`
+	       last_msg_id, last_from, last_type, last_text, last_ts, last_deleted, mod_ver, last_recalled, last_recalled_by`
 )
 
 // convQuery 拼出外层查询：branches 是已经填好条件的分支（UNION ALL）。
@@ -739,18 +745,19 @@ func (s *SQLite) GroupConversations(ctx context.Context, groupID string, userIDs
 func scanConv(r rowScanner) (ConvRow, error) {
 	var c ConvRow
 	err := r.Scan(&c.UserID, &c.ConvID, &c.MaxSeq, &c.ReadSeq, &c.JoinSeq, &c.GroupName, &c.HistoryVisible, &c.PeerID, &c.PeerNickname, &c.MemberCount, &c.MyRole,
-		&c.LastVisible, &c.UpdatedAt, &c.Last.MsgID, &c.Last.From, &c.Last.Type, &c.Last.Text, &c.Last.TS, &c.Last.Deleted, &c.ModVer)
+		&c.LastVisible, &c.UpdatedAt, &c.Last.MsgID, &c.Last.From, &c.Last.Type, &c.Last.Text, &c.Last.TS, &c.Last.Deleted, &c.ModVer,
+		&c.Last.Recalled, &c.Last.RecalledBy)
 	return c, err
 }
 
-const msgColumns = `msg_id, client_msg_id, conv_id, seq, from_uid, type, body, ts, deleted_at, deleted_by`
+const msgColumns = `msg_id, client_msg_id, conv_id, seq, from_uid, type, body, ts, deleted_at, deleted_by, recalled_at, recalled_by, quote_msg_id`
 
 type rowScanner interface{ Scan(dest ...any) error }
 
 func scanMessage(r rowScanner) (Message, error) {
 	var m Message
 	var body string
-	if err := r.Scan(&m.MsgID, &m.ClientMsgID, &m.ConvID, &m.Seq, &m.From, &m.Type, &body, &m.TS, &m.DeletedAt, &m.DeletedBy); err != nil {
+	if err := r.Scan(&m.MsgID, &m.ClientMsgID, &m.ConvID, &m.Seq, &m.From, &m.Type, &body, &m.TS, &m.DeletedAt, &m.DeletedBy, &m.RecalledAt, &m.RecalledBy, &m.QuoteMsgID); err != nil {
 		return Message{}, err
 	}
 	m.Body = []byte(body)

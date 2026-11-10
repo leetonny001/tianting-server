@@ -566,16 +566,32 @@ func (s *SQLite) UpdateGroupProfile(ctx context.Context, groupID, actor string, 
 }
 
 func (s *SQLite) ListGroupMembers(ctx context.Context, groupID string, after *MemberKey, limit int) ([]GroupMemberRow, *MemberKey, error) {
-	where, args := "", []any{groupID}
+	return s.ListGroupMembersMatching(ctx, groupID, "", after, limit)
+}
+
+func (s *SQLite) ListGroupMembersMatching(ctx context.Context, groupID, keyword string, after *MemberKey, limit int) ([]GroupMemberRow, *MemberKey, error) {
+	var conds []string
+	args := []any{groupID}
+	if keyword != "" {
+		// 前缀范围查询，和管理端搜索同一个写法（userId 区分大小写，昵称用 nickname_fold）。
+		fold := asciiFold(keyword)
+		conds = append(conds, `((user_id >= ? AND user_id < ?) OR (nickname_fold >= ? AND nickname_fold < ?))`)
+		args = append(args, keyword, prefixEnd(keyword), fold, prefixEnd(fold))
+	}
 	if after != nil {
-		where = ` WHERE (rnk, t, user_id) > (?, ?, ?)`
+		conds = append(conds, `(rnk, t, user_id) > (?, ?, ?)`)
 		args = append(args, after.Rank, after.T, after.User)
+	}
+	where := ""
+	if len(conds) > 0 {
+		where = " WHERE " + strings.Join(conds, " AND ")
 	}
 	args = append(args, limit+1)
 	// #nosec G202 -- where 是常量片段，取值全部走占位符
 	rows, err := s.db.QueryContext(ctx, `SELECT user_id, role, joined_at, role_at, nickname, avatar, official, rnk, t FROM (
 		SELECT gm.user_id, gm.role, gm.joined_at, gm.role_at,
 		       COALESCE(u.nickname, '') AS nickname, COALESCE(u.avatar, '') AS avatar, COALESCE(u.official, 0) AS official,
+		       COALESCE(u.nickname_fold, '') AS nickname_fold,
 		       CASE gm.role WHEN 'owner' THEN 0 WHEN 'admin' THEN 1 ELSE 2 END AS rnk,
 		       CASE gm.role WHEN 'admin' THEN gm.role_at ELSE gm.joined_at END AS t
 		FROM group_members gm LEFT JOIN users u ON u.user_id = gm.user_id WHERE gm.group_id = ?

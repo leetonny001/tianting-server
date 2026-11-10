@@ -26,6 +26,9 @@ type Message struct {
 	TS          int64
 	DeletedAt   int64  // 软删除的时间（第二批）；0 = 没有删除。删除后 Body 是 {}
 	DeletedBy   string // {caller}:{operator}，只给管理接口，不下发给客户端
+	RecalledAt  int64  // 撤回的时间（C4，F-RCL-01 规则 5）；0 = 没有撤回。撤回后 Body 是 {}，和 DeletedAt 分开
+	RecalledBy  string // 撤回的操作者 userId
+	QuoteMsgID  string // 引用的消息（C4，F-QUO-01 规则 3）：只存 msgId，不把内容复制进 Body
 
 	// 以下字段只在 SaveMessage 时传入，不随消息读出。
 	Summary   string   // 会话列表里的摘要（调用方截断好，前 100 个码点）
@@ -38,6 +41,13 @@ type Message struct {
 	// 影响 0 行返回 ErrFileNotReady，消息不保存。加锁顺序 conv_seq → 文件行。AttachRetainUntil 是保留期到期时间，0 表示不过期。
 	AttachFileID      string
 	AttachRetainUntil int64
+	// Mentions 是要写进 conv_mentions 的 @ 个人（C4，F-MEN-03 规则 1，调用方已过滤成当前成员；发送者自己不写，规则 6）。
+	// MentionAll 非 nil 时在同一事务里扣 @ 所有人次数（第 4.3 节第 10 步，加锁顺序 conv_seq → 文件行 → 计数行）并写一行 group_mention_all。
+	// 次数用完返回 *MentionAllLimitError，计数不可用 ErrMentionAllCounter，提及表写失败 ErrMentionWrite，消息都不保存。
+	Mentions   []string
+	MentionAll *MentionAllQuota
+	// Fault 是测试模式的故障注入（FaultMentionWrite、FaultMentionAllCounter），返回错误时按对应的失败处理。生产为 nil。
+	Fault func(point string) error
 }
 
 // Group 是群（PRD F-GRP-01）。
@@ -91,12 +101,14 @@ type ConvRow struct {
 
 // LastMessage 是会话最后一条消息的摘要。
 type LastMessage struct {
-	MsgID   string
-	From    string
-	Type    string
-	Text    string
-	TS      int64
-	Deleted bool // 被删除（第二批）：Text 为空
+	MsgID      string
+	From       string
+	Type       string
+	Text       string
+	TS         int64
+	Deleted    bool   // 被删除（第二批）：Text 为空
+	Recalled   bool   // 被撤回（C4，F-RCL-03 规则 4）：Text 为空
+	RecalledBy string // 撤回的操作者
 }
 
 // User 是 IM 用户（PRD F-USER-01）。
@@ -117,6 +129,7 @@ type Store interface {
 	ModerationStore
 	PushStore
 	FileStore
+	MsgActionStore
 
 	// SaveMessage 为消息分配会话内递增 seq 并保存。
 	// 同一发送者重复提交同一 ClientMsgID 时不新建，返回第一次保存的消息且 dup=true。

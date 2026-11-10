@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"errors"
 	"log/slog"
+	"time"
 
 	"github.com/google/uuid"
 
@@ -37,7 +38,11 @@ type Service struct {
 	mutes   *muteCache // 第二批开启时非 nil（IM_V13_ADMIN_FEATURES）
 	push    *pushState // 系统推送开启时非 nil（IM_PUSH_ENABLED）
 	files   filesConfig
+	actions *msgActions // C4 撤回、引用、@：一定非 nil，开关在 actions.cfg.Enabled
 }
+
+// 配额、@ 所有人次数按 Asia/Shanghai 自然日。中国不使用夏令时，用固定时区，不依赖运行环境的 tzdata。
+var shanghai = time.FixedZone("Asia/Shanghai", 8*3600)
 
 // New 创建 Service。limiter 按用户限制发送速率（所有连接合计，PRD F-MSG-07）。
 // inv 用于订阅群成员缓存的失效通知（TopicGroupMembers）。
@@ -57,6 +62,7 @@ func New(st store.Store, router delivery.Router, clk clock.Clock, faults *Faults
 		newID: func() string { return uuid.Must(uuid.NewV7()).String() },
 	}
 	s.changed = newGroupChangedMerger(s.deliverGroupChanged)
+	s.actions = newMsgActions(MsgActionsConfig{}, s)
 	return s
 }
 
@@ -84,6 +90,8 @@ func (s *Service) Handle(ctx context.Context, c delivery.Session, in protocol.In
 		data, err = s.convs(ctx, c)
 	case protocol.CmdPushSync:
 		data, err = s.pushSync(ctx, c, in.Data)
+	case protocol.CmdRecall:
+		data, err = s.recall(ctx, c, in.Data)
 	case protocol.CmdJoinRoom, protocol.CmdLeaveRoom:
 		err = protocol.Errorf(protocol.CodeBadRequest, "%s is not available yet", in.Cmd)
 	default:
@@ -113,6 +121,15 @@ func (s *Service) send(ctx context.Context, c delivery.Session, raw json.RawMess
 	if isFile && !s.files.enabled {
 		// IM_FILES_ENABLED 关闭：4000，不是共同规则的 4030（F-FILE 的写法，AC-FILE-01-14）。
 		return nil, false, protocol.Errorf(protocol.CodeBadRequest, "file messages are disabled")
+	}
+	// C4 的格式（第 4.3 节第 1 步）：开关关闭时带 quote、mentions 是 4030（第 4.1 节共同规则）；@ 的人数超限 4131（去重后，AC-MEN-01-3）。
+	if req.Body.Quote != nil || req.Body.Mentions != nil {
+		if !s.actions.cfg.Enabled {
+			return nil, false, featureDisabled()
+		}
+		if m := req.Body.Mentions; m != nil && distinctCount(m.UserIDs) > s.actions.cfg.MentionMax {
+			return nil, false, protocol.Errorf(protocol.CodeBatchLimitExceeded, "at most %d mentions", s.actions.cfg.MentionMax)
+		}
 	}
 	uid := c.UserID()
 
@@ -173,6 +190,27 @@ func (s *Service) send(ctx context.Context, c delivery.Session, raw json.RawMess
 		}
 		stored, attach = storedFileBody(req), req.Body.FileID()
 	}
+	// 第 7 步引用校验（4040 quoteUnavailable）、第 8 步 @ 所有人的权限和过滤 userIds（4030 mentionAllForbidden）。
+	// 只保存 quote_msg_id，不把被引用的内容写进 body（AC-QUO-01-6）；mentions 保存过滤后的结果（下发要带，撤回时随正文清除）。
+	var quoteID string
+	if q := req.Body.Quote; q != nil {
+		if perr := s.checkQuote(ctx, uid, convID, q.MsgID); perr != nil {
+			onReject()
+			return nil, false, perr
+		}
+		quoteID = q.MsgID
+	}
+	var mentions mentionPlan
+	if m := req.Body.Mentions; m != nil {
+		var perr *protocol.Error
+		if mentions, perr = s.planMentions(ctx, uid, req.To, m, recipients); perr != nil {
+			onReject()
+			return nil, false, perr
+		}
+	}
+	if req.Type == protocol.MsgText {
+		stored = protocol.MsgBody{Text: req.Body.Text, Mentions: mentions.body}
+	}
 	now := s.clock.Now()
 	body, err := json.Marshal(stored)
 	if err != nil {
@@ -192,16 +230,32 @@ func (s *Service) send(ctx context.Context, c delivery.Session, raw json.RawMess
 		// 第 10 步：同一事务里绑定文件，影响 0 行 4096，消息不保存，文件保持 ready（AC-FILE-07-8）。
 		AttachFileID:      attach,
 		AttachRetainUntil: s.retainUntil(now),
+		// 第 10 步（C4）：@ 所有人次数在事务里扣，提及计数和消息同一事务（R-CB-07、F-MEN-03 规则 1）。
+		QuoteMsgID: quoteID,
+		Mentions:   mentions.users,
+		MentionAll: mentions.all,
+		Fault:      s.mentionFault(),
 	})
-	if errors.Is(err, store.ErrStrangerMsgLimit) {
+	var limited *store.MentionAllLimitError
+	switch {
+	case errors.Is(err, store.ErrStrangerMsgLimit):
 		onReject()
 		return nil, false, protocol.Errorf(protocol.CodeStrangerMsgLimit, "stranger message limit reached")
-	}
-	if errors.Is(err, store.ErrFileNotReady) {
+	case errors.Is(err, store.ErrFileNotReady):
 		onReject()
 		return nil, false, protocol.Errorf(protocol.CodeFileNotReady, "file not ready")
-	}
-	if err != nil {
+	case errors.As(err, &limited):
+		onReject()
+		e := protocol.Errorf(protocol.CodeMentionAllLimited, "mention-all limit reached")
+		e.Details = map[string]any{"retryAfterSeconds": limited.RetryAfter}
+		return nil, false, e
+	case errors.Is(err, store.ErrMentionAllCounter):
+		onReject()
+		return nil, false, protocol.Errorf(protocol.CodeServiceUnavailable, "mention-all counter unavailable") // 不放行（AC-MEN-02-8）
+	case errors.Is(err, store.ErrMentionWrite):
+		onReject()
+		return nil, false, s.internal("save message", err) // 提及表写失败（AC-MEN-03-8）：消息不保存，5000
+	case err != nil:
 		return nil, false, s.internal("save message", err)
 	}
 	onSaved()
@@ -255,6 +309,9 @@ func (s *Service) fanout(ctx context.Context, m store.Message, recipients []stri
 	if err := EnrichFiles(ctx, s.store, pm); err != nil {
 		s.log.Error("load files for msg frame", "err", err)
 	}
+	if err := EnrichQuotes(ctx, s.store, pm); err != nil {
+		s.log.Error("load quotes for msg frame", "err", err)
+	}
 	frame, err := json.Marshal(protocol.OutFrame{Cmd: protocol.CmdMsg, Data: pm[0]})
 	if err != nil {
 		s.log.Error("marshal msg frame", "err", err)
@@ -301,6 +358,10 @@ func (s *Service) sync(ctx context.Context, c delivery.Session, raw json.RawMess
 	if err := EnrichFiles(ctx, s.store, out.Messages); err != nil {
 		return nil, s.internal("load files", err)
 	}
+	// 引用按当前状态组装（F-QUO-02 规则 4，AC-QUO-02-1）：一页批量读，不逐条查库。
+	if err := EnrichQuotes(ctx, s.store, out.Messages); err != nil {
+		return nil, s.internal("load quotes", err)
+	}
 	return out, nil
 }
 
@@ -341,6 +402,9 @@ func (s *Service) convs(ctx context.Context, c delivery.Session) (any, *protocol
 	if perr := s.applyGroupMutes(ctx, c.UserID(), out.Convs); perr != nil {
 		return nil, perr
 	}
+	if perr := s.applyMentionCounts(ctx, c.UserID(), out.Convs); perr != nil {
+		return nil, perr
+	}
 	return out, nil
 }
 
@@ -370,7 +434,8 @@ func toConversation(r store.ConvRow) protocol.Conversation {
 	// 未读 = maxSeq − max(readSeq, joinSeq)，从入群时刻算起，与 historyVisible 无关（C-02）。
 	out.Unread = max(0, r.MaxSeq-max(r.ReadSeq, r.JoinSeq))
 	if r.LastVisible {
-		out.LastMsg = &protocol.LastMsg{MsgID: r.Last.MsgID, From: r.Last.From, Type: r.Last.Type, Text: r.Last.Text, TS: r.Last.TS, Deleted: r.Last.Deleted}
+		out.LastMsg = &protocol.LastMsg{MsgID: r.Last.MsgID, From: r.Last.From, Type: r.Last.Type, Text: r.Last.Text, TS: r.Last.TS,
+			Deleted: r.Last.Deleted || r.Last.Recalled, Recalled: r.Last.Recalled, RecalledBy: r.Last.RecalledBy} // 撤回同时 deleted=true（F-RCL-03 规则 4）
 	}
 	return out
 }
@@ -481,10 +546,22 @@ func decode[T any](raw json.RawMessage) (T, *protocol.Error) {
 	return v, nil
 }
 
+// toProto 是下行版序列化：撤回的消息同时 deleted=true、recalled=true，没有 body（F-RCL-01 规则 5a）。后台版见 ToAdminProto。
 func toProto(m store.Message) protocol.Message {
+	out := ToAdminProto(m)
+	out.Deleted = m.DeletedAt > 0 || m.RecalledAt > 0
+	return out
+}
+
+// ToAdminProto 是后台版序列化（F-RCL-04 规则 3，RC2-21）：deleted 只表示后台删除，撤回单独用 recalled*；被删、撤回的都没有 body。
+// 引用只有 msgId，由 EnrichQuotes 组装。
+func ToAdminProto(m store.Message) protocol.Message {
 	var body protocol.MsgBody
-	if m.DeletedAt == 0 { // 被删除的消息没有 body（F-MSG-05 规则 7）
+	if m.DeletedAt == 0 && m.RecalledAt == 0 { // 被删除、撤回的消息没有 body（F-MSG-05 规则 7）
 		_ = json.Unmarshal(m.Body, &body) // Body 是我们自己写入的，格式可信
+		if m.QuoteMsgID != "" {
+			body.Quote = &protocol.Quote{MsgID: m.QuoteMsgID}
+		}
 	}
 	return protocol.Message{
 		MsgID:       m.MsgID,
@@ -497,5 +574,8 @@ func toProto(m store.Message) protocol.Message {
 		TS:          m.TS,
 		Deleted:     m.DeletedAt > 0,
 		DeletedAt:   m.DeletedAt,
+		Recalled:    m.RecalledAt > 0,
+		RecalledAt:  m.RecalledAt,
+		RecalledBy:  m.RecalledBy,
 	}
 }

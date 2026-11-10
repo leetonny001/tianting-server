@@ -99,6 +99,18 @@ func productionChecks(cfg Server) []Check {
 	}
 	add("quarantine_key", fmt.Sprintf("IM_QUARANTINE_KEY：%d 字节，与其他密钥逐把比较", len(a.QuarantineKey)), qk...)
 
+	// C4 撤回、引用、@（PRD-chat 第 4.1 节、F-OPS-10 的撤回部分，AC-CHAT-90-17、AC-ACC-10-4）：开关状态、隔离密钥已设置、隐私说明版本。
+	// 开关开、隐私说明版本为空时拒绝启动（F-RCL-04 规则 4：要告知用户撤回后平台仍会留存）。Detail 不含密钥。
+	var ma []string
+	if a.MsgActions.Enabled && a.Account.PrivacyVersion == "" {
+		ma = append(ma, "IM_MSG_ACTIONS_ENABLED=1 requires IM_PRIVACY_NOTICE_VERSION in production: the privacy notice must tell users recalled messages are kept for 30 days")
+	}
+	if a.MsgActions.Enabled && a.QuarantineKey == "" {
+		ma = append(ma, "IM_MSG_ACTIONS_ENABLED=1 requires IM_QUARANTINE_KEY")
+	}
+	add("msg_actions", fmt.Sprintf("IM_MSG_ACTIONS_ENABLED：%s；IM_QUARANTINE_KEY：%s；IM_PRIVACY_NOTICE_VERSION：%s",
+		enabledText(a.MsgActions.Enabled), cmpText(a.QuarantineKey != "", "已设置", "未设置"), cmp.Or(a.Account.PrivacyVersion, "未设置")), ma...)
+
 	// refresh 密钥（PRD-chat F-ACC-03 规则 3）：独立于其他密钥。没配时账号接口 503，其他功能不受影响，所以不拒绝启动。
 	var rk []string
 	for _, k := range a.Account.RefreshKeys {

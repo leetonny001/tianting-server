@@ -131,4 +131,7 @@ type ModerationStore interface {
 	CreateMsgGrant(ctx context.Context, g MsgGrant, q MsgGrantQuota) error
 	// GetMsgGrant 不存在时返回 ErrMsgGrantNotFound。
 	GetMsgGrant(ctx context.Context, grantID string) (MsgGrant, error)
+	// HasActiveMsgGrant 报告调用方 + 操作人对这个会话有没有在 now 时还有效的授权（quarantine 是隔离授权）。
+	// 给 POST /admin/files/{fileId}/fetch 用：请求不带 grantId，按会话查（PRD-chat 第 11.6 节，BE-470 第 4 条）。
+	HasActiveMsgGrant(ctx context.Context, caller, operator, convID string, quarantine bool, now int64) (bool, error)
 }

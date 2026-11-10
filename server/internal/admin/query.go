@@ -302,6 +302,10 @@ type messageMetaJSON struct {
 	Deleted    bool   `json:"deleted,omitempty"`
 	DeletedAt  int64  `json:"deletedAt,omitempty"`
 	DeletedBy  string `json:"deletedBy,omitempty"`
+	// 撤回（C4，PRD-chat F-RCL-04 规则 3、AC-RCL-04-7）：deleted 只表示后台删除；撤回的 bodyLength 为 0、没有 fileSize。
+	Recalled   bool   `json:"recalled,omitempty"`
+	RecalledAt int64  `json:"recalledAt,omitempty"`
+	RecalledBy string `json:"recalledBy,omitempty"`
 }
 
 // queryMessageMeta 是 POST /admin/convs/messages/query：不受成员关系和 historyVisible 限制，已解散的群照常返回；
@@ -352,7 +356,8 @@ func (a *Admin) queryMessageMeta(w http.ResponseWriter, r *http.Request) {
 	}
 	out := make([]messageMetaJSON, len(msgs))
 	for i, m := range msgs {
-		out[i] = messageMetaJSON{m.Seq, m.MsgID, m.From, m.Type, m.BodyLength, m.FileSize, m.TS, m.DeletedAt > 0, m.DeletedAt, m.DeletedBy}
+		out[i] = messageMetaJSON{m.Seq, m.MsgID, m.From, m.Type, m.BodyLength, m.FileSize, m.TS, m.DeletedAt > 0, m.DeletedAt, m.DeletedBy,
+			m.RecalledAt > 0, m.RecalledAt, m.RecalledBy}
 	}
 	noteAuditCount(r.Context(), len(out))
 	writeJSON(w, http.StatusOK, struct {

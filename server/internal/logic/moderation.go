@@ -361,5 +361,5 @@ func (s *Service) NotifyMsgDeleted(ctx context.Context, convID string, msgIDs []
 	}
 }
 
-// ToProto 把存储层的消息转成协议消息（管理接口读正文用）。
+// ToProto 是下行版序列化（和 sync、msg 帧相同：撤回的消息 deleted=true）。后台正文接口用 ToAdminProto（RC2-21）。
 func ToProto(m store.Message) protocol.Message { return toProto(m) }

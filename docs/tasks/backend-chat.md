@@ -53,7 +53,11 @@
 | BE-450 | ✅ 协议部分完成 | `c940ce8`。**本地结果，CI 不运行**。`frame.schema.json` 加 `DeviceNotificationRegisterReq`、`DeviceNotificationUnregisterReq`、`DeviceNotificationSettingsReq`、`PresenceReq`（令牌上限 4096），ack 加 `showDetail`；`frames.json` 加 11 个合法、11 个非法；`server/internal/protocol/device.go`（命令名、请求结构、`Validate`）；`logic.TestTC_CHAT_90_24_DeviceFrameVectorsServerParse` 用服务端真实解析跑全部新用例（AC-CHAT-90-10 的 C3 服务端部分，TC-CHAT-90-24）；`README.md` 命令表、`ERRORS.md` 的 4030 `featureDisabled` 和注册的 4290 / 4000 文案（不新增错误码，`errors.json` 不变）。变异 4 条（令牌上限、空令牌、`env` 取值、`state` 取值）都被发现。**AC-APN-01-13、02-17 的行为（429 / 400 / 4030）要等 BE-451、BE-452 的服务端处理，没有验**；三套 SDK 副本随 FE-650、651 |
 | BE-406、BE-451～BE-460 | ⏸ 暂停（Frank 2026-11-10：推送后续做） | C3 第一波开工后 Frank 决定先做 C4。这几项**没有提交任何代码**（做到一半的改动已从工作区撤掉，见文末"C3 暂停时的状态"）。P-40 ①～④ 已定（PRD v1.5），恢复时 BE-457 可以一起做 |
 | BE-470 | ✅ 完成（协议和服务端解析） | **本地结果，CI 不运行**。`frame.schema.json`：`RecallReq`、`QuoteRef`（上行）/ `QuoteView`（下行，四种 `state`，后三种没有 `text`）、`Mentions`（`userIds` 个数不在 Schema 里拦）、`BodyByType` 的 text 分支、`SendReq` 单聊不能带 `mentions`、`Message.recalled*`（撤回时 `deleted=true`）、`LastMsg.recalled*`、`Conversation.mentionUnread`、`firstMentionSeq`、`msgDeleted.recalled`、`groupMembers.keyword`（第 51 条）；`frames.json` C4 用例 25 个合法、29 个非法；`errors.json`、`ERRORS.md`（4097、4293、4044 / 4131 加 `ws`、`mentionAllForbidden`、`quoteUnavailable`、429x 例外加 4293、命令文案）；`README.md` 命令表；`ADMIN.md`（删除已撤回的幂等、后台版序列化、元数据的 `recalled*`、`POST /admin/files/{fileId}/fetch` 形状，第 62 条）。服务端用例 TC-CHAT-90-32、TC-RCL-03-07（`logic` 真实解析 + 下行模型解码再编码）通过。三套 SDK 的协议副本随 FE-660 起 |
-| BE-471～BE-479 | 🟡 进行中 | 2026-11-10 起（C4 后端第一波）。BE-480 验收、CS-204、CS-202 不在这一波 |
+| BE-471 | ✅ 完成（本任务 AC 都有用例） | **本地结果，CI 不运行**。`0018_msg_actions.sql`（`messages.recalled_at/recalled_by/quote_msg_id` + 索引、`conv_seq.last_recalled*`、`conv_mentions`、`group_mention_all`（加 `from_uid`，第 60 条）、`mention_all_quota`（列名用 `win`，第 64 条））；`store.MsgActionStore` 和 `storetest` 契约用例 5 个；`logic.MsgActionsConfig`（第 4.1 节 6 个变量 + 第 53 条的两个频率）；开关关 `recall`、带 `quote` / `mentions` 的 `send` 4030 `featureDisabled`；`features.msgActions`（`http-client.schema.json` 同步）；开关开缺 `IM_QUARANTINE_KEY` 任何环境启动失败（第 54 条），生产缺 `IM_PRIVACY_NOTICE_VERSION` 拒绝启动；配置检查 `msg_actions`；隔离加密器 V13 或 C4 任一开启就初始化；`/admin/test/faults` 的 `quarantineWrite`、`mentionWrite`、`mentionAllCounter`；`im_recalls_total{by}`；定时任务 `mention_purge`。AC-ACC-10-4（TC-ACC-10-04）、AC-RCL-01-10（TC-RCL-01-10 ①②③）、AC-CHAT-90-2 的 C4 部分（TC-CHAT-90-28：默认关闭下现有 e2e 不改代码全过）、AC-CHAT-90-17 的 C4 部分（TC-CHAT-90-34）通过 |
+| BE-472 | ✅ 完成（本任务 AC 都有用例） | **本地结果**。`recall`：格式 → 频率（每分钟 20，重试计数，第 55 条）→ 会话权限 → 消息存在（其他会话、入群前看不到的都是 4044）→ `tip` 4000（第 56 条）→ 已撤回幂等 → 后台删除 4044 → 权限和时限（4030、4097 `windowSeconds`）；角色每次查库；撤回自己的取更宽时限（管理员同样，第 57 条）；托管群无群主谁都不能撤回他人的；一个事务里清空正文、写 `recalled_*`、隔离加密原文和文件名、文件 `revoked`、摘要、删提及、`mod_ver`；隔离写失败整个回滚；`msgDeleted.recalled` 发给全部参与者（发起的连接只收 ack）。AC-RCL-01-1（服务端部分）、01-2、01-3、01-4、01-5、01-7、01-9、01-11、02-1、02-2、02-3、02-6、02-7、04-2 通过（`e2e/rcl_recall_test.go`）。AC-RCL-02-1 第 5 步按规则 3 的顺序处理（第 63 条） |
+| BE-473 | ✅ 完成（本任务 AC 都有用例） | **本地结果**。下行版 `toProto`：撤回的 `deleted=true`、`recalled*`、没有 `body`；`lastMsg` 同样；`FileAccessInfo` 把撤回当作删除；撤回的文件 30 天后 `file_purge` 删对象。AC-RCL-01-6（SQLite 检查点后主库和 WAL 搜不到 `ZXQ-RCL-1`、`ZXQ-RCL-3`，隔离表只有密文、解密对得上）、02-4 和 03-3 的服务端部分、03-5、03-7（真实帧过 Schema）、04-6、04-8、AC-FILE-06-3（TC-FILE-06-13）通过（`e2e/rcl_recall_test.go`、`rcl_files_test.go`） |
+| BE-474 | ✅ 完成（im-server 一侧，本任务 AC 都有用例） | **本地结果**。后台删除已撤回的幂等（不写 `deleted_at`、不发事件、审计照写）；后台版序列化 `logic.ToAdminProto`（`deleted` 只表示后台删除）用在正文和隔离读取；元数据 `recalled*`、撤回的 `bodyLength=0`、没有 `fileSize`；`POST /admin/files/{fileId}/fetch`（`msg.quarantine` + 这个会话有效的隔离授权，按调用方和操作人查，第 66 条；`attachment`、`nosniff`、`no-store`，审计不含文件名；`objstore.Client.Get`）。AC-RCL-04-1、04-3、04-4、04-5、04-7、04-9 的 im-server 部分通过（`e2e/rcl_admin_test.go`、`rcl_files_test.go`）；console 一侧随 CS-204、CS-202 |
+| BE-475～BE-479 | 🟡 进行中 | 2026-11-10 起（C4 后端第一波）。引用、@ 的服务端代码已随 BE-471～474 的提交进入（发送路径、组装、计数），用例和变异检查随各自的提交。BE-480 验收、CS-204、CS-202 不在这一波 |
 | BE-480、BE-481 | ⬜ 未开始 | BE-481 依赖 C3（AC-APN-03-3、AC-RCL-03-9），C3 恢复后再做 |
 | 全部 | 🟡 C1、C2 已校准 | 见 [c1-acceptance-2026-11-07.md](../reports/c1-acceptance-2026-11-07.md) 第 9 节、[c2-calibration-2026-11-10.md](../reports/c2-calibration-2026-11-10.md)：人日不能直接换算成 AI 用时，瓶颈是本机资源和待决定项。C3 已分发（暂停）；C4 2026-11-10 已分发；C5、C6 等 Frank 决定 |
 
@@ -772,7 +776,7 @@
 - AC：AC-RCL-01-1、AC-RCL-01-2、AC-RCL-01-3、AC-RCL-01-4、AC-RCL-01-5、AC-RCL-01-7、AC-RCL-01-9、AC-RCL-01-11、AC-RCL-02-1、AC-RCL-02-2、AC-RCL-02-3、AC-RCL-02-6、AC-RCL-02-7、AC-RCL-04-2
 - 内容：
   1. F-RCL-01 规则 3 的校验顺序：格式 → 会话权限（4032、4033、4043）→ 消息存在（4044，`msgId` 属于其他会话也是 4044）→ `tip` 4000 → 已撤回（幂等成功，不发事件）→ 已被后台删除（4044）→ 权限和时限（4030、4097）。**频率限制（4290）放在格式之后、查库之前**，幂等重试也计数（文末第 55 条）。不计入发送限流；禁言、被拉黑不影响（规则 4）。
-  2. 时限按服务端时间 [IM 钟]：发送者 `IM_RECALL_WINDOW_SEC`；群主、管理员 `IM_GROUP_RECALL_WINDOW_SEC`；操作者撤回自己的取更宽（F-RCL-02 规则 1，**管理员撤回自己的消息也是 7 天**，AC 只测了群主，文末第 56 条）。4097 带 `details.windowSeconds`。
+  2. 时限按服务端时间 [IM 钟]：发送者 `IM_RECALL_WINDOW_SEC`；群主、管理员 `IM_GROUP_RECALL_WINDOW_SEC`；操作者撤回自己的取更宽（F-RCL-02 规则 1，**管理员撤回自己的消息也是 7 天**，AC 只测了群主，文末第 57 条）。4097 带 `details.windowSeconds`。
   3. F-RCL-02 角色矩阵：群主撤回任何人（含管理员）；管理员只能撤回普通成员；托管群没有群主时任何成员都不能撤回他人消息（规则 3）。**角色每次查库，不用 `members` 缓存**（规则 4）。被撤回者已退群仍可撤回；解散的群 4043。
   4. 规则 5 同一事务：清空正文，写 `recalled_at`、`recalled_by`，seq 不变；原文和文件名加密进隔离区（复用 `quarantine` 的加密器，`IM_QUARANTINE_KEY`，CH-17 留 30 天）；如果是最后一条，更新 `conv_seq` 的摘要和 `last_recalled*`；递增 `conv_seq.mod_ver`。**隔离写失败整个事务回滚**，500 / 5000，消息不变（AC-RCL-01-11 用 BE-471 的 `quarantineWrite` 注入）。文件消息的 `files` 行同一事务转 `revoked`、清空 `files.name`（规则 F-FILE-06 第 4 条的撤回路径，物理删除见 BE-473）。被撤回的提及从 `conv_mentions` 删除（见 BE-477）。
   5. 提交后投递 `msgDeleted {convId, msgIds, seqs, recalled:{by, at}}` 给全部在线参与者（含操作者其他端），事件只发一次（重试幂等）。未读公式、`updatedAt` 不变（规则 6，AC-RCL-01-7）。
@@ -831,9 +835,9 @@
 - 内容：
   1. F-MEN-01 规则 1～3：只在群聊（单聊 4000）；只有 `text`（其他 4000）；`userIds` 超过 `IM_MENTION_MAX` 4131，去重；第 4.3 节第 8 步过滤不是当前成员的 userId（静默，不报错），全部被过滤按没有 `mentions` 保存；`mentions` 保存在消息 `body` 里（下发要带，撤回时随正文清除），**不解析正文里的 `@xxx`**（AC-MEN-01-4）。
   2. F-MEN-02：`all=true` 只有群主、管理员，普通成员 4030 `reason=mentionAllForbidden`、消息不保存；托管群没有群主时任何人都不能；角色每次查库；全群禁言时群主、管理员仍可以（AC-MEN-02-7）。
-  3. 次数（规则 2，R-CB-07）：每群每小时 `IM_MENTION_ALL_HOURLY`、每天 `IM_MENTION_ALL_DAILY`（Asia/Shanghai 自然日，[IM 钟]）；**在 `SaveMessage` 事务里扣**（第 4.3 节第 10 步，加锁顺序 `conv_seq` → 文件行 → 计数行），被 4510 等拒绝的不扣，撤回不退；超出 4293 带 `details.retryAfterSeconds`；计数不可用 503 / 5030，不放行（AC-MEN-02-8 用 BE-471 的 `mentionAllCounter` 注入）；并发 10 条恰好 3 条成功（AC-MEN-02-9，SQLite 单连接下靠事务串行，Postgres 随 B6 用行锁）。小时窗口按滚动 60 分钟（文末第 57 条）。
+  3. 次数（规则 2，R-CB-07）：每群每小时 `IM_MENTION_ALL_HOURLY`、每天 `IM_MENTION_ALL_DAILY`（Asia/Shanghai 自然日，[IM 钟]）；**在 `SaveMessage` 事务里扣**（第 4.3 节第 10 步，加锁顺序 `conv_seq` → 文件行 → 计数行），被 4510 等拒绝的不扣，撤回不退；超出 4293 带 `details.retryAfterSeconds`；计数不可用 503 / 5030，不放行（AC-MEN-02-8 用 BE-471 的 `mentionAllCounter` 注入）；并发 10 条恰好 3 条成功（AC-MEN-02-9，SQLite 单连接下靠事务串行，Postgres 随 B6 用行锁）。小时窗口按滚动 60 分钟（文末第 58 条）。
   4. @ 所有人只写 `group_mention_all` 一行，不按成员展开（AC-MEN-02-6）。
-  5. 规则 6 的成员搜索：`groupMembers` 的 `keyword`（`userId` 或昵称前缀，大小写按现有 `userId` 规则），每人每分钟 30 次（4290）；2000 人群只返回前缀匹配的（AC-MEN-01-11）。开关关时 `keyword` 照常可用（只读，文末第 58 条）。
+  5. 规则 6 的成员搜索：`groupMembers` 的 `keyword`（`userId` 或昵称前缀，大小写按现有 `userId` 规则），每人每分钟 30 次（4290）；2000 人群只返回前缀匹配的（AC-MEN-01-11）。开关关时 `keyword` 照常可用（只读，文末第 59 条）。
   6. 性能：AC-MEN-02-3（2000 人、在线 200、1000 次 @ 所有人，ack P99 ≤ 200 ms）开发机只记录，判定等 P-12（BE-480）。
 - 工作量：2 人日（服务端，@ 行）
 
@@ -1004,6 +1008,16 @@ C4 分发时发现的（2026-11-10，PRD 冻结，没有改；按"建议"一列�
 | 60 | F-MEN-03 规则 1、第 12.1 节 | `conv_mentions`"清理到已读之后"，但 `sync` 还要下发 `mentions`；@ 所有人"含"在 `mentionUnread` 里，发的人自己算不算没写 | `mentions` 存在消息 `body` 里（撤回时随正文清除），`conv_mentions` 只用于计数；自己发的 @ 所有人不计入自己的 `mentionUnread`（规则 6 的延伸） |
 | 61 | AC-APN-03-3、AC-RCL-03-9 | 两条标【C4】，但要 C3 的推送 worker 和假通道（BE-455、BE-456、BE-406），C3 已暂停 | 放进 BE-481，C3 恢复后做，C4 其余任务不依赖 C3 代码；C4 验收时记"未执行（等 C3）"。**这两条 P0 未执行时 C4 能不能验收，要 Frank 定**（P-43 ②） |
 | 62 | 第 11.6 节、console 问题 13 | `POST /admin/files/{fileId}/fetch` 的请求、响应形状没写 | BE-470 第 4 条：请求 `{convId, msgId, variant?}`，响应文件字节、`attachment`、`nosniff`，不发预签名地址给 console |
+
+C4 后端第一波实现时发现的（2026-11-10，PRD 冻结，没有改；按"实现"一列做，Frank 不同意再改）。**需要 Frank 定的是第 67 条**，其余是缺口或记录：
+
+| # | 位置 | 问题 | 现在的实现 |
+|---|---|---|---|
+| 63 | AC-RCL-02-1、TC-RCL-02-01 | 5 个操作用同一组消息：第 1 步 o 撤回了 a 的消息之后，第 5 步"m 撤回 a 的"按 F-RCL-01 规则 3 的顺序（已撤回在权限之前）是幂等成功，不是 AC 写的 4030 | 按规则 3 的顺序实现（撤回状态对所有参与者已经可见，幂等成功不泄露什么）；用例里 a 多发一条，第 5 步撤回 a 没被撤回的那条，另断言撤回已撤回的是幂等成功。不改 AC，TC-RCL-02-01 下次修订时写明"a 的另一条" |
+| 64 | 第 12.1 节、文末第 53 条 | 计数表建议的列名 `window` 在 SQLite / Postgres 里是保留字（窗口函数） | 列名用 `win`（`mention_all_quota(group_id, win, bucket, count)`），其余同第 53 条 |
+| 65 | F-RCL-01 规则 3 | `historyVisible=false` 的群里，后加入的群主、管理员能不能撤回自己入群前（看不到）的消息没写 | 按"消息不存在"返回 4044（和其他会话的 msgId 一样）：看不到的消息不能操作，也不透露它存在 |
+| 66 | 第 11.6 节、BE-470 第 4 条 | `POST /admin/files/{fileId}/fetch` 的请求形状 `{convId, msgId, variant?}` 里没有 `grantId`，"有这个会话的有效隔离授权"要按什么找没写 | 按调用方 + 签名的 `X-IM-Operator` + `convId` + `quarantine=true` + 未过期查找（`store.HasActiveMsgGrant`），和正文读取的授权校验同一组条件；`fileId` 不属于 `msgId`、消息没撤回也没被后台删除、对象已删除都是 404 / 4048，不区分 |
+| 67 | BE-479 第 1、2 条 | BE-479 要改 PRD-ui（AC-UI-09-1 改写、升版）、PRD-core / social / admin / ops 的 C4 部分，但这一波的分发要求"不改 PRD 和 AC" | **没有做第 1、2 条**，只做了第 4 条（隐私清单草稿）和第 5 条的核对（trace.py 已有 C4）；第 3 条随 FE-660～664。**要 Frank 定**：BE-479 第 1、2 条（PRD 升小版本、改写 AC-UI-09-1、AC-ADM-31-6 的关联说明）什么时候做、由谁做 |
 
 ### C3 暂停时的状态（2026-11-10）
 

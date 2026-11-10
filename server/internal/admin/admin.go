@@ -178,8 +178,13 @@ func (a *Admin) RegisterTestRoutes(mux *http.ServeMux, faults *logic.Faults, clk
 				Count  int    `json:"count"`
 			} `json:"periodicRecheckFail"` // 这个用户接下来几次周期复查报错（AC-ACC-03-47）
 			DropRevokeEvents *bool `json:"dropRevokeEvents"` // 丢弃吊销事件（踢线），靠周期复查补上（AC-ACC-03-47）
+			// C4（PRD-chat 第 4.5 节，BE-471 第 4 条）：不传不改，打开后一直生效到关掉。
+			QuarantineWrite   *bool `json:"quarantineWrite"`   // 隔离写失败：撤回整个事务回滚 5000（AC-RCL-01-11）
+			MentionWrite      *bool `json:"mentionWrite"`      // 提及表写失败：消息不保存 5000（AC-MEN-03-8）
+			MentionAllCounter *bool `json:"mentionAllCounter"` // @ 所有人计数不可用：5030，不放行（AC-MEN-02-8）
 		}
 		if readJSON(w, r, &req) {
+			faults.SetMsgActionFaults(req.QuarantineWrite, req.MentionWrite, req.MentionAllCounter)
 			a.auditFail.Store(req.AdminAuditWrite == "fail")
 			if a.faults != nil {
 				a.faults.SetPingFail(req.StorePing == "fail")
