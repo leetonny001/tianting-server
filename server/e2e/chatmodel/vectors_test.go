@@ -11,6 +11,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"flag"
+	"fmt"
 	"os"
 	"slices"
 	"strconv"
@@ -328,7 +329,7 @@ var cases = []vcase{
 		Name: "deleted 判断：convs 里消失的群在 deleted 里是删除会话，从列表移除、不生成 removed 快照；不在 deleted 里的推断为\"你已不在该群\"",
 		Rule: "F-CVS-03 规则 6 ①，F-GRP-03 规则 4", ACs: []string{"AC-CVS-03-5"}, C5: true,
 		Steps: []step{
-			conn(at(ab, 300, 0), at(g1, 200, 0), at(g2, 100, 0)),
+			conn(at(ab, 300, 0), at(g1, 200, 2), at(g2, 100, 0)),
 			load(g1, text(1, secretCVS), text(2, "g1 两条")),
 			drop,
 			{Op: "connect", Convs: []Conv{at(ab, 300, 0)}, Deleted: []Deleted{{ConvID: g1, ClearedSeq: 2}}},
@@ -351,11 +352,11 @@ var cases = []vcase{
 		Name: "本地清除（convs 路径）：列表里的会话清除 seq < minSeq 的消息和文件，保留下来的消息里引用被清除消息的摘要照常显示；deleted 里的会话全部清除；迟到的旧应答不写回",
 		Rule: "F-CVS-03 规则 2、6 ②，P-46 ④（frontend-chat 第 62 条）", ACs: []string{"AC-CVS-03-2", "AC-CVS-03-10", "AC-CVS-04-2"}, C5: true,
 		Steps: []step{
-			conn(at(ab, 300, 0), at(g1, 200, 0)),
+			conn(at(ab, 300, 5), at(g1, 200, 2)),
 			load(ab, text(1, secretCVS), text(2, quotedOld), img(3, "CF1", false), quoting(4, "回复旧消息", 2, "normal", quotedOld), text(5, "新的")),
 			load(g1, doc(1, "CF2", false), text(2, secretCVS)),
 			drop,
-			{Op: "connect", Convs: []Conv{minSeqConv(at(ab, 300, 0), 4)}, Deleted: []Deleted{{ConvID: g1, ClearedSeq: 2}}},
+			{Op: "connect", Convs: []Conv{minSeqConv(at(ab, 300, 5), 4)}, Deleted: []Deleted{{ConvID: g1, ClearedSeq: 2}}},
 			load(ab, text(1, secretCVS), text(2, quotedOld), img(3, "CF1", false), quoting(4, "回复旧消息", 2, "normal", quotedOld), text(5, "新的")),
 			load(g1, doc(1, "CF2", false), text(2, secretCVS)),
 		},
@@ -419,18 +420,48 @@ func deletedEvent(convID string, cleared int64) step {
 	return step{Op: "event", Event: &Event{Type: "convDeleted", ConvID: convID, ClearedSeq: &cleared}}
 }
 
+// checkMaxSeq is the generator's self-check of the format rule "maxSeq equals the largest loaded seq": a load or a re-sync reply
+// must not contain a seq above the conversation's maxSeq in the latest convs (a hidden one: its clearedSeq), otherwise an SDK
+// that follows the protocol would not send the sync and the case could not be run.
+func checkMaxSeq(c vcase, i int, known map[string]int64, convID string, msgs []Msg) {
+	limit, ok := known[convID]
+	for _, m := range msgs {
+		if !ok || m.Seq > limit {
+			panic(fmt.Sprintf("chatmodel: case %q step %d: %s has seq %d but maxSeq is %d (known %v)", c.Name, i, convID, m.Seq, limit, ok))
+		}
+	}
+}
+
 func run(c vcase) vcase {
 	cl := New()
 	out := c
 	out.Steps = make([]step, len(c.Steps))
+	known := map[string]int64{} // convId -> maxSeq of the latest convs (hidden ones: clearedSeq)
 	for i, st := range c.Steps {
 		var e expect
 		switch st.Op {
 		case "connect":
+			for _, cv := range st.Convs {
+				known[cv.ConvID] = cv.MaxSeq
+			}
+			for _, d := range st.Deleted {
+				known[d.ConvID] = d.ClearedSeq
+			}
+			for id, list := range cl.loaded {
+				for seq := range list {
+					if _, ok := known[id]; ok && seq > known[id] {
+						panic(fmt.Sprintf("chatmodel: case %q step %d: %s loaded seq %d above maxSeq %d", c.Name, i, id, seq, known[id]))
+					}
+				}
+			}
+			for id, msgs := range st.Replies {
+				checkMaxSeq(c, i, known, id, msgs)
+			}
 			syncs, exp := cl.Connect(st.Convs, ConvsMeta{Truncated: st.Truncated, Deleted: st.Deleted, DeletedTruncated: st.DeletedTruncated}, st.Replies, st.Errors)
 			s := nonNil(syncs)
 			e.Syncs, e.FilesExpired = &s, exp
 		case "load":
+			checkMaxSeq(c, i, known, st.ConvID, st.Messages)
 			e.FilesExpired = cl.Load(st.ConvID, st.Messages)
 		case "event":
 			n, files := cl.Event(*st.Event, st.Convs)
