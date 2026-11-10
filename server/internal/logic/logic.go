@@ -38,7 +38,8 @@ type Service struct {
 	mutes   *muteCache // 第二批开启时非 nil（IM_V13_ADMIN_FEATURES）
 	push    *pushState // 系统推送开启时非 nil（IM_PUSH_ENABLED）
 	files   filesConfig
-	actions *msgActions // C4 撤回、引用、@：一定非 nil，开关在 actions.cfg.Enabled
+	cvs     *convSettings // C5 置顶、免打扰、删除：一定非 nil，开关在 cvs.cfg.Enabled
+	actions *msgActions   // C4 撤回、引用、@：一定非 nil，开关在 actions.cfg.Enabled
 }
 
 // 配额、@ 所有人次数按 Asia/Shanghai 自然日。中国不使用夏令时，用固定时区，不依赖运行环境的 tzdata。
@@ -63,6 +64,7 @@ func New(st store.Store, router delivery.Router, clk clock.Clock, faults *Faults
 	}
 	s.changed = newGroupChangedMerger(s.deliverGroupChanged)
 	s.actions = newMsgActions(MsgActionsConfig{}, s)
+	s.cvs = newConvSettings(ConvSettingsConfig{}, s)
 	return s
 }
 
@@ -92,6 +94,10 @@ func (s *Service) Handle(ctx context.Context, c delivery.Session, in protocol.In
 		data, err = s.pushSync(ctx, c, in.Data)
 	case protocol.CmdRecall:
 		data, err = s.recall(ctx, c, in.Data)
+	case protocol.CmdConvSet:
+		data, err = s.convSet(ctx, c, in.Data)
+	case protocol.CmdConvDelete:
+		data, err = s.convDelete(ctx, c, in.Data)
 	case protocol.CmdJoinRoom, protocol.CmdLeaveRoom:
 		err = protocol.Errorf(protocol.CodeBadRequest, "%s is not available yet", in.Cmd)
 	default:
@@ -477,7 +483,9 @@ func (s *Service) NotifyConvAdded(ctx context.Context, convID string, userIDs []
 }
 
 // NotifyConvRemoved 给被移出群（或群被解散）的用户的所有在线连接下发 convRemoved {reason}（BE-034、BE-122）。
+// 移出、解散时存储层已在同一事务里删除这些人的会话设置（F-CVS-01 规则 6），这里一并发布失效（BE-483 第 4 条）。
 func (s *Service) NotifyConvRemoved(convID string, userIDs []string, reason string) {
+	s.publishConvSettings(userIDs...)
 	for _, uid := range userIDs {
 		s.pushEvent(uid, protocol.ConvRemovedEvent{Type: protocol.EventConvRemoved, ConvID: convID, Reason: reason}, "")
 	}

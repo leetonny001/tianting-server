@@ -75,6 +75,9 @@ func Run(t *testing.T, open Opener) {
 	for _, tc := range accountCases() {
 		t.Run(tc.name, func(t *testing.T) { tc.fn(t, open) })
 	}
+	for _, tc := range convSettingCases() {
+		t.Run(tc.name, func(t *testing.T) { tc.fn(t, open) })
+	}
 	for _, tc := range msgActionCases() {
 		t.Run(tc.name, func(t *testing.T) { tc.fn(t, open) })
 	}

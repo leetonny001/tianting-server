@@ -97,6 +97,11 @@ type ConvRow struct {
 	LastVisible bool
 	Last        LastMessage
 	ModVer      int64 // 会话内已有消息展示内容的版本（PRD-chat F-RCL-03 规则 2，C2：文件过期）
+	// 会话设置（C5，conv_settings 的这一行；没有行时都是 0）。
+	PinnedAt   int64
+	NotifyOff  bool
+	DeletedAt  int64
+	ClearedSeq int64
 }
 
 // LastMessage 是会话最后一条消息的摘要。
@@ -130,6 +135,7 @@ type Store interface {
 	PushStore
 	FileStore
 	MsgActionStore
+	ConvSettingsStore
 
 	// SaveMessage 为消息分配会话内递增 seq 并保存。
 	// 同一发送者重复提交同一 ClientMsgID 时不新建，返回第一次保存的消息且 dup=true。

@@ -129,7 +129,7 @@ type ConfigResponse struct {
 }
 
 // Features 告诉客户端隐藏哪些入口。files 跟 IM_FILES_ENABLED，msgActions 跟 IM_MSG_ACTIONS_ENABLED（C4），
-// convSettings 跟 IM_CONV_SETTINGS_ENABLED（C5，backend-chat 第 75 条；开关随 BE-483 接上，之前一直是 false）。
+// convSettings 跟 IM_CONV_SETTINGS_ENABLED（C5，backend-chat 第 75 条）。
 type Features struct {
 	Files        bool `json:"files"`
 	MsgActions   bool `json:"msgActions"`

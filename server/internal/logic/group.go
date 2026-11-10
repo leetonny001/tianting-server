@@ -296,6 +296,7 @@ func (s *Service) groupLeave(ctx context.Context, c delivery.Session, raw json.R
 		return nil, s.groupErr("leave group", err)
 	}
 	s.invalidateGroup(req.GroupID)
+	s.publishConvSettings(uid)
 	convID := protocol.GroupConvID(req.GroupID)
 	s.pushEvent(uid, protocol.ConvRemovedEvent{Type: protocol.EventConvRemoved, ConvID: convID, Reason: protocol.RemovedLeft}, c.ConnID())
 	if !res.Dissolved {
@@ -375,6 +376,7 @@ func (s *Service) groupDissolve(ctx context.Context, c delivery.Session, raw jso
 		return nil, s.groupErr("dissolve group", err)
 	}
 	s.invalidateGroup(req.GroupID)
+	s.publishConvSettings(members...)
 	convID := protocol.GroupConvID(req.GroupID)
 	for _, m := range members {
 		except := ""

@@ -86,6 +86,9 @@ type Config struct {
 	// MsgActions 是 C4 撤回、引用、@（PRD-chat 第 4.1 节）：MsgActions.Enabled 关闭时 recall、带 quote / mentions 的 send 返回 4030 featureDisabled。
 	// 开启要求 QuarantineKey（AC-RCL-01-10），不依赖 V13AdminFeatures（RC2-15）。
 	MsgActions logic.MsgActionsConfig
+	// ConvSettings 是 C5 会话置顶、免打扰、删除（PRD-chat 第 4.1 节）：ConvSettings.Enabled 关闭时 convSet、convDelete 返回 4030 featureDisabled，
+	// 已有的设置照常生效（P-46 ②）。
+	ConvSettings logic.ConvSettingsConfig
 	// RequireHTTPS：生产环境 /v1/* 只接受 HTTPS（PRD-chat 第 4.2 节第 7 条）。
 	RequireHTTPS bool
 	TestMode     bool // 开启故障注入、时钟注入、短有效期 token（PRD 6.1 节），生产必须关闭
@@ -233,6 +236,7 @@ func New(cfg Config) (*App, error) {
 		st.Close()
 		return nil, err
 	}
+	svc.ConfigureConvSettings(cfg.ConvSettings)
 	var fileSvc *files.Service
 	var obj *objstore.Client
 	if cfg.Files.Enabled {
@@ -360,7 +364,8 @@ func New(cfg Config) (*App, error) {
 		publicConfig.Limits.ImageMaxBytes, publicConfig.Limits.ThumbMaxBytes, publicConfig.Limits.FileMaxBytes = l.ImageMaxBytes, l.ThumbMaxBytes, l.FileMaxBytes
 		publicConfig.Limits.AvatarMaxBytes, publicConfig.Limits.UploadDailyBytes = l.AvatarMaxBytes, l.UploadDailyBytes
 	}
-	publicConfig.Features.MsgActions = cfg.MsgActions.Enabled // 客户端按它隐藏撤回、引用、@ 的入口（第 4.1 节共同规则）
+	publicConfig.Features.MsgActions = cfg.MsgActions.Enabled     // 客户端按它隐藏撤回、引用、@ 的入口（第 4.1 节共同规则）
+	publicConfig.Features.ConvSettings = cfg.ConvSettings.Enabled // 客户端按它隐藏置顶、免打扰、删除的入口（backend-chat 第 75 条）
 	v1.Handle(mux, "GET /v1/config", func(w http.ResponseWriter, r *http.Request) { api.WriteJSON(w, publicConfig) })
 	v1.RegisterAccount(mux, accounts)
 	if fileSvc != nil {

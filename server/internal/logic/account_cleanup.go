@@ -36,6 +36,7 @@ func (s *Service) CleanupDeletedUser(ctx context.Context, userID string, check f
 				return err
 			}
 			s.invalidateGroup(g.GroupID)
+			s.publishConvSettings(userID)
 			s.pushEvent(userID, protocol.ConvRemovedEvent{Type: protocol.EventConvRemoved, ConvID: protocol.GroupConvID(g.GroupID), Reason: protocol.RemovedLeft}, "")
 			if !res.Dissolved {
 				s.deliverTip(ctx, res.Tip, "")

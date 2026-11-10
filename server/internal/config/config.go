@@ -234,6 +234,7 @@ func Load(getenv func(string) string) (cfg Server, warnings []string, err error)
 	loadAccount(getenv, a, bad)
 	loadFiles(getenv, a, prod, bad)
 	loadMsgActions(getenv, a, bad)
+	loadConvSettings(getenv, a, bad)
 
 	a.Account.EnforceKeyLedger = prod
 	cfg.AllowTokenIssue = getenv("IM_ALLOW_TOKEN_ISSUE") == "1"
@@ -389,6 +390,26 @@ func loadMsgActions(getenv func(string) string, a *app.Config, bad func(string, 
 	}
 	if m.Enabled && getenv("IM_QUARANTINE_KEY") == "" {
 		bad("IM_MSG_ACTIONS_ENABLED=1 requires IM_QUARANTINE_KEY (recalled messages are kept encrypted; no development default)")
+	}
+}
+
+// loadConvSettings 读取 C5 会话置顶、免打扰、删除的配置（PRD-chat 第 4.1 节，BE-483 第 2 条）。频率和 deleted 的上限 PRD 没有变量名（backend-chat 第 73 条）。
+func loadConvSettings(getenv func(string) string, a *app.Config, bad func(string, ...any)) {
+	c := &a.ConvSettings
+	c.Enabled = boolEnv(getenv, "IM_CONV_SETTINGS_ENABLED", false, bad)
+	for _, v := range []struct {
+		key string
+		dst *int
+		max int
+	}{{"IM_CONV_PIN_MAX", &c.PinMax, 500}, {"IM_CONV_SETTINGS_RATE_PER_SEC", &c.RatePerSec, 1000}, {"IM_CONV_DELETED_MAX", &c.DeletedMax, 100000}} {
+		if s := getenv(v.key); s != "" {
+			n, err := strconv.Atoi(s)
+			if err != nil || n < 1 || n > v.max {
+				bad("%s: must be 1..%d, got %q", v.key, v.max, s)
+				continue
+			}
+			*v.dst = n
+		}
 	}
 }
 

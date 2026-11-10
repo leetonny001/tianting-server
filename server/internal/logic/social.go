@@ -833,6 +833,7 @@ func (s *Service) ResetLimits(uid string) {
 	for _, b := range s.social.buckets() {
 		b.ResetUser(uid)
 	}
+	s.cvs.rate.ResetUser(uid)  // C5 会话设置（convSet、convDelete 共用）
 	if p := s.push; p != nil { // 推送限速：target=all、target=user 按调用方，pushSync 按用户
 		p.allLimit.ResetUser(uid)
 		p.userLimit.ResetUser(uid)

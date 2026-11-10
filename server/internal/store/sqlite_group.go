@@ -358,6 +358,9 @@ func (s *SQLite) KickMembers(ctx context.Context, groupID, actor string, members
 		if err := deleteGroupMutesTx(ctx, tx, groupID, m); err != nil {
 			return nil, err
 		}
+		if err := deleteConvSettingsTx(ctx, tx, groupID, m); err != nil {
+			return nil, err
+		}
 		removed = append(removed, m)
 	}
 	if err := updateMemberCount(ctx, tx, groupID); err != nil {
@@ -420,6 +423,9 @@ func (s *SQLite) LeaveGroup(ctx context.Context, groupID, actor string, now int6
 		return LeaveResult{}, err
 	}
 	if err := deleteGroupMutesTx(ctx, tx, groupID, actor); err != nil {
+		return LeaveResult{}, err
+	}
+	if err := deleteConvSettingsTx(ctx, tx, groupID, actor); err != nil {
 		return LeaveResult{}, err
 	}
 	if err := updateMemberCount(ctx, tx, groupID); err != nil {
@@ -510,6 +516,9 @@ func dissolveTx(ctx context.Context, tx *sql.Tx, groupID string, now int64) erro
 		return err
 	}
 	if err := deleteGroupMutesTx(ctx, tx, groupID, ""); err != nil {
+		return err
+	}
+	if err := deleteConvSettingsTx(ctx, tx, groupID, ""); err != nil {
 		return err
 	}
 	_, err := tx.ExecContext(ctx, `UPDATE chat_groups SET dissolved_at = ?, member_count = 0 WHERE group_id = ?`, max(now, 1), groupID)

@@ -402,6 +402,9 @@ func (s *SQLite) RemoveGroupMembers(ctx context.Context, groupID string, members
 			if err := deleteGroupMutesTx(ctx, tx, groupID, uid); err != nil {
 				return nil, nil, err
 			}
+			if err := deleteConvSettingsTx(ctx, tx, groupID, uid); err != nil {
+				return nil, nil, err
+			}
 			removed = append(removed, uid)
 			ownerGone = ownerGone || uid == g.OwnerID
 		}
@@ -648,11 +651,14 @@ const (
 	       '' AS group_name, 0 AS history_visible, uc.peer_id, COALESCE(u.nickname, '') AS peer_nickname, 0 AS member_count, '' AS my_role,
 	       cs.max_seq > 0 AS last_visible, uc.created_at AS joined_at,
 	       cs.last_msg_id, cs.last_from, cs.last_type, cs.last_text, cs.last_ts, cs.last_deleted, cs.mod_ver,
-	       cs.last_recalled, cs.last_recalled_by
+	       cs.last_recalled, cs.last_recalled_by,
+	       COALESCE(st.pinned_at, 0) AS pinned_at, COALESCE(st.notify_off, 0) AS notify_off,
+	       COALESCE(st.deleted_at, 0) AS deleted_at, COALESCE(st.cleared_seq, 0) AS cleared_seq
 	FROM user_conv uc
 	JOIN conv_seq cs ON cs.conv_id = uc.conv_id
 	LEFT JOIN read_seq rs ON rs.user_id = uc.user_id AND rs.conv_id = uc.conv_id
 	LEFT JOIN users u ON u.user_id = uc.peer_id
+	LEFT JOIN conv_settings st ON st.user_id = uc.user_id AND st.conv_id = uc.conv_id
 	WHERE %s`
 
 	groupConvSelect = `
@@ -664,17 +670,21 @@ const (
 	       COALESCE(cs.last_msg_id, '') AS last_msg_id, COALESCE(cs.last_from, '') AS last_from,
 	       COALESCE(cs.last_type, '') AS last_type, COALESCE(cs.last_text, '') AS last_text,
 	       COALESCE(cs.last_ts, 0) AS last_ts, COALESCE(cs.last_deleted, 0) AS last_deleted, COALESCE(cs.mod_ver, 0) AS mod_ver,
-	       COALESCE(cs.last_recalled, 0) AS last_recalled, COALESCE(cs.last_recalled_by, '') AS last_recalled_by
+	       COALESCE(cs.last_recalled, 0) AS last_recalled, COALESCE(cs.last_recalled_by, '') AS last_recalled_by,
+	       COALESCE(st.pinned_at, 0) AS pinned_at, COALESCE(st.notify_off, 0) AS notify_off,
+	       COALESCE(st.deleted_at, 0) AS deleted_at, COALESCE(st.cleared_seq, 0) AS cleared_seq
 	FROM group_members gm
 	JOIN chat_groups g ON g.group_id = gm.group_id AND g.dissolved_at = 0
 	LEFT JOIN conv_seq cs ON cs.conv_id = 'group:' || gm.group_id
 	LEFT JOIN read_seq rs ON rs.user_id = gm.user_id AND rs.conv_id = 'group:' || gm.group_id
+	LEFT JOIN conv_settings st ON st.user_id = gm.user_id AND st.conv_id = 'group:' || gm.group_id
 	WHERE %s`
 
 	// convColumns 是外层统一选出的列，顺序与 scanConv 一致（第一列 user_id）。
 	convColumns = `user_id, conv_id, max_seq, read_seq, join_seq, group_name, history_visible, peer_id, peer_nickname, member_count, my_role,
 	       last_visible, CASE WHEN last_visible THEN last_ts ELSE joined_at END AS updated_at,
-	       last_msg_id, last_from, last_type, last_text, last_ts, last_deleted, mod_ver, last_recalled, last_recalled_by`
+	       last_msg_id, last_from, last_type, last_text, last_ts, last_deleted, mod_ver, last_recalled, last_recalled_by,
+	       pinned_at, notify_off <> 0 AS notify_off, deleted_at, cleared_seq`
 )
 
 // convQuery 拼出外层查询：branches 是已经填好条件的分支（UNION ALL）。
@@ -746,7 +756,7 @@ func scanConv(r rowScanner) (ConvRow, error) {
 	var c ConvRow
 	err := r.Scan(&c.UserID, &c.ConvID, &c.MaxSeq, &c.ReadSeq, &c.JoinSeq, &c.GroupName, &c.HistoryVisible, &c.PeerID, &c.PeerNickname, &c.MemberCount, &c.MyRole,
 		&c.LastVisible, &c.UpdatedAt, &c.Last.MsgID, &c.Last.From, &c.Last.Type, &c.Last.Text, &c.Last.TS, &c.Last.Deleted, &c.ModVer,
-		&c.Last.Recalled, &c.Last.RecalledBy)
+		&c.Last.Recalled, &c.Last.RecalledBy, &c.PinnedAt, &c.NotifyOff, &c.DeletedAt, &c.ClearedSeq)
 	return c, err
 }
 
