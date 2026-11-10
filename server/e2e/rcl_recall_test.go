@@ -23,7 +23,7 @@ func (e *c4Env) c2cPair() (u1, u1b, u2 *client, convID string) {
 	return u1, u1b, u2, protocol.C2CConvID("u1", "u2")
 }
 
-// TC-RCL-01-01（AC-RCL-01-1 的服务端部分）、TC-RCL-03-07（AC-RCL-03-7）：60 秒内撤回，ack {}；对方和自己另一端收到带 recalled 的 msgDeleted，
+// TC-RCL-01-01（AC-RCL-01-1 的服务端部分）、TC-RCL-03-07（AC-RCL-03-7）：60 秒内撤回，ack {}；对方和自己另一端 2 秒内（真实时间）收到带 recalled 的 msgDeleted，
 // 发起的连接只收 ack；真实的事件帧、sync 应答、msg 帧都符合 Schema，撤回的消息没有 body，deleted、recalled 都是 true。
 func TestTC_RCL_01_01_RecallWithin60s(t *testing.T) {
 	e := newC4Env(t, nil)
@@ -34,6 +34,7 @@ func TestTC_RCL_01_01_RecallWithin60s(t *testing.T) {
 	validFrame(t, schema, "msg frame", msgFrame)
 	u1b.waitCmd(protocol.CmdMsg)
 	e.advance(60 * time.Second)
+	start := time.Now() // "2 秒内"按真实时间量（[IM 钟] 冻结）
 	f := recallCall(u1, conv, ack.MsgID)
 	if f.Error != nil || string(f.Data) != "{}" {
 		t.Fatalf("recall ack = %s %+v", f.Data, f.Error)
@@ -41,6 +42,9 @@ func TestTC_RCL_01_01_RecallWithin60s(t *testing.T) {
 	validFrame(t, schema, "recall ack", f)
 	for _, c := range []*client{u2, u1b} {
 		ev, raw := waitMsgDeleted(t, c)
+		if d := time.Since(start); d > 2*time.Second {
+			t.Errorf("%s: msgDeleted after %v (AC-RCL-01-1: within 2 seconds)", c.uid, d)
+		}
 		if ev.ConvID != conv || len(ev.MsgIDs) != 1 || ev.MsgIDs[0] != ack.MsgID || ev.Seqs[0] != ack.Seq || ev.Recalled == nil || ev.Recalled.By != "u1" || ev.Recalled.At != e.now {
 			t.Errorf("%s: event %s", c.uid, raw)
 		}
