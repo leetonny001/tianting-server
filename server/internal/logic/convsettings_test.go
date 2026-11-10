@@ -129,4 +129,10 @@ func TestConvSettingsInvalidationOnCommands(t *testing.T) {
 	if !inv.published("a") {
 		t.Error("convSet did not publish convSettings")
 	}
+	if f := call(t, s, "a", protocol.CmdConvDelete, map[string]any{"convId": "c2c:a:b", "upToSeq": 1}); f.Error != nil {
+		t.Fatalf("convDelete: %+v", f.Error)
+	}
+	if !inv.published("a") {
+		t.Error("convDelete did not publish convSettings")
+	}
 }

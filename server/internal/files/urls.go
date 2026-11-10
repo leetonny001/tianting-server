@@ -100,8 +100,21 @@ func (s *Service) URLs(ctx context.Context, uid string, in URLsInput) (*URLsResp
 }
 
 // canAccess 是规则 2：请求者当前能访问这条消息——单聊参与者，或当前群成员且 seq ≥ minSeq；消息没有被删除；文件没有过期。
-// 发送者在绑定消息前可以访问自己的上传。消息状态和文件状态不一致时一律不可访问。清空位置（F-CVS-03）和撤回随 C4、C5。
+// 发送者在绑定消息前可以访问自己的上传。消息状态和文件状态不一致时一律不可访问。撤回的文件是 revoked（C4）。
+// 删除会话（C5，F-CVS-03 规则 2）：seq ≤ 请求者的 clearedSeq 的不可访问（AC-CVS-03-7），只影响请求者自己（AC-CVS-03-15）。
 func (s *Service) canAccess(ctx context.Context, uid string, a store.FileAccess) (bool, *protocol.Error) {
+	ok, perr := s.canAccessMember(ctx, uid, a)
+	if !ok || perr != nil || a.State != store.FileAttached { // 没有绑定消息的（自己的 ready 上传）不涉及会话
+		return ok, perr
+	}
+	cleared, err := s.store.ConvClearedSeq(ctx, uid, a.ConvID)
+	if err != nil {
+		return false, s.internal("conv cleared seq", err)
+	}
+	return a.MsgSeq > cleared, nil
+}
+
+func (s *Service) canAccessMember(ctx context.Context, uid string, a store.FileAccess) (bool, *protocol.Error) {
 	switch a.State {
 	case store.FileReady:
 		return a.Owner == uid, nil

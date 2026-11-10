@@ -139,5 +139,26 @@ func (s *Service) convDelete(ctx context.Context, c delivery.Session, raw json.R
 	if !s.cvs.cfg.Enabled {
 		return nil, featureDisabled()
 	}
-	return nil, protocol.Errorf(protocol.CodeUnknownCmd, "convDelete is not available yet")
+	uid := c.UserID()
+	if !s.cvs.rate.Allow(uid) { // 和 convSet 共用一个计数（backend-chat 第 73 条）
+		return nil, protocol.Errorf(protocol.CodeRateLimited, "too many conversation settings")
+	}
+	if _, perr := s.authorize(ctx, uid, req.ConvID); perr != nil { // 4032、4033、已解散的群 4043（AC-CVS-03-9）
+		return nil, perr
+	}
+	if _, ok, err := s.store.GetConversation(ctx, uid, req.ConvID); err != nil {
+		return nil, s.internal("get conversation", err)
+	} else if !ok {
+		return protocol.ConvDeleteAck{ClearedSeq: 0}, nil // 不存在的（没有消息的单聊）：幂等成功，不写（规则 8，第 78 条）
+	}
+	got, err := s.store.DeleteConv(ctx, store.ConvDeleteReq{UserID: uid, ConvID: req.ConvID, UpToSeq: *req.UpToSeq, Now: s.nowMs()})
+	switch {
+	case errors.Is(err, store.ErrNotGroupMember):
+		return nil, protocol.Errorf(protocol.CodeNotGroupMember, "not a member of %s", req.ConvID) // 判断之后退群了
+	case err != nil:
+		return nil, s.internal("delete conversation", err) // 5000，客户端恢复显示；日志没有正文
+	}
+	s.log.Info("conversation deleted", "conv", req.ConvID, "clearedSeq", got.ClearedSeq) // 只记 convId、clearedSeq（BE-485 第 9 条）
+	s.publishConvSettings(uid)
+	return protocol.ConvDeleteAck{ClearedSeq: got.ClearedSeq}, nil
 }

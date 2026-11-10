@@ -695,11 +695,15 @@ func convQuery(branches ...string) string {
 
 // convListOrder 是会话列表的排序（F-CVS-01 规则 3，F-CONV-01 规则 3 的扩展）：置顶的在最前（pinnedAt 倒序），其余 updatedAt 倒序，
 // 时间相同按 convId。LIMIT 截断时置顶的一定在结果里（规则 4；IM_CONV_PIN_MAX 不超过 500）。
+// convHidden 是删除会话的隐藏条件（F-CVS-03 规则 2，R-CB-13）：deleted_at > 0 AND max_seq <= cleared_seq。只设了免打扰的空群不隐藏；
+// 有新消息（只有 tip 也算）时 max_seq > cleared_seq，会话自然重新出现。
+const convHidden = ` WHERE NOT (deleted_at > 0 AND max_seq <= cleared_seq)`
+
 const convListOrder = ` ORDER BY CASE WHEN pinned_at > 0 THEN 0 ELSE 1 END, pinned_at DESC, updated_at DESC, conv_id ASC`
 
 func (s *SQLite) ListConversations(ctx context.Context, userID string, limit int) ([]ConvRow, bool, error) {
 	q := `SELECT ` + convColumns + ` FROM (` + fmt.Sprintf(c2cConvSelect, "uc.user_id = ?") + ` UNION ALL ` + fmt.Sprintf(groupConvSelect, "gm.user_id = ?") + `)` +
-		convListOrder + ` LIMIT ?` // #nosec G202 -- constant fragments only; values are bound with ?
+		convHidden + convListOrder + ` LIMIT ?` // #nosec G202 -- constant fragments only; values are bound with ?
 	rows, err := s.db.QueryContext(ctx, q, userID, userID, limit+1)
 	if err != nil {
 		return nil, false, err

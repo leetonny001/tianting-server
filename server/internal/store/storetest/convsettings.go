@@ -25,6 +25,7 @@ func convSettingCases() []struct {
 		{"ConvSettingsNotifyOffUsers", testConvSettingsNotifyOffUsers},
 		{"ConvSettingsTotalUnread", testConvSettingsTotalUnread},
 		{"ConvSettingsListOrder", testConvSettingsListOrder},
+		{"ConvSettingsHidden", testConvSettingsHidden},
 	}
 }
 
@@ -305,5 +306,44 @@ func testConvSettingsListOrder(t *testing.T, open Opener) {
 	}
 	if convs, _, _ := s.ListConversations(c, "o0", 10); convIDs(convs) != "[c2c:a:o0]" || convs[0].PinnedAt != 0 {
 		t.Errorf("peer sees the pin: %+v", convs)
+	}
+}
+
+// Hidden condition (F-CVS-03 rule 2): deleted_at > 0 AND max_seq <= cleared_seq. A partial delete stays; an empty group with only
+// notifyOff stays; a deleted empty group is hidden; a new message (seq > cleared) brings it back. GetConversation still finds hidden ones.
+func testConvSettingsHidden(t *testing.T, open Opener) {
+	s, c := open(t), ctx()
+	for i := 1; i <= 3; i++ {
+		saveAt(t, s, "c2c:a:h1", "h1", fmt.Sprintf("x%d", i), int64(100+i), "hi")
+		saveAt(t, s, "c2c:a:h2", "h2", fmt.Sprintf("y%d", i), int64(100+i), "hi")
+	}
+	for _, g := range []string{"e1", "e2"} {
+		if err := s.CreateGroup(c, store.Group{GroupID: g, Name: g, CreatedAt: 1}, []string{"a", "b"}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	s.DeleteConv(c, store.ConvDeleteReq{UserID: "a", ConvID: "c2c:a:h1", UpToSeq: 3, Now: 10})
+	s.DeleteConv(c, store.ConvDeleteReq{UserID: "a", ConvID: "c2c:a:h2", UpToSeq: 2, Now: 10})
+	mustSet(t, s, store.ConvSetReq{UserID: "a", ConvID: "group:e1", NotifyOff: ptr(true), Now: 10})
+	s.DeleteConv(c, store.ConvDeleteReq{UserID: "a", ConvID: "group:e2", UpToSeq: 0, Now: 10})
+	convs, _, err := s.ListConversations(c, "a", 10)
+	if err != nil || convIDs(convs) != "[c2c:a:h2 group:e1]" {
+		t.Fatalf("visible = %s, %v", convIDs(convs), err)
+	}
+	if convs[0].ClearedSeq != 2 || convs[0].ReadSeq != 2 || !convs[1].NotifyOff {
+		t.Errorf("rows = %+v", convs)
+	}
+	if cv, ok, _ := s.GetConversation(c, "a", "c2c:a:h1"); !ok || cv.ClearedSeq != 3 || cv.DeletedAt != 10 {
+		t.Errorf("GetConversation of a hidden one = %+v, %v", cv, ok)
+	}
+	if convs, _, _ := s.ListConversations(c, "b", 10); len(convs) != 2 {
+		t.Errorf("b affected: %s", convIDs(convs))
+	}
+	saveAt(t, s, "c2c:a:h1", "h1", "x4", 200, "back")
+	if _, _, err := s.SaveMessage(c, store.Message{MsgID: "e2-1", ClientMsgID: "e2-1", ConvID: "group:e2", From: "b", Type: "text", Body: []byte(`{"text":"hi"}`), TS: 300}); err != nil {
+		t.Fatal(err)
+	}
+	if convs, _, _ := s.ListConversations(c, "a", 10); convIDs(convs) != "[group:e2 c2c:a:h1 c2c:a:h2 group:e1]" {
+		t.Errorf("after new messages = %s", convIDs(convs))
 	}
 }

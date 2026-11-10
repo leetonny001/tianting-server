@@ -198,7 +198,7 @@ type Store interface {
 	ReadSeq(ctx context.Context, userID, convID string) (int64, error)
 
 	// ListConversations 返回用户的会话列表：置顶的在最前（PinnedAt 倒序，C5），其余按 UpdatedAt 倒序、ConvID 升序（字节序），最多 limit 个；
-	// 超过时 truncated=true（C-03）。包括发过或收到过消息的单聊、所在的全部群。
+	// 超过时 truncated=true（C-03）。包括发过或收到过消息的单聊、所在的全部群；不含删除后还没有新消息的会话（C5，F-CVS-03 规则 2）。
 	ListConversations(ctx context.Context, userID string, limit int) (convs []ConvRow, truncated bool, err error)
 	// GetConversation 返回用户的某个会话；不在其会话列表里时 ok=false。
 	GetConversation(ctx context.Context, userID, convID string) (c ConvRow, ok bool, err error)

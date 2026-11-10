@@ -402,6 +402,15 @@ func (s *Service) convs(ctx context.Context, c delivery.Session) (any, *protocol
 		return nil, s.internal("list conversations", err)
 	}
 	out := protocol.ConvsAck{Convs: make([]protocol.Conversation, 0, len(rows)), Truncated: truncated}
+	// 删除的会话（F-CVS-03 规则 6）：只列当前隐藏的，按删除时间倒序；读失败是 5000，不降级成"没有设置"（backend-chat 第 90 条）。
+	deleted, deletedTruncated, err := s.store.DeletedConvs(ctx, c.UserID(), s.cvs.cfg.DeletedMax)
+	if err != nil {
+		return nil, s.internal("list deleted conversations", err)
+	}
+	for _, d := range deleted {
+		out.Deleted = append(out.Deleted, protocol.DeletedConv{ConvID: d.ConvID, ClearedSeq: d.ClearedSeq})
+	}
+	out.DeletedTruncated = deletedTruncated
 	for _, r := range rows {
 		out.Convs = append(out.Convs, toConversation(r))
 	}
@@ -444,6 +453,8 @@ func toConversation(r store.ConvRow) protocol.Conversation {
 	}
 	// 置顶、免打扰（C5）：开关关闭后照常输出（P-46 ②）；没有设置时都不出现（omitempty）。免打扰下未读照常计算（F-CVS-02 规则 3）。
 	out.Pinned, out.PinnedAt, out.NotifyOff = r.PinnedAt > 0, r.PinnedAt, r.NotifyOff
+	// 删除会话：我这边清除范围内的历史不再可见（F-CVS-03 规则 2），minSeq = max(原值, clearedSeq + 1)。
+	out.MinSeq = max(out.MinSeq, r.ClearedSeq+1)
 	// 未读 = maxSeq − max(readSeq, joinSeq)，从入群时刻算起，与 historyVisible 无关（C-02）。
 	out.Unread = max(0, r.MaxSeq-max(r.ReadSeq, r.JoinSeq))
 	if r.LastVisible {
@@ -500,8 +511,21 @@ func (s *Service) NotifyConvRemoved(convID string, userIDs []string, reason stri
 
 // authorize 检查用户能否访问会话，并返回用户能看到的最小 seq（minSeq）：
 // 单聊必须是其中一方（4032），minSeq=1；群必须存在（4043）且是成员（4033），minSeq 见 groupMinSeq。
-// 被移除的成员连以前看过的消息也拉不到（PRD AC-GRP-01-4）。
+// 被移除的成员连以前看过的消息也拉不到（PRD AC-GRP-01-4）。删除过会话的再取 max(minSeq, clearedSeq + 1)（C5，F-CVS-03 规则 2）：
+// sync、read、recall（4044）、quote（4040 quoteUnavailable）都经过这里（backend-chat 第 77 条）。
 func (s *Service) authorize(ctx context.Context, uid, convID string) (minSeq int64, perr *protocol.Error) {
+	if minSeq, perr = s.authorizeMember(ctx, uid, convID); perr != nil {
+		return 0, perr
+	}
+	cleared, err := s.store.ConvClearedSeq(ctx, uid, convID)
+	if err != nil {
+		return 0, s.internal("conv cleared seq", err)
+	}
+	return max(minSeq, cleared+1), nil
+}
+
+// authorizeMember 是 authorize 的参与方、成员判断和不含删除位置的 minSeq。
+func (s *Service) authorizeMember(ctx context.Context, uid, convID string) (int64, *protocol.Error) {
 	conv, perr := protocol.ParseConvID(convID)
 	if perr != nil {
 		return 0, perr
