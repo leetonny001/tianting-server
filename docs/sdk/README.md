@@ -52,6 +52,23 @@ im.on('securityNotice', (n) => …);                                        // {
 account.on('ended', (end) => …);                                          // 会话结束：dialog、reason、recoverBefore 交给界面
 ```
 
+撤回、引用、@（PRD-chat C4，第 13.1 节；sdk-ts 已实现，FE-660，Kotlin、Swift 随 FE-661～664，语义相同）：
+
+```ts
+im.send(convId, text, { quote?: { msgId }, mentions?: { userIds?, all? } }); // 原来的 send(convId, text) 不变。上行 quote 只发 msgId；mentions 只在群聊，userIds 去重
+await im.recall(convId, msgId);             // 成功后本地立即变撤回（服务端只回 ack，不给发起的连接发 msgDeleted）；失败抛错，不自动重试
+im.canRecall(message, myRole?);             // 按 ts 和 auth ack 校正后的服务端时间：自己的 2 分钟；群主、管理员 7 天
+im.messageActions(message, myRole?);        // 'copy' | 'quote' | 'recall' 的子集；撤回、删除的消息和提示行没有菜单
+im.recallText(convId, messageOrLastMsg);    // F-RCL-02 规则 1a 的文案，聊天页和列表摘要同一张表；recallNotice 给判断数据
+await im.searchGroupMembers(groupId, keyword, cursor?); // groupMembers 的 keyword：userId 或昵称前缀，每人每分钟 30 次（4290 不重试）
+im.on('messages', …);                       // msgDeleted 带 recalled {by, at} 时，消息 deleted + recalled + recalledBy；不带是后台删除
+```
+
+- `msgDeleted` 的 `recalled`：清除原文、文件名，**本地所有引用这条消息的 `quote.text` 清掉、`state` 改成 `recalled`**（后台删除是 `deleted`），文件通过 `filesExpired` 让页面丢缓存；`lastMsg` 同样带 `recalled`、`recalledBy`。
+- `Conversation.mentionUnread`、`firstMentionSeq`：来自 `convs`；实时收到 @ 我（或 @ 所有人）的未读消息本地加 1，本端读到最新清零；本地 `mentionUnread > 0` 时收到 `readUpdated`、`msgDeleted` 重新拉 `convs`，每 5 秒最多一次，窗口内的事件在窗口结束时补拉一次。
+- 错误：`recall` 的 4097 带 `details.windowSeconds`（`messageFor('recall', 4097, {windowSeconds})`："发送时间超过 2 分钟，无法撤回"或"…7 天…"），4030"你没有权限撤回这条消息"，4044 消息不存在或已被后台删除；`send` 的 4040（`errorReason: 'quoteUnavailable'`）、4293"@所有人次数已用完"、4131 标记失败，不自动重发。
+- 工具：`quoteSummary`（引用摘要，F-QUO-02 规则 2）、`quoteLabel`（四种状态的显示文字，规则 3）。引用文字、@ 的内容不进日志。
+
 其余接口：`refresh`、`changePassword`、`logoutOthers`、`logout`、`regenerateRecoveryCode`、`updateProfile`、`getConfig`、`listEvents`、`requestDelete`、`cancelDelete`、`foreground`。Kotlin 是 `suspend` 函数，还有 `networkOnline`、`pendingLogoutStore`（待退出）、`SystemTokenRevoker`；Swift 是 `async` 函数，`AccountSessionStore` 同时存待退出，`unregisterSystemPushToken` 是回调。系统令牌注销的调用点有，FCM、APNs 接入随 C3。
 
 ## 3. 行为规则（三套 SDK 必须一致）
@@ -94,6 +111,16 @@ account.on('ended', (end) => …);                                          // �
 | 未确认的消息排在所有有 seq 的消息之后 | F-MSG-03 规则 3 |
 | 文本：去首尾空白（Unicode White_Space，不能用 JS 的 `\s`）后按码点计数，1～5000 | 3.1 节、C-26 |
 
+### 撤回、引用、提及（FE-660～664，PRD-chat F-RCL-03 规则 2a、F-QUO-02 规则 4、F-MEN-03 规则 1）
+
+| 规则 | 依据 |
+|---|---|
+| 单调合并：`deleted`、`recalled`、`expired` 只能从假变真；`quote.state` 只能从 `normal` 往后走，`quote.text` 清除后不恢复；已知删除的 msgId 优先，迟到的旧 `sync` 应答不回写原文 | F-RCL-03 规则 2a |
+| 收到 `msgDeleted`：本会话里引用这几条的消息（含待发的）清除引用原文，带 `recalled` 时 `state=recalled`，否则 `deleted`；之后才到的消息里引用已知被删的，同样清除 | F-QUO-02 规则 4 |
+| 重连只重拉 `modVer` 变了的已加载会话，一个失败只跳过它（P-39 ②）；撤回走同一路径 | F-RCL-03 规则 2 |
+| 撤回菜单按 `ts` 和校正后的服务端时间判断，不用设备时钟；4097、4293 不自动重试 | AC-RCL-01-8、F-MEN-02 规则 2 |
+| `mentionUnread > 0` 时收到 `readUpdated`、`msgDeleted` 节流 5 秒重拉 `convs`；为 0 或没有这个字段不拉 | F-MEN-03 规则 1、R-CF-18 |
+
 ### 已读与未读（FE-006）
 
 | 规则 | 依据 |
@@ -116,7 +143,7 @@ account.on('ended', (end) => …);                                          // �
 | `protocol/vectors/frames.json` | 帧格式的合法 / 非法用例 | Schema 校验 | `frames-schema.test.ts`（Schema 校验，合法和非法都跑） |
 | `protocol/schema/http-client.schema.json` | 账号接口的请求和响应 | `validateHTTP` | `account-http-schema.test.ts`（请求体）、`test/support/account.ts`（假响应） |
 | `protocol/vectors/account-session.json` | `cases`：客户端判断。`serverCases`：规则 4 的判定表 | `server/e2e/accountmodel`、`account_vectors_test.go` | `account-vectors.test.ts`：`cases` 跑真实的 `AccountClient` + 假 HTTP + 假时钟；`serverCases` 约束假服务端 |
-| `protocol/vectors/chat-sync.json` | `expired` 单调合并、`modVer` 重拉（C2；撤回、引用等随 C4、C5） | `server/e2e/chatmodel` | `chat-sync-vectors.test.ts`：真实的 `IMClient` + `FakeTransport`；`attachmentCases` 在 `attachment-vectors.test.ts`（冷启动用例跳过） |
+| `protocol/vectors/chat-sync.json` | `expired` 单调合并、`modVer` 重拉（C2）；撤回合并、引用清除、提及计数的节流刷新（C4，步骤 `event`、`advance`）；置顶、删除会话随 C5 | `server/e2e/chatmodel` | `chat-sync-vectors.test.ts`：真实的 `IMClient` + `FakeTransport` + 假时钟；`attachmentCases` 在 `attachment-vectors.test.ts`（冷启动用例跳过） |
 
 ## 5. 测试
 
