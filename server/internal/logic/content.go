@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 
 	"tianting/server/internal/delivery"
+	"tianting/server/internal/moderation"
 	"tianting/server/internal/protocol"
 	"tianting/server/internal/quarantine"
 )
@@ -42,12 +43,17 @@ type modState struct {
 	cfg ModConfig
 	// evidence 加密举报证据（IM_REPORT_KEY，AES-256-GCM，复用 quarantine.Cipher 的实现、不同的密钥）。开关打开时一定非 nil。
 	evidence *quarantine.Cipher
+	// words 是词库引擎；开关关闭时为 nil（不加载、不检查，AC-MOD-02-10）。
+	words *moderation.Engine
 }
 
 // ConfigureModeration 设置 C6（只在启动时调用）。IM_MOD_ENABLED 关闭时只拦客户端的 report 和敏感词检查，
 // 管理接口和清理任务照常（P-48 ④，backend-chat 第 108 条）。
-func (s *Service) ConfigureModeration(cfg ModConfig, evidence *quarantine.Cipher) {
-	s.mod = &modState{cfg: cfg.WithDefaults(), evidence: evidence}
+func (s *Service) ConfigureModeration(cfg ModConfig, evidence *quarantine.Cipher, words *moderation.Engine) {
+	if !cfg.Enabled {
+		words = nil
+	}
+	s.mod = &modState{cfg: cfg.WithDefaults(), evidence: evidence, words: words}
 }
 
 // ModerationEnabled 报告 C6 开关（GET /v1/config 的 features.moderation，backend-chat 第 96 条）。
@@ -66,4 +72,42 @@ func (s *Service) report(ctx context.Context, c delivery.Session, raw json.RawMe
 		return nil, featureDisabled()
 	}
 	return s.submitReport(ctx, c, req)
+}
+
+// 检查场景（moderation_hits.scene、im_blocked_total 的 scene，backend-chat 第 110 条；和 metrics.BlockScenes 一致）。
+const (
+	SceneText        = "text"
+	SceneFileName    = "fileName"
+	SceneNickname    = "nickname"
+	SceneUsername    = "username"
+	SceneGroupName   = "groupName"
+	SceneGroupNotice = "groupNotice"
+	SceneFriendApply = "friendApply"
+)
+
+// contentBlocked 是 4510：不带 details，不告诉命中了哪个词（F-MOD-02 规则 6）。
+func contentBlocked() *protocol.Error {
+	return protocol.Errorf(protocol.CodeContentBlocked, "content blocked")
+}
+
+// blocked 检查一段客户端写入的内容（F-MOD-02 规则 2）。开关关闭、词库为空时不拦截。命中时 im_blocked_total{scene} 加 1。
+func (s *Service) blocked(scene, text string) (moderation.Hit, bool) {
+	if s.mod.words == nil || text == "" {
+		return moderation.Hit{}, false
+	}
+	hit, ok := s.mod.words.Match(text)
+	if ok {
+		s.metrics.Blocked.WithLabelValues(scene).Inc()
+	}
+	return hit, ok
+}
+
+// checkSendContent 是 send 的第 9 步（F-MOD-02 规则 2、3）：text 的正文。不查引用摘要、tip、custom（生产禁止客户端发送）。
+func (s *Service) checkSendContent(_ context.Context, _ string, req protocol.SendReq) *protocol.Error {
+	if req.Type == protocol.MsgText {
+		if _, hit := s.blocked(SceneText, req.Body.Text); hit {
+			return contentBlocked()
+		}
+	}
+	return nil
 }

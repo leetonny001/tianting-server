@@ -239,6 +239,12 @@ var adminSamples = map[string]adminSample{
 	"POST /admin/test/invalidate":         {nil, "POST", "/admin/test/invalidate", map[string]any{"topic": "socialSettings", "key": ""}, 200},
 	"POST /admin/test/jobs/{name}/run":    {nil, "POST", "/admin/test/jobs/social_purge/run", map[string]any{}, 200},
 	"POST /admin/test/limits/reset":       {nil, "POST", "/admin/test/limits/reset", map[string]any{"userId": "alice"}, 200},
+	// PRD-chat C6（BE-493）：词库接口不跟 IM_MOD_ENABLED 注册（P-48 ④），默认环境里就有。
+	"GET /admin/moderation/words":             {nil, "GET", "/admin/moderation/words", nil, 200},
+	"POST /admin/moderation/words":            {nil, "POST", "/admin/moderation/words", map[string]any{"word": "ZXQ-S-1"}, 200},
+	"POST /admin/moderation/words/import":     {nil, "POST", "/admin/moderation/words/import", map[string]any{"words": []string{"ZXQ-S-2"}}, 200},
+	"PATCH /admin/moderation/words/{wordId}":  {nil, "PATCH", "/admin/moderation/words/999", map[string]any{"state": "disabled"}, 404},
+	"DELETE /admin/moderation/words/{wordId}": {nil, "DELETE", "/admin/moderation/words/999", nil, 404},
 }
 
 // AC-KEY-02-2：遍历全部管理路由 × "有该 scope / 只有其他 scope"两种调用方。

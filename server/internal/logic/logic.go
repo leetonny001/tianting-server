@@ -218,6 +218,12 @@ func (s *Service) send(ctx context.Context, c delivery.Session, raw json.RawMess
 			return nil, false, perr
 		}
 	}
+	// 第 9 步敏感词（F-MOD-02 规则 5）：在已有的全部权限判定之后，被拒绝的用户探测不到词库；已扣发送令牌，第 6～10 步失败退还新对象配额
+	// （AC-MOD-02-12）；@ 所有人次数在保存事务里才扣，这里拦下就不扣（AC-MOD-02-16）。
+	if perr := s.checkSendContent(ctx, uid, req); perr != nil {
+		onReject()
+		return nil, false, perr
+	}
 	if req.Type == protocol.MsgText {
 		stored = protocol.MsgBody{Text: req.Body.Text, Mentions: mentions.body}
 	}

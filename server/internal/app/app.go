@@ -31,6 +31,7 @@ import (
 	"tianting/server/internal/hub"
 	"tianting/server/internal/logic"
 	"tianting/server/internal/metrics"
+	"tianting/server/internal/moderation"
 	"tianting/server/internal/objstore"
 	"tianting/server/internal/opsapi"
 	"tianting/server/internal/protocol"
@@ -150,7 +151,8 @@ type App struct {
 	// 测试模式的故障注入（PRD-ops S-OPS-24）：生产环境没有设置它们的路由。
 	opsDelay atomic.Int64
 	pingFail atomic.Bool
-	files    *files.Service // IM_FILES_ENABLED 关闭时为 nil
+	files    *files.Service     // IM_FILES_ENABLED 关闭时为 nil
+	words    *moderation.Engine // IM_MOD_ENABLED 关闭时为 nil
 }
 
 // SetTestPeers 设置双节点测试环境的广播目标（只在测试模式下有效；TestInvalidationOff 时忽略）。
@@ -252,7 +254,12 @@ func New(cfg Config) (*App, error) {
 		st.Close()
 		return nil, err
 	}
-	svc.ConfigureModeration(cfg.Moderation, evidence)
+	words, err := startWords(st, cfg, clk, faults, inv, m)
+	if err != nil {
+		st.Close()
+		return nil, err
+	}
+	svc.ConfigureModeration(cfg.Moderation, evidence, words)
 	var fileSvc *files.Service
 	var obj *objstore.Client
 	if cfg.Files.Enabled {
@@ -312,7 +319,7 @@ func New(cfg Config) (*App, error) {
 		st.Close()
 		return nil, err
 	}
-	a := &App{store: st, hub: h, metrics: m, stop: make(chan struct{}), loopback: loopback, files: fileSvc}
+	a := &App{store: st, hub: h, metrics: m, stop: make(chan struct{}), loopback: loopback, files: fileSvc, words: words}
 	a.dynamicChecks = func(ctx context.Context) []DynamicCheck {
 		problems, err := accounts.LedgerProblems(ctx)
 		if err != nil {
@@ -525,6 +532,36 @@ func configureModeration(st *store.SQLite, cfg Config) (*quarantine.Cipher, erro
 	return quarantine.New(string(cfg.ReportKey))
 }
 
+// startWords 在 IM_MOD_ENABLED=1 时启动词库引擎（BE-493）：同步加载一次，失败启动失败（F-MOD-01 异常，AC-MOD-01-8 第 2 种）；
+// 订阅失效主题 blockedWords（规则 2），TTL 60 秒兜底在引擎里。开关关闭时不加载、不建自动机，管理接口照常（BE-493 第 7 条）。
+func startWords(st *store.SQLite, cfg Config, clk clock.Clock, faults *logic.Faults, inv cache.Invalidator, m *metrics.Metrics) (*moderation.Engine, error) {
+	if !cfg.Moderation.Enabled {
+		return nil, nil
+	}
+	e := moderation.New(moderation.Deps{
+		Load: func(ctx context.Context) ([]moderation.Word, error) {
+			keys, err := st.ActiveWords(ctx)
+			if err != nil {
+				return nil, err
+			}
+			out := make([]moderation.Word, len(keys))
+			for i, k := range keys {
+				out[i] = moderation.Word{ID: k.WordID, Norm: k.Norm, Compact: k.Compact}
+			}
+			return out, nil
+		},
+		Now:         clk.Now,
+		ReloadFails: faults.WordsReloadFails, // 测试模式之外 faults 为 nil，永远不失败
+		ReloadError: m.ModReloadErrors.Inc,
+		Log:         cfg.Logger,
+	})
+	if err := e.Start(context.Background(), cfg.TestMode && cfg.TestWordsStartupFail); err != nil {
+		return nil, fmt.Errorf("IM_MOD_ENABLED=1: loading the blocked word list failed: %w", err)
+	}
+	inv.Subscribe(moderation.TopicBlockedWords, func(string) { e.Invalidate() })
+	return e, nil
+}
+
 // ReportKeyLen 是 IM_REPORT_KEY 解码后的长度（32 字节随机值，base64，第 4.1 节）。
 const ReportKeyLen = 32
 
@@ -678,6 +715,9 @@ func (a *App) Close() error {
 		a.opsDB.Close()
 	}
 	close(a.stop)
+	if a.words != nil {
+		a.words.Close()
+	}
 	return a.store.Close()
 }
 

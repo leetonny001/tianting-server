@@ -139,6 +139,7 @@ func (a *Admin) Register(mux *http.ServeMux) {
 	a.registerQueries(mux)
 	a.registerModeration(mux)
 	a.registerPush(mux)
+	a.registerWords(mux)
 }
 
 // RegisterTestRoutes 注册故障注入和时钟接口，只能在测试模式下调用（PRD 6.1 节）。
