@@ -2,7 +2,7 @@
 
 | 项 | 内容 |
 |---|---|
-| 依据 | [PRD-admin v1.0](../prd/PRD-admin-v1.0.md)（冻结）第 3 节 F-KEY-01～05、第 6 节、第 8.1 节 G-ADM-xx、第 10、11 节；[PRD-core v1.3](../prd/PRD-core-v1.3.md)；[PRD-social v1.0](../prd/PRD-social-v1.2.md)（社交管理接口、`DissolveGroup`）；[ARCH-v1](../arch/ARCH-v1.md)；[ADMIN.md](../../protocol/ADMIN.md)、[ERRORS.md](../../protocol/ERRORS.md)、[errors.json](../../protocol/errors.json) |
+| 依据 | [PRD-admin v1.0](../prd/PRD-admin-v1.0.md)（冻结）第 3 节 F-KEY-01～05、第 6 节、第 8.1 节 G-ADM-xx、第 10、11 节；[PRD-core v1.3](../prd/PRD-core-v1.3.md)；[PRD-social v1.0](../prd/PRD-social-v1.3.md)（社交管理接口、`DissolveGroup`）；[ARCH-v1](../arch/ARCH-v1.md)；[ADMIN.md](../../protocol/ADMIN.md)、[ERRORS.md](../../protocol/ERRORS.md)、[errors.json](../../protocol/errors.json) |
 | 负责 | 后端（AI） |
 | 仓库 | tianting-server（本仓库 `server/`、`protocol/`） |
 | 起点 | 一期代码：`server/internal/admin`（静态密钥 `X-Admin-Key`，与 `/ws` 共用一个 mux，见 `server/internal/app/app.go`）、`store` 迁移 0001～0003、`hub`（单节点在线表）、BE-003 测试模式与 `POST /admin/test/clock`（[IM 钟]） |
@@ -356,13 +356,13 @@
 - AC：AC-ADM-70-1
 - 内容：返回在线连接数（按平台）、今日新增用户、今日消息数、群总数（"今日"按 Asia/Shanghai）；scope 新增 `stats.read`（加入 F-KEY-02 目录与 ADMIN.md）；不读 `/metrics`。
 
-### BE-242 敏感词与发送前检查（P2）（3 人日）
+### BE-242 敏感词与发送前检查（P2）（3 人日）——由 PRD-chat C6 取代
 - 优先级：P2
 - 批次：P1（P2 功能，两批之外）
 - 仓库：tianting-server
 - 依赖：ARCH S14、错误码届时分配（建议 4510）
-- AC：AC-ADM-60-1、AC-ADM-60-2
-- 内容：词库表（拦截 / 替换）、管理接口、发送前检查（拦截不落库、替换为 `*`），词库变更经 `cache.Invalidator` 通知所有节点（10 秒内生效）。排期另定。
+- AC：无（原来的两条 PRD-admin v1.5 作废，见状态）
+- 状态：**由 PRD-chat C6 取代**，不再单独做（BE-497）：AC-ADM-60-1 作废并入 PRD-chat AC-MOD-01-1（TC-ADM-60-01 改关联），AC-ADM-60-2 作废（TC-ADM-60-02 删除），实现见 backend-chat BE-492～BE-499。原内容：词库表（拦截 / 替换）、管理接口、发送前检查（拦截不落库、替换为 `*`），词库变更经 `cache.Invalidator` 通知所有节点（10 秒内生效）。排期另定。
 
 ### BE-244 群详情返回全群禁言状态（P1）（0.25 人日）
 - 优先级：P1

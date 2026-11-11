@@ -2,7 +2,7 @@
 
 | 项 | 内容 |
 |---|---|
-| 依据 | [PRD-chat v1.7](../prd/PRD-chat-v1.7.md)（冻结）第 11.6、14 节、F-ACC-09、F-APN-01 规则 4、F-RCL-04、F-CVS-03 规则 2 和 F-MOD-01～04；[PRD-admin v1.2](../prd/PRD-admin-v1.4.md) 基座（权限点、两阶段审计、错误码）；[errors.json](../../protocol/errors.json) |
+| 依据 | [PRD-chat v1.7](../prd/PRD-chat-v1.7.md)（冻结）第 11.6、14 节、F-ACC-09、F-APN-01 规则 4、F-RCL-04、F-CVS-03 规则 2 和 F-MOD-01～04；[PRD-admin v1.2](../prd/PRD-admin-v1.5.md) 基座（权限点、两阶段审计、错误码）；[errors.json](../../protocol/errors.json) |
 | 范围 | **C1、C2、C3、C4、C5**（CH-27）。C3 是 Frank 2026-11-10 决定按顺序继续的，同一天又决定"推送后续做，先做功能"，**C3 已暂停**（CS-203 保留）；C4 同一天决定接着做（CS-202 从 C2 挪来，CS-204 新增）；C5 是 Frank 2026-11-10 说"开始 C5"后分发的（CS-205，QUEUE Q29）。C6（词库、举报：`moderation.words`、`report.*`、`console-msgread` 增加 `report.evidence`）是 Frank 2026-11-11 说"开始 C6"后分发的（CS-206～CS-208，PENDING P-47，QUEUE Q30） |
 | 负责 | 后端（AI） |
 | 仓库 | tianting-console-server（Go）。管理后台页面在 tianting-admin，见 [frontend-chat.md](frontend-chat.md)；im-server 接口见 [backend-chat.md](backend-chat.md) |

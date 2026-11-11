@@ -2,7 +2,7 @@
 
 | 项 | 内容 |
 |---|---|
-| 依据 | [PRD-social v1.0](../prd/PRD-social-v1.2.md) 第 10 节（SDK 变更）、9.1～9.4 节（协议与错误码）、[SDK 设计说明](../sdk/README.md)、[协议](../../protocol/README.md)、[错误码](../../protocol/ERRORS.md) |
+| 依据 | [PRD-social v1.0](../prd/PRD-social-v1.3.md) 第 10 节（SDK 变更）、9.1～9.4 节（协议与错误码）、[SDK 设计说明](../sdk/README.md)、[协议](../../protocol/README.md)、[错误码](../../protocol/ERRORS.md) |
 | 负责 | 前端（AI） |
 | 仓库 | FE-100～FE-129：tianting-sdk-ts（`/Users/frank/Desktop/workspace/tianting-sdk-ts`，M3 / M4）；FE-130～FE-139：tianting-sdk-kotlin（M5）；FE-140～FE-149：tianting-sdk-swift（M6） |
 | 范围 | 只含 SDK。社交与群管理**页面**属于 PRD-ui（H5 `tianting-web`、PC `tianting-desktop`、原生 App），由 PRD-ui 任务单负责；本任务单中【前端】AC 的 SDK 部分（数据、事件、错误码、缓存）在这里完成，界面断言在 PRD-ui 任务里完成 |

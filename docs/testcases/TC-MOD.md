@@ -1,6 +1,6 @@
 # 测试用例：敏感词和举报（MOD，C6）
 
-> 依据：[PRD-chat v1.7](../prd/PRD-chat-v1.7.md)（冻结）第 4.1、4.3、4.5 节，第 10 节 F-MOD-01～04，第 11～15 节的 C6 部分；[PRD-admin v1.4](../prd/PRD-admin-v1.4.md) 第 5 节、F-KEY-02、F-ADM-08、F-ADM-30、第 12 节。任务单：[backend-chat](../tasks/backend-chat.md) BE-491～BE-499，[console-chat](../tasks/console-chat.md) CS-206～CS-208，[frontend-chat](../tasks/frontend-chat.md) FE-690～FE-698。
+> 依据：[PRD-chat v1.7](../prd/PRD-chat-v1.7.md)（冻结）第 4.1、4.3、4.5 节，第 10 节 F-MOD-01～04，第 11～15 节的 C6 部分；[PRD-admin v1.5](../prd/PRD-admin-v1.5.md) 第 5 节、F-KEY-02、F-ADM-08、F-ADM-30、第 12 节。任务单：[backend-chat](../tasks/backend-chat.md) BE-491～BE-499，[console-chat](../tasks/console-chat.md) CS-206～CS-208，[frontend-chat](../tasks/frontend-chat.md) FE-690～FE-698。
 > 范围：标了【C6】的 AC-MOD（Frank 2026-11-11"开始 C6"，QUEUE Q30）。同属 C6 的 AC-ACC-01-9、AC-ACC-10-5 在 [TC-ACC](TC-ACC.md)（TC-ACC-01-22、TC-ACC-10-05），AC-CHAT-90-4 和【全部】的 C6 部分在 [TC-CHAT](TC-CHAT.md)（TC-CHAT-90-40～47）。**C6 没有依赖 C3 的用例**（backend-chat 第 94 条）。
 >
 > 通用约定：

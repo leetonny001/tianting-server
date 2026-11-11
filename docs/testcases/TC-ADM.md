@@ -2,7 +2,7 @@
 
 > 2026-11-05：依据升为 PRD-admin v1.1，AC-ADM-50-1～8 的预期不变（push 协议已冻结，对齐表见 PRD-live 4.7 节），用例不用改；协议层的用例见 [TC-PUSH](TC-PUSH.md)。
 
-> 依据：[PRD-admin v1.0](../prd/PRD-admin-v1.0.md) 第 5、6 节、第 9 节性能 AC（冻结）；[PRD-social v1.0](../prd/PRD-social-v1.2.md)（社交管理接口、解散群）；[ERRORS.md](../../protocol/ERRORS.md)。任务：[backend-admin.md](../tasks/backend-admin.md)、[console.md](../tasks/console.md) CS-020～CS-060、[frontend-admin.md](../tasks/frontend-admin.md) FE-410～FE-440，社交接口见 backend-social.md BE-114、BE-115、BE-122、BE-136。
+> 依据：[PRD-admin v1.0](../prd/PRD-admin-v1.0.md) 第 5、6 节、第 9 节性能 AC（冻结）；[PRD-social v1.0](../prd/PRD-social-v1.3.md)（社交管理接口、解散群）；[ERRORS.md](../../protocol/ERRORS.md)。任务：[backend-admin.md](../tasks/backend-admin.md)、[console.md](../tasks/console.md) CS-020～CS-060、[frontend-admin.md](../tasks/frontend-admin.md) FE-410～FE-440，社交接口见 backend-social.md BE-114、BE-115、BE-122、BE-136。
 >
 > 通用约定：
 > - 环境：console-server（Postgres，`CON_TEST_MODE=1`）+ im-server（`IM_TEST_MODE=1`，SQLite；性能 AC 另注明 Postgres）+ H5（tianting-web，验证客户端表现时）。console 以 `console` 调用方签名调用 im-server 管理地址；第二批用例另配 `console-msgread`，并设 `IM_V13_ADMIN_FEATURES=1`。
@@ -170,8 +170,7 @@
 | TC-ADM-42-02 | 全群禁言通知全部在线成员（P1） | AC-ADM-42-2 | 端到端 | P1 |
 | TC-ADM-70-01 | 首页在线统计并定时刷新（P1） | AC-ADM-70-1 | 端到端 | P1 |
 | TC-ADM-70-02 | 自动刷新不续期会话（P1，[C 钟]） | AC-ADM-70-2 | 集成 | P1 |
-| TC-ADM-60-01 | 拦截词：消息被拒绝且不落库（P2） | AC-ADM-60-1 | 后端 e2e | P2 |
-| TC-ADM-60-02 | 替换词：接收方看到星号（P2） | AC-ADM-60-2 | 后端 e2e | P2 |
+| TC-ADM-60-01 | 拦截词：消息被拒绝且不落库（PRD-admin v1.5 起关联 AC-MOD-01-1） | AC-MOD-01-1 | 后端 e2e | P0 |
 | TC-ADM-90-01 | 用户前缀搜索 P95 ≤ 1 秒（Postgres，100 万用户） | AC-ADM-90-1 | 性能 | P1 |
 | TC-ADM-90-02 | 元数据查询 P95 ≤ 500ms（单会话 10 万条） | AC-ADM-90-2 | 性能 | P1 |
 | TC-ADM-90-03 | 审计查询 P95 ≤ 2 秒（1000 万条） | AC-ADM-90-3 | 性能 | P1 |
@@ -1923,27 +1922,19 @@
 
 ---
 
-## F-ADM-60 敏感词（P2）
+## F-ADM-60 敏感词（PRD-admin v1.5：由 PRD-chat F-MOD 取代）
 
-### TC-ADM-60-01 拦截词：消息被拒绝且不落库（P2）
-- 关联 AC：AC-ADM-60-1
-- 优先级：P2
+> PRD-admin v1.5（BE-497）：AC-ADM-60-1 作废并入 PRD-chat AC-MOD-01-1，本用例改关联 AC-MOD-01-1，步骤和预期同 [TC-MOD-01-01](TC-MOD.md)；AC-ADM-60-2（替换模式）作废，TC-ADM-60-02 删除。
+
+### TC-ADM-60-01 拦截词：消息被拒绝且不落库
+- 关联 AC：AC-MOD-01-1
+- 优先级：P0
 - 层级：后端 e2e
-- 前置条件：拦截词"违规词"。
+- 前置条件：拦截词"违规词"（`moderation.words` 添加）。
 - 步骤：
   1. 添加 10 秒后发送含该词的消息。
 - 预期结果：
-  1. 被拒绝（错误码届时分配，建议 4510），消息不落库。
-
-### TC-ADM-60-02 替换词：接收方看到星号（P2）
-- 关联 AC：AC-ADM-60-2
-- 优先级：P2
-- 层级：后端 e2e
-- 前置条件：替换词"坏词"。
-- 步骤：
-  1. 发送"这是坏词"。
-- 预期结果：
-  1. 接收方收到"这是**"。
+  1. 4510（不带 `details`），消息不落库（后端实现见 `server/e2e/mod_words_test.go` 的 TC-MOD-01-01）。
 
 ---
 

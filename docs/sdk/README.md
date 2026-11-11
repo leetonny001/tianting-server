@@ -154,6 +154,18 @@ im.on('convDeleted', (convId) => …);        // 本端删除成功或其他设�
 | 按 `minSeq` 物理清除本地（`convs`、`convDeleted` 两条路径），迟到的应答不写回；保留下来的消息里的引用摘要照常显示 | F-CVS-03 规则 6，P-46 ④ |
 | 总未读 = 普通会话 `unread` 之和 + 免打扰会话 `mentionUnread` 之和 | F-CVS-02 规则 4 |
 
+### 举报和内容拦截（FE-690～692，PRD-chat F-MOD-02、03，BE-497 第 6 条）
+
+接口：sdk-ts `report({targetType, convId?, msgIds?, userId?, groupId?, reason, note?})` → `reportId`；sdk-kotlin `report(ReportTarget.Messages/User/Group, ReportReason, note?)`，sdk-swift 同形状（FE-692）。帧见 `protocol/` 的 `ReportReq`（BE-491）。
+
+| 规则 | 依据 |
+|---|---|
+| 本地先校验（`targetType` 互斥、`reason` 六选一、`msgIds` 1～20 条、`note` ≤ 200 码点、不能是聊天室），不合法 4000、不发帧；服务端错误原样返回，**不自动重试** | F-MOD-03 规则 1、4 |
+| 4040 `reportTargetInvalid`、4292、4030 `featureDisabled` 按"命令 + 码"的文案（ERRORS.md）；同一对象 24 小时内重复提交返回第一次的 `reportId`，当成功处理 | F-MOD-03 规则 2～4 |
+| 4510 `CONTENT_BLOCKED`（`send`、注册、改昵称、建群、改群、好友申请）：消息标记失败、**不自动重发**、输入框不保留；文案 `send`"消息包含不当内容，无法发送"，非消息"内容包含不当信息，请修改后重试"（P-48 ⑥）；没有 `details`，不显示命中的词 | F-MOD-02 规则 1、6，AC-MOD-02-9 |
+| `GET /v1/config` 的 `features.moderation=false`（或老服务端没有这个字段）时隐藏"举报"入口；4510 的提示不看它 | 第 4.1 节共同规则，backend-chat 第 96 条 |
+| `note` 按正文对待：不进日志、不进崩溃报告 | F-MOD-04 规则 2，AC-MOD-03-8 |
+
 ### 已读与未读（FE-006）
 
 | 规则 | 依据 |
