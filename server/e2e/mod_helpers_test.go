@@ -213,3 +213,13 @@ func blockedMetric(t *testing.T, a *app.App, scene string) float64 {
 	}
 	return 0
 }
+
+func openDB(t *testing.T, path string) *sql.DB {
+	t.Helper()
+	db, err := sql.Open("sqlite", path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { db.Close() })
+	return db
+}

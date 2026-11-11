@@ -259,7 +259,9 @@ func New(cfg Config) (*App, error) {
 		st.Close()
 		return nil, err
 	}
-	svc.ConfigureModeration(cfg.Moderation, evidence, words)
+	modCfg := cfg.Moderation
+	modCfg.C2CBodyAccess = cfg.C2CBodyAccess
+	svc.ConfigureModeration(modCfg, evidence, words)
 	var fileSvc *files.Service
 	var obj *objstore.Client
 	if cfg.Files.Enabled {
@@ -509,6 +511,8 @@ func registerJobs(s *scheduler.Scheduler, st *store.SQLite, svc *logic.Service, 
 	s.Register("mention_purge", jobPeriod, svc.PurgeMentions)
 	// C6 命中记录保留 IM_MOD_HITS_DAYS（F-MOD-02 规则 7）。不跟 IM_MOD_ENABLED（P-48 ④：保留期是对用户的承诺）。
 	s.Register("moderation_hits_purge", jobPeriod, svc.PurgeHits)
+	// C6 举报证据和举报行保留 IM_REPORT_EVIDENCE_DAYS（F-MOD-03 规则 6，P-48 ②）。不跟开关。
+	s.Register("report_purge", jobPeriod, svc.PurgeReports)
 }
 
 // configureModeration 是 C6 的启动检查（BE-492 第 3 条）：生产 open 模式要求词库非空（AC-ACC-01-9，迁移之后才能读库）；

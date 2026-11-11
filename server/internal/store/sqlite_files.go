@@ -285,7 +285,8 @@ func (s *SQLite) ExpireFiles(ctx context.Context, now int64, limit int) ([]File,
 }
 
 func (s *SQLite) ListObjectsToDelete(ctx context.Context, now int64, limit int) ([]File, error) {
-	return s.listFiles(ctx, `objects_deleted = 0 AND (state = 'expired' OR (state = 'revoked' AND retain_until < ?)) LIMIT ?`, now, limit)
+	// 举报证据引用的文件保留到 evidence_until（C6，F-FILE-06 规则 5）：两者都过期之后才删对象。
+	return s.listFiles(ctx, `objects_deleted = 0 AND evidence_until < ? AND (state = 'expired' OR (state = 'revoked' AND retain_until < ?)) LIMIT ?`, now, now, limit)
 }
 
 func (s *SQLite) MarkObjectsDeleted(ctx context.Context, fileID string) error {

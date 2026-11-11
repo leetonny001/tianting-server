@@ -25,6 +25,8 @@ type ModConfig struct {
 	// ClientCustomOff 是 IM_CLIENT_CUSTOM_MSG=0（F-MOD-02 规则 4）：客户端 send 的 custom 返回 4000 customDisabled。
 	// 生产默认关、开发和测试默认开（第 4.1 节），不跟 Enabled 走（backend-chat 第 105 条）。字段取反，零值就是开发默认。
 	ClientCustomOff bool
+	// C2CBodyAccess 跟 IM_C2C_BODY_ACCESS（app 设置，不单独读环境变量）：存证据时读一次（F-MOD-03 规则 5，第 95 条 ①）。
+	C2CBodyAccess bool
 }
 
 // 默认值（第 4.1 节）。

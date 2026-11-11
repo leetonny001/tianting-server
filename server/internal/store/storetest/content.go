@@ -20,6 +20,8 @@ func contentCases() []struct {
 		{"WordsAddDedupByNorm", testWordsAddDedup},
 		{"WordsImport", testWordsImport},
 		{"WordsStateDeleteList", testWordsStateDeleteList},
+		{"ReportCreate", testReportCreate},
+		{"ReportPurge", testReportPurge},
 	}
 }
 
@@ -112,5 +114,98 @@ func testWordsStateDeleteList(t *testing.T, open Opener) {
 	}
 	if n, _ := s.CountActiveWords(ctx()); n != 2 {
 		t.Errorf("count after delete = %d", n)
+	}
+}
+
+func newReport(id, reporter, key string, at int64) store.NewReport {
+	return store.NewReport{
+		Report:   store.Report{ReportID: id, Reporter: reporter, TargetType: "user", TargetUser: "bad", Reason: "spam", DedupKey: key, CreatedAt: at},
+		Evidence: []store.EvidenceRow{{Idx: 0, Nonce: []byte("n"), Ciphertext: []byte("c"), KID: "k"}}, ExpiresAt: at + 1000,
+		DedupSince: at - 100, DayStart: 0, DailyLimit: 2,
+	}
+}
+
+// 举报写入（BE-495）：幂等不计次数、次数到上限 ErrReportQuota、注入失败整体回滚（没有行、不计次数）、证据引用的文件 evidence_until 取较大值。
+func testReportCreate(t *testing.T, open Opener) {
+	s := open(t)
+	r, dup, err := s.CreateReport(ctx(), newReport("r1", "u2", "u:bad", 500))
+	if err != nil || dup || r.State != store.ReportPending {
+		t.Fatalf("create = %+v %v %v", r, dup, err)
+	}
+	if got, dup, err := s.CreateReport(ctx(), newReport("r2", "u2", "u:bad", 550)); err != nil || !dup || got.ReportID != "r1" {
+		t.Fatalf("duplicate = %+v %v %v", got, dup, err)
+	}
+	if n, _ := s.ReportQuotaUsed(ctx(), "u2", 0); n != 1 {
+		t.Errorf("quota after a duplicate = %d", n)
+	}
+	// 窗口之外不算重复。
+	late := newReport("r3", "u2", "u:bad", 700)
+	late.DedupSince = 600
+	if _, dup, err := s.CreateReport(ctx(), late); err != nil || dup {
+		t.Fatalf("outside the window: %v %v", dup, err)
+	}
+	if _, _, err := s.CreateReport(ctx(), newReport("r4", "u2", "u:other", 700)); !errors.Is(err, store.ErrReportQuota) {
+		t.Fatalf("over quota: %v", err)
+	}
+	failing := newReport("r5", "u3", "u:bad", 700)
+	failing.Fault = func() error { return errors.New("boom") }
+	if _, _, err := s.CreateReport(ctx(), failing); err == nil {
+		t.Fatal("fault ignored")
+	}
+	if _, err := s.GetReport(ctx(), "r5"); !errors.Is(err, store.ErrNotFound) {
+		t.Errorf("rolled back report exists: %v", err)
+	}
+	if n, _ := s.ReportQuotaUsed(ctx(), "u3", 0); n != 0 {
+		t.Errorf("rolled back report counted: %d", n)
+	}
+	if err := s.AddReportQuota(ctx(), "u3", 0, 2); err != nil {
+		t.Fatal(err)
+	}
+	s.AddReportQuota(ctx(), "u3", 0, 2)
+	s.AddReportQuota(ctx(), "u3", 0, 2)
+	if n, _ := s.ReportQuotaUsed(ctx(), "u3", 0); n != 2 {
+		t.Errorf("AddReportQuota beyond the limit: %d", n)
+	}
+	if ev, err := s.ReportEvidence(ctx(), "r1", 1499); err != nil || len(ev) != 1 || string(ev[0].Ciphertext) != "c" {
+		t.Errorf("evidence = %+v %v", ev, err)
+	}
+	if ev, _ := s.ReportEvidence(ctx(), "r1", 1500); len(ev) != 0 {
+		t.Error("expired evidence returned")
+	}
+	got, err := s.GetReport(ctx(), "r1")
+	if err != nil || got.Reporter != "u2" || got.TargetUser != "bad" || got.MsgIDs == nil || len(got.MsgIDs) != 0 {
+		t.Errorf("get = %+v %v", got, err)
+	}
+}
+
+// report_purge（AC-MOD-03-6，P-48 ②）：证据过期的删除，reports 行到期整条删除，次数表清旧的。
+func testReportPurge(t *testing.T, open Opener) {
+	s := open(t)
+	if _, _, err := s.CreateReport(ctx(), newReport("r1", "u2", "u:a", 100)); err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := s.CreateReport(ctx(), newReport("r2", "u2", "u:b", 5000)); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.PurgeReports(ctx(), 1099, 99, -1); err != nil {
+		t.Fatal(err)
+	}
+	if ev, _ := s.ReportEvidence(ctx(), "r1", 0); len(ev) != 1 {
+		t.Fatal("purged too early")
+	}
+	if _, err := s.PurgeReports(ctx(), 1100, 100, 1); err != nil {
+		t.Fatal(err)
+	}
+	if ev, _ := s.ReportEvidence(ctx(), "r1", 0); len(ev) != 0 {
+		t.Error("evidence not purged")
+	}
+	if _, err := s.GetReport(ctx(), "r1"); !errors.Is(err, store.ErrNotFound) {
+		t.Errorf("report row not purged: %v", err)
+	}
+	if _, err := s.GetReport(ctx(), "r2"); err != nil {
+		t.Errorf("the newer report was purged: %v", err)
+	}
+	if n, _ := s.ReportQuotaUsed(ctx(), "u2", 0); n != 0 {
+		t.Errorf("old quota rows kept: %d", n)
 	}
 }

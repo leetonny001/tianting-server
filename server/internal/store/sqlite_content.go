@@ -3,6 +3,8 @@ package store
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
+	"errors"
 	"strings"
 )
 
@@ -216,4 +218,175 @@ func (s *SQLite) PurgeHits(ctx context.Context, before int64) (int, error) {
 	}
 	n, _ := res.RowsAffected()
 	return int(n), nil
+}
+
+// ---- 举报（BE-495、BE-496） ----
+
+const reportColumns = `report_id, reporter, target_type, conv_id, target_user, group_id, msg_ids, reason, dedup_key, state, conclusion, handled_by, handled_at, created_at`
+
+func scanReport(row interface{ Scan(...any) error }) (Report, error) {
+	var r Report
+	var ids string
+	err := row.Scan(&r.ReportID, &r.Reporter, &r.TargetType, &r.ConvID, &r.TargetUser, &r.GroupID, &ids, &r.Reason, &r.DedupKey, &r.State,
+		&r.Conclusion, &r.HandledBy, &r.HandledAt, &r.CreatedAt)
+	if err == nil {
+		err = json.Unmarshal([]byte(ids), &r.MsgIDs)
+	}
+	return r, err
+}
+
+func (s *SQLite) ReportQuotaUsed(ctx context.Context, userID string, day int64) (int, error) {
+	var n int
+	err := s.db.QueryRowContext(ctx, `SELECT count FROM report_quota WHERE user_id = ? AND day = ?`, userID, day).Scan(&n)
+	if errors.Is(err, sql.ErrNoRows) {
+		return 0, nil
+	}
+	return n, err
+}
+
+func addQuotaTx(ctx context.Context, tx *sql.Tx, userID string, day int64, limit int) (bool, error) {
+	if _, err := tx.ExecContext(ctx, `INSERT INTO report_quota (user_id, day, count) VALUES (?, ?, 0) ON CONFLICT (user_id, day) DO NOTHING`, userID, day); err != nil {
+		return false, err
+	}
+	res, err := tx.ExecContext(ctx, `UPDATE report_quota SET count = count + 1 WHERE user_id = ? AND day = ? AND count < ?`, userID, day, limit)
+	if err != nil {
+		return false, err
+	}
+	n, _ := res.RowsAffected()
+	return n == 1, nil
+}
+
+func (s *SQLite) AddReportQuota(ctx context.Context, userID string, day int64, limit int) error {
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+	if _, err := addQuotaTx(ctx, tx, userID, day, limit); err != nil {
+		return err
+	}
+	return tx.Commit()
+}
+
+func (s *SQLite) CreateReport(ctx context.Context, n NewReport) (Report, bool, error) {
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return Report{}, false, err
+	}
+	defer tx.Rollback()
+	r := n.Report
+	prev, err := scanReport(tx.QueryRowContext(ctx, `SELECT `+reportColumns+` FROM reports WHERE reporter = ? AND dedup_key = ? AND created_at > ?
+		ORDER BY created_at DESC LIMIT 1`, r.Reporter, r.DedupKey, n.DedupSince))
+	switch {
+	case err == nil:
+		return prev, true, nil // 幂等：不产生新记录，不计次数
+	case !errors.Is(err, sql.ErrNoRows):
+		return Report{}, false, err
+	}
+	ok, err := addQuotaTx(ctx, tx, r.Reporter, n.DayStart, n.DailyLimit)
+	if err != nil {
+		return Report{}, false, err
+	}
+	if !ok {
+		return Report{}, false, ErrReportQuota
+	}
+	ids, _ := json.Marshal(r.MsgIDs)
+	if r.MsgIDs == nil {
+		ids = []byte("[]")
+	}
+	if _, err := tx.ExecContext(ctx, `INSERT INTO reports (`+reportColumns+`) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', '', '', 0, ?)`,
+		r.ReportID, r.Reporter, r.TargetType, r.ConvID, r.TargetUser, r.GroupID, string(ids), r.Reason, r.DedupKey, r.CreatedAt); err != nil {
+		return Report{}, false, err
+	}
+	if n.Fault != nil {
+		if err := n.Fault(); err != nil {
+			return Report{}, false, err
+		}
+	}
+	for _, e := range n.Evidence {
+		if _, err := tx.ExecContext(ctx, `INSERT INTO report_evidence (report_id, idx, nonce, ciphertext, kid, expires_at) VALUES (?, ?, ?, ?, ?, ?)`,
+			r.ReportID, e.Idx, e.Nonce, e.Ciphertext, e.KID, n.ExpiresAt); err != nil {
+			return Report{}, false, err
+		}
+	}
+	for _, id := range n.FileIDs {
+		if _, err := tx.ExecContext(ctx, `UPDATE files SET evidence_until = MAX(evidence_until, ?) WHERE file_id = ?`, n.ExpiresAt, id); err != nil {
+			return Report{}, false, err
+		}
+	}
+	r.State = ReportPending
+	return r, false, tx.Commit()
+}
+
+func (s *SQLite) GetReport(ctx context.Context, reportID string) (Report, error) {
+	r, err := scanReport(s.db.QueryRowContext(ctx, `SELECT `+reportColumns+` FROM reports WHERE report_id = ?`, reportID))
+	if errors.Is(err, sql.ErrNoRows) {
+		return Report{}, ErrNotFound
+	}
+	return r, err
+}
+
+func (s *SQLite) ReportEvidence(ctx context.Context, reportID string, now int64) ([]EvidenceRow, error) {
+	rows, err := s.db.QueryContext(ctx, `SELECT idx, nonce, ciphertext, kid FROM report_evidence WHERE report_id = ? AND expires_at > ? ORDER BY idx`, reportID, now)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []EvidenceRow
+	for rows.Next() {
+		var e EvidenceRow
+		if err := rows.Scan(&e.Idx, &e.Nonce, &e.Ciphertext, &e.KID); err != nil {
+			return nil, err
+		}
+		out = append(out, e)
+	}
+	return out, rows.Err()
+}
+
+func (s *SQLite) PurgeReports(ctx context.Context, evidenceBefore, reportsBefore, quotaBefore int64) (int, error) {
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return 0, err
+	}
+	defer tx.Rollback()
+	total := 0
+	for _, q := range []struct {
+		sql  string
+		args []any
+	}{
+		{`DELETE FROM report_evidence WHERE expires_at <= ?`, []any{evidenceBefore}},
+		{`DELETE FROM reports WHERE created_at <= ?`, []any{reportsBefore}},
+		// 行和证据一起删（P-48 ②）：reports 行已经删了的，剩下的证据也删。
+		{`DELETE FROM report_evidence WHERE report_id NOT IN (SELECT report_id FROM reports)`, nil},
+		{`DELETE FROM report_quota WHERE day < ?`, []any{quotaBefore}},
+	} {
+		res, err := tx.ExecContext(ctx, q.sql, q.args...)
+		if err != nil {
+			return 0, err
+		}
+		n, _ := res.RowsAffected()
+		total += int(n)
+	}
+	return total, tx.Commit()
+}
+
+func (s *SQLite) ReportableUser(ctx context.Context, reporter, target, c2cConvID string) (bool, error) {
+	var ok int
+	err := s.db.QueryRowContext(ctx, `SELECT
+		EXISTS (SELECT 1 FROM users WHERE user_id = ?) AND (
+		EXISTS (SELECT 1 FROM friends WHERE (owner_id = ? AND peer_id = ?) OR (owner_id = ? AND peer_id = ?))
+		OR EXISTS (SELECT 1 FROM conv_seq WHERE conv_id = ? AND max_seq > 0)
+		OR EXISTS (SELECT 1 FROM group_members a JOIN group_members b ON a.group_id = b.group_id WHERE a.user_id = ? AND b.user_id = ?))`,
+		target, reporter, target, target, reporter, c2cConvID, reporter, target).Scan(&ok)
+	return ok == 1, err
+}
+
+func (s *SQLite) Quarantined(ctx context.Context, msgID string, now int64) (QuarantinedMessage, bool, error) {
+	var q QuarantinedMessage
+	err := s.db.QueryRowContext(ctx, `SELECT nonce, ciphertext, kid, expires_at FROM message_quarantine WHERE msg_id = ? AND expires_at > ?`, msgID, now).
+		Scan(&q.Nonce, &q.Ciphertext, &q.KID, &q.ExpiresAt)
+	if errors.Is(err, sql.ErrNoRows) {
+		return q, false, nil
+	}
+	return q, err == nil, err
 }
