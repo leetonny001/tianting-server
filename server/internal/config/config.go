@@ -74,12 +74,14 @@ type Server struct {
 	DrainDelay   string // 原样显示
 	// TestOverrides 是配置里出现了的测试设施开关的名字（testOverrideEnvs），生产环境拒绝启动。
 	TestOverrides []string
+	// PublicOpenAck 是 IM_PUBLIC_OPEN_ACK=1：生产 open 模式的确认项之一（F-ACC-01 规则 2，AC-ACC-01-9）。
+	PublicOpenAck bool
 	App           app.Config
 }
 
 // testOverrideEnvs 是第 4.5 节测试设施的开关（PRD-chat R-CQ-01）：只在测试模式生效，生产配置里出现就拒绝启动。
 // IM_APNS_ENDPOINT、IM_FCM_ENDPOINT、IM_TEST_DISABLE_IDLE 的功能随 BE-406，这里先拦住。
-var testOverrideEnvs = []string{"IM_TEST_DISABLE_AUTH_LOCK", "IM_APNS_ENDPOINT", "IM_FCM_ENDPOINT", "IM_TEST_DISABLE_IDLE"}
+var testOverrideEnvs = []string{"IM_TEST_DISABLE_AUTH_LOCK", "IM_APNS_ENDPOINT", "IM_FCM_ENDPOINT", "IM_TEST_DISABLE_IDLE", "IM_TEST_WORDS_STARTUP_FAIL"}
 
 // Load 读取并校验配置。getenv 通常是 os.Getenv，测试时可以传入假实现。
 // warnings 是不影响启动、但需要人注意的问题（例如开发环境使用了默认密钥）。
@@ -259,6 +261,17 @@ func Load(getenv func(string) string) (cfg Server, warnings []string, err error)
 		}
 	}
 
+	// C6（BE-492）：IM_REPORT_KEY 不能和隔离密钥、JWT 密钥相同，所以放在默认密钥确定之后。
+	cfg.PublicOpenAck = loadModeration(getenv, a, prod, bad)
+	// 生产 open 模式要求词库非空（F-ACC-01 规则 2）：要读库，在 app.New 的迁移之后判断（BE-492 第 3 条 ③）。
+	a.RequireWords = prod && a.Account.RegisterMode == account.ModeOpen
+	if a.TestWordsStartupFail && !a.TestMode {
+		a.TestWordsStartupFail = false // 只在测试模式生效（第 4.5 节）；生产配置里出现时 productionChecks 拒绝启动
+		if !prod {
+			warnings = append(warnings, "IM_TEST_WORDS_STARTUP_FAIL is ignored without IM_TEST_MODE=1")
+		}
+	}
+
 	// 签名调用方（PRD-admin F-KEY-02）。密钥不能与 JWT 密钥、旧管理密钥相同，所以放在默认密钥确定之后检查。
 	if path := getenv("IM_ADMIN_CALLERS"); path != "" {
 		others := [][]byte{[]byte(a.AdminKey), []byte(a.JWTSecret)}
@@ -411,6 +424,64 @@ func loadConvSettings(getenv func(string) string, a *app.Config, bad func(string
 			*v.dst = n
 		}
 	}
+}
+
+// loadModeration 读取 C6 敏感词和举报的配置（PRD-chat 第 4.1 节，BE-492 第 2、3 条）。moderation_hits 的保留期 PRD 没有变量名（第 98 条）。
+// IM_REPORT_KEY 是 32 字节随机值的 base64：开关打开时缺失、长度不对、和 IM_QUARANTINE_KEY 或 JWT 密钥相同，任何环境都拒绝启动，
+// 没有开发默认值（第 99 条，同第 54 条）；开关关闭时设置了也照样校验。错误信息不含密钥。返回 IM_PUBLIC_OPEN_ACK。
+func loadModeration(getenv func(string) string, a *app.Config, prod bool, bad func(string, ...any)) bool {
+	m := &a.Moderation
+	m.Enabled = boolEnv(getenv, "IM_MOD_ENABLED", false, bad)
+	for _, v := range []struct {
+		key string
+		dst *int
+		max int
+	}{{"IM_REPORT_DAILY", &m.ReportDaily, 10000}, {"IM_REPORT_EVIDENCE_DAYS", &m.EvidenceDays, 3650}, {"IM_MOD_HITS_DAYS", &m.HitsDays, 3650}} {
+		if s := getenv(v.key); s != "" {
+			n, err := strconv.Atoi(s)
+			if err != nil || n < 1 || n > v.max {
+				bad("%s: must be 1..%d, got %q", v.key, v.max, s)
+				continue
+			}
+			*v.dst = n
+		}
+	}
+	// 生产关、测试开（第 4.1 节），不跟 IM_MOD_ENABLED 走（第 105 条）。
+	m.ClientCustomOff = !boolEnv(getenv, "IM_CLIENT_CUSTOM_MSG", !prod, bad)
+	a.TestWordsStartupFail = boolEnv(getenv, "IM_TEST_WORDS_STARTUP_FAIL", false, bad)
+	ack := boolEnv(getenv, "IM_PUBLIC_OPEN_ACK", false, bad)
+
+	raw := getenv("IM_REPORT_KEY")
+	if raw == "" {
+		if m.Enabled {
+			bad("IM_MOD_ENABLED=1 requires IM_REPORT_KEY (32 random bytes, base64; report evidence is encrypted; no development default)")
+		}
+		return ack
+	}
+	key, err := decodeB64Key(raw)
+	if err != nil || len(key) != app.ReportKeyLen {
+		bad("IM_REPORT_KEY must be %d random bytes encoded as base64", app.ReportKeyLen)
+		return ack
+	}
+	same := raw == a.QuarantineKey || string(key) == a.QuarantineKey || raw == a.JWTSecret || string(key) == a.JWTSecret
+	for _, k := range a.JWTKeys {
+		same = same || raw == string(k.Secret) || string(key) == string(k.Secret)
+	}
+	if same {
+		bad("IM_REPORT_KEY must differ from IM_QUARANTINE_KEY and the JWT keys")
+		return ack
+	}
+	a.ReportKey = key
+	return ack
+}
+
+// decodeB64Key 接受标准或 URL 安全的 base64，带不带填充都可以。
+func decodeB64Key(s string) ([]byte, error) {
+	s = strings.TrimRight(strings.TrimSpace(s), "=")
+	if b, err := base64.RawStdEncoding.DecodeString(s); err == nil {
+		return b, nil
+	}
+	return base64.RawURLEncoding.DecodeString(s)
 }
 
 // refreshKidRE：kid 是 refresh token 的第一段（kid.sid.gen.nonce.mac），不能含分隔符。

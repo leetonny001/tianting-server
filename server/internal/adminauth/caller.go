@@ -164,7 +164,7 @@ func parseCallers(items []callerJSON, otherSecrets [][]byte) ([]Caller, error) {
 		callers = append(callers, c)
 	}
 	if bodyCallers > 1 {
-		bad("at most one caller may have message body access (bodyAccess / msg.body.* / msg.quarantine), found %d", bodyCallers)
+		bad("at most one caller may have message body access (bodyAccess / msg.body.* / msg.quarantine / report.evidence), found %d", bodyCallers)
 	}
 	// 密钥两两不同，也不能与 JWT 密钥、旧管理密钥相同。
 	for i := range callers {

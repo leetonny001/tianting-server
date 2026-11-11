@@ -130,7 +130,7 @@ type ConfigResponse struct {
 
 // Features 告诉客户端隐藏哪些入口。files 跟 IM_FILES_ENABLED，msgActions 跟 IM_MSG_ACTIONS_ENABLED（C4），
 // convSettings 跟 IM_CONV_SETTINGS_ENABLED（C5，backend-chat 第 75 条），moderation 跟 IM_MOD_ENABLED（C6，第 96 条，
-// 只控制举报入口；开关随 BE-492 接上，之前一直是 false）。
+// 只控制举报入口，4510 的提示不看它）。
 type Features struct {
 	Files        bool `json:"files"`
 	MsgActions   bool `json:"msgActions"`

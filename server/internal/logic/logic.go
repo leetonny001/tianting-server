@@ -40,6 +40,7 @@ type Service struct {
 	files   filesConfig
 	cvs     *convSettings // C5 置顶、免打扰、删除：一定非 nil，开关在 cvs.cfg.Enabled
 	actions *msgActions   // C4 撤回、引用、@：一定非 nil，开关在 actions.cfg.Enabled
+	mod     *modState     // C6 敏感词和举报：一定非 nil，开关在 mod.cfg.Enabled
 }
 
 // 配额、@ 所有人次数按 Asia/Shanghai 自然日。中国不使用夏令时，用固定时区，不依赖运行环境的 tzdata。
@@ -65,6 +66,7 @@ func New(st store.Store, router delivery.Router, clk clock.Clock, faults *Faults
 	s.changed = newGroupChangedMerger(s.deliverGroupChanged)
 	s.actions = newMsgActions(MsgActionsConfig{}, s)
 	s.cvs = newConvSettings(ConvSettingsConfig{}, s)
+	s.mod = &modState{cfg: ModConfig{}.WithDefaults()}
 	return s
 }
 
@@ -98,6 +100,8 @@ func (s *Service) Handle(ctx context.Context, c delivery.Session, in protocol.In
 		data, err = s.convSet(ctx, c, in.Data)
 	case protocol.CmdConvDelete:
 		data, err = s.convDelete(ctx, c, in.Data)
+	case protocol.CmdReport:
+		data, err = s.report(ctx, c, in.Data)
 	case protocol.CmdJoinRoom, protocol.CmdLeaveRoom:
 		err = protocol.Errorf(protocol.CodeBadRequest, "%s is not available yet", in.Cmd)
 	default:

@@ -136,6 +136,8 @@ type Store interface {
 	FileStore
 	MsgActionStore
 	ConvSettingsStore
+	WordStore
+	ReportStore
 
 	// SaveMessage 为消息分配会话内递增 seq 并保存。
 	// 同一发送者重复提交同一 ClientMsgID 时不新建，返回第一次保存的消息且 dup=true。

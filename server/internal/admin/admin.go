@@ -182,9 +182,13 @@ func (a *Admin) RegisterTestRoutes(mux *http.ServeMux, faults *logic.Faults, clk
 			QuarantineWrite   *bool `json:"quarantineWrite"`   // 隔离写失败：撤回整个事务回滚 5000（AC-RCL-01-11）
 			MentionWrite      *bool `json:"mentionWrite"`      // 提及表写失败：消息不保存 5000（AC-MEN-03-8）
 			MentionAllCounter *bool `json:"mentionAllCounter"` // @ 所有人计数不可用：5030，不放行（AC-MEN-02-8）
+			// C6（PRD-chat 第 4.5 节，BE-492 第 5 条）：不传不改。启动加载失败用 IM_TEST_WORDS_STARTUP_FAIL（进程启动前就要生效）。
+			WordsReload   *bool `json:"wordsReload"`   // 词库重新加载失败：沿用旧词库，im_mod_reload_errors_total 加 1（AC-MOD-01-8）
+			EvidenceWrite *bool `json:"evidenceWrite"` // 证据写失败：举报 500 / 5000，没有记录（AC-MOD-03-14）
 		}
 		if readJSON(w, r, &req) {
 			faults.SetMsgActionFaults(req.QuarantineWrite, req.MentionWrite, req.MentionAllCounter)
+			faults.SetModFaults(req.WordsReload, req.EvidenceWrite)
 			a.auditFail.Store(req.AdminAuditWrite == "fail")
 			if a.faults != nil {
 				a.faults.SetPingFail(req.StorePing == "fail")

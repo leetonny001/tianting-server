@@ -115,7 +115,14 @@ type Metrics struct {
 	ObjStoreErrors    *prometheus.CounterVec // 按 op：网络错误和对象存储返回的错误（不含 404、412）
 	// Recalls 是撤回成功的次数（C4，PRD-chat 第 14.2 节、F-OPS-06）：by 取 sender / owner / admin，有界；幂等重试不计。
 	Recalls *prometheus.CounterVec
+	// C6 敏感词和举报（PRD-chat 第 14.2 节、F-OPS-06，BE-492 第 4 条）：scene 的取值见 BlockScenes（backend-chat 第 110 条），有界。
+	Blocked             *prometheus.CounterVec // im_blocked_total{scene}：被拦截的次数
+	ModReloadErrors     prometheus.Counter     // im_mod_reload_errors_total：词库重新加载失败（沿用旧词库，F-MOD-01 异常）
+	ReportUndecryptable prometheus.Counter     // im_report_undecryptable_total：读证据时密钥不匹配（F-MOD-04 异常）
 }
+
+// BlockScenes 是 im_blocked_total 的 scene 和 moderation_hits.scene 的取值（backend-chat 第 110 条，两处一致）。
+var BlockScenes = []string{"text", "fileName", "nickname", "username", "groupName", "groupNotice", "friendApply"}
 
 // 撤回的操作者角色（im_recalls_total 的 by 标签）。
 const (
@@ -203,6 +210,12 @@ func New() *Metrics {
 	m.FileUploads = prometheus.NewCounterVec(prometheus.CounterOpts{Name: "im_file_uploads_total", Help: "Upload complete attempts by kind and result."}, []string{"kind", "result"})
 	m.ObjStoreRequests = prometheus.NewCounterVec(prometheus.CounterOpts{Name: "im_objstore_requests_total", Help: "Object store requests (not presigned) by operation."}, []string{"op"})
 	m.ObjStoreErrors = prometheus.NewCounterVec(prometheus.CounterOpts{Name: "im_objstore_errors_total", Help: "Object store requests that failed (network errors and store errors; not found and precondition failures excluded) by operation."}, []string{"op"})
+	m.Blocked = prometheus.NewCounterVec(prometheus.CounterOpts{Name: "im_blocked_total", Help: "Content blocked by the word list, by scene."}, []string{"scene"})
+	m.ModReloadErrors = prometheus.NewCounter(prometheus.CounterOpts{Name: "im_mod_reload_errors_total", Help: "Failed reloads of the blocked word list (the previous list stays in effect)."})
+	m.ReportUndecryptable = prometheus.NewCounter(prometheus.CounterOpts{Name: "im_report_undecryptable_total", Help: "Report evidence that could not be decrypted (key mismatch)."})
+	f(m.Blocked)
+	f(m.ModReloadErrors)
+	f(m.ReportUndecryptable)
 	f(m.FileURLsIssued)
 	f(m.FileUploadedBytes)
 	f(m.FileUploads)
@@ -274,6 +287,8 @@ var knownCmds = map[string]bool{
 	"pushSync": true,
 	// PRD-chat C4
 	"recall": true,
+	// PRD-chat C6
+	"report": true,
 }
 
 // CmdLabel 把客户端传来的命令名规整成有限的标签值。
@@ -308,6 +323,7 @@ var allowedLabelValues = map[string]map[string]bool{
 		"missing", "caller", "signature", "window", "nonce", "node", "unknown"),
 	"endpoint": set("node", "connections", "disconnects", "config", "db", "unknown"),
 	"target":   set("user", "all", "room"),
+	"scene":    set(BlockScenes...),
 }
 
 func set(values ...string) map[string]bool {
@@ -364,4 +380,12 @@ func labelProblem(name, value string) string {
 		}
 	}
 	return ""
+}
+
+// RegisterReportsPending 注册 im_reports_pending：超过 24 小时还没处理的举报数（F-MOD-04 规则 7，backend-chat 第 107 条），抓取时现算，不加标签。
+// 告警默认不开（没有指定处理人之前没有意义）。
+func (m *Metrics) RegisterReportsPending(fn func() float64) {
+	m.registry.MustRegister(prometheus.NewGaugeFunc(prometheus.GaugeOpts{
+		Name: "im_reports_pending", Help: "Reports still pending more than 24 hours after they were submitted.",
+	}, fn))
 }

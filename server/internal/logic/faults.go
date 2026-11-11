@@ -21,6 +21,7 @@ type Faults struct {
 	pushExit         map[string]bool // pushId
 	pushFailAt       *int
 	actions          msgActionFaults
+	mod              modFaults
 }
 
 func NewFaults() *Faults {
@@ -158,4 +159,46 @@ func (f *Faults) msgActions() msgActionFaults {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	return f.actions
+}
+
+// C6 的故障注入（PRD-chat 第 4.5 节，BE-492 第 5 条）：开关式，打开后一直生效到关掉。只在测试模式有 Faults；生产 f 为 nil，全部是空操作。
+// 启动加载失败（AC-MOD-01-8 第 2 种）在进程启动之前就要生效，不经这个接口，用 IM_TEST_WORDS_STARTUP_FAIL；证据密钥不匹配用换一把
+// IM_REPORT_KEY 重启来造，不加注入（BE-492 第 5 条）。
+type modFaults struct {
+	wordsReload, evidenceWrite bool
+}
+
+// SetModFaults 设置 C6 的两个故障；nil 表示不改。
+func (f *Faults) SetModFaults(wordsReload, evidenceWrite *bool) {
+	if f == nil {
+		return
+	}
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if wordsReload != nil {
+		f.mod.wordsReload = *wordsReload
+	}
+	if evidenceWrite != nil {
+		f.mod.evidenceWrite = *evidenceWrite
+	}
+}
+
+// WordsReloadFails 报告词库重新加载是否要失败（AC-MOD-01-8 第 1 种）：词库引擎在读库之前调用。
+func (f *Faults) WordsReloadFails() bool {
+	if f == nil {
+		return false
+	}
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return f.mod.wordsReload
+}
+
+// evidenceWriteFails 报告举报的证据写入是否要失败（AC-MOD-03-14 前半）。
+func (f *Faults) evidenceWriteFails() bool {
+	if f == nil {
+		return false
+	}
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return f.mod.evidenceWrite
 }

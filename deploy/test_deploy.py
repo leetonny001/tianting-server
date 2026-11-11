@@ -70,8 +70,8 @@ class AlertConfig(unittest.TestCase):
 
     def test_eleven_alerts_plus_drain_helper(self):
         names = [r["alert"] for r in self.rules()]
-        self.assertEqual(len(names), 12)
-        for want in ["节点不可达", "无就绪节点", "5xxx错误率高", "命令耗时高", "在线连接骤降", "慢连接增多", "握手异常", "内存逼近上限", "疑似GC风暴", "备份过期", "版本不一致"]:
+        self.assertEqual(len(names), 13)  # 11 条 + C6 的词库加载失败 + 下线抑制
+        for want in ["节点不可达", "无就绪节点", "5xxx错误率高", "命令耗时高", "在线连接骤降", "慢连接增多", "握手异常", "内存逼近上限", "疑似GC风暴", "备份过期", "版本不一致", "词库加载失败"]:
             self.assertIn(want, names)
         severities = {r["alert"]: r["labels"]["severity"] for r in self.rules()}
         for name in ["节点不可达", "无就绪节点", "5xxx错误率高", "疑似GC风暴", "备份过期"]:

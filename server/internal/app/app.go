@@ -89,6 +89,16 @@ type Config struct {
 	// ConvSettings 是 C5 会话置顶、免打扰、删除（PRD-chat 第 4.1 节）：ConvSettings.Enabled 关闭时 convSet、convDelete 返回 4030 featureDisabled，
 	// 已有的设置照常生效（P-46 ②）。
 	ConvSettings logic.ConvSettingsConfig
+	// Moderation 是 C6 敏感词和举报（PRD-chat 第 4.1 节，BE-492）：Moderation.Enabled 关闭时不检查敏感词、report 返回 4030 featureDisabled，
+	// 管理接口和清理任务照常（P-48 ④）。ClientCustomOff 是 IM_CLIENT_CUSTOM_MSG=0，不跟开关走。
+	Moderation logic.ModConfig
+	// ReportKey 是 IM_REPORT_KEY 解码后的 32 字节（举报证据的 AES-256-GCM 密钥）。开关打开时必须有（backend-chat 第 99 条）；
+	// 关闭时有就照常初始化，开过又关掉之后已有的证据还能读（P-48 ④）。
+	ReportKey []byte
+	// RequireWords：生产 open 模式要求词库非空（F-ACC-01 规则 2，AC-ACC-01-9），迁移之后读库判断。由 config 包设置。
+	RequireWords bool
+	// TestWordsStartupFail：测试模式下启动加载词库失败（PRD-chat 第 4.5 节，AC-MOD-01-8 第 2 种；IM_TEST_WORDS_STARTUP_FAIL）。
+	TestWordsStartupFail bool
 	// RequireHTTPS：生产环境 /v1/* 只接受 HTTPS（PRD-chat 第 4.2 节第 7 条）。
 	RequireHTTPS bool
 	TestMode     bool // 开启故障注入、时钟注入、短有效期 token（PRD 6.1 节），生产必须关闭
@@ -237,6 +247,12 @@ func New(cfg Config) (*App, error) {
 		return nil, err
 	}
 	svc.ConfigureConvSettings(cfg.ConvSettings)
+	evidence, err := configureModeration(st, cfg)
+	if err != nil {
+		st.Close()
+		return nil, err
+	}
+	svc.ConfigureModeration(cfg.Moderation, evidence)
 	var fileSvc *files.Service
 	var obj *objstore.Client
 	if cfg.Files.Enabled {
@@ -315,7 +331,7 @@ func New(cfg Config) (*App, error) {
 		} else {
 			checks = append(checks, DynamicCheck{ID: "invite_total", Passed: total <= warnTotal, Detail: fmt.Sprintf("有效邀请码剩余 %d 次，告警线 %d（IM_INVITE_WARN_TOTAL）", total, warnTotal)})
 		}
-		return append(checks, objstoreCheck(ctx, obj))
+		return append(checks, objstoreCheck(ctx, obj), wordsCheck(ctx, st, cfg.Moderation.Enabled))
 	}
 	jobs := scheduler.New(clk, nil, m.JobRuns, m.JobDuration, cfg.Logger)
 	registerJobs(jobs, st, svc, clk, cmp.Or(cfg.Push.PurgeBatch, defaultPushPurgeBatch))
@@ -366,11 +382,22 @@ func New(cfg Config) (*App, error) {
 	}
 	publicConfig.Features.MsgActions = cfg.MsgActions.Enabled     // 客户端按它隐藏撤回、引用、@ 的入口（第 4.1 节共同规则）
 	publicConfig.Features.ConvSettings = cfg.ConvSettings.Enabled // 客户端按它隐藏置顶、免打扰、删除的入口（backend-chat 第 75 条）
+	publicConfig.Features.Moderation = cfg.Moderation.Enabled     // 只控制举报入口（backend-chat 第 96 条）
 	v1.Handle(mux, "GET /v1/config", func(w http.ResponseWriter, r *http.Request) { api.WriteJSON(w, publicConfig) })
 	v1.RegisterAccount(mux, accounts)
 	if fileSvc != nil {
 		v1.RegisterFiles(mux, fileSvc)
 	}
+	// im_reports_pending（F-MOD-04 规则 7）：抓取时现算超过 24 小时未处理的数量。不跟 IM_MOD_ENABLED：关掉之后已有的举报也要处理完（P-48 ④）。
+	m.RegisterReportsPending(func() float64 {
+		ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+		defer cancel()
+		n, err := st.CountPendingReportsBefore(ctx, clk.Now().Add(-24*time.Hour).UnixMilli())
+		if err != nil {
+			return -1 // 查询失败不能当成 0（没有积压）
+		}
+		return float64(n)
+	})
 	m.RegisterNode(cfg.Version, runtime.Version(), gw.NodeID, func() bool {
 		ctx, cancel := context.WithTimeout(context.Background(), time.Second)
 		defer cancel()
@@ -474,6 +501,33 @@ func registerJobs(s *scheduler.Scheduler, st *store.SQLite, svc *logic.Service, 
 	s.Register("mention_purge", jobPeriod, svc.PurgeMentions)
 }
 
+// configureModeration 是 C6 的启动检查（BE-492 第 3 条）：生产 open 模式要求词库非空（AC-ACC-01-9，迁移之后才能读库）；
+// IM_REPORT_KEY 有就初始化证据加密器，开关打开时必须有（backend-chat 第 99 条，config 包另有同样的检查，这里防止绕过 config 直接组装）。
+func configureModeration(st *store.SQLite, cfg Config) (*quarantine.Cipher, error) {
+	if cfg.RequireWords {
+		n, err := st.CountActiveWords(context.Background())
+		if err != nil {
+			return nil, fmt.Errorf("count blocked words: %w", err)
+		}
+		if n == 0 {
+			return nil, errors.New("IM_REGISTER_MODE=open is refused in production: the blocked word list is empty (F-ACC-01 rule 2); import words through the admin API in invite mode first")
+		}
+	}
+	if len(cfg.ReportKey) == 0 {
+		if cfg.Moderation.Enabled {
+			return nil, errors.New("IM_MOD_ENABLED=1 requires IM_REPORT_KEY (report evidence is encrypted; no development default)")
+		}
+		return nil, nil
+	}
+	if len(cfg.ReportKey) != ReportKeyLen {
+		return nil, fmt.Errorf("IM_REPORT_KEY must decode to %d bytes", ReportKeyLen)
+	}
+	return quarantine.New(string(cfg.ReportKey))
+}
+
+// ReportKeyLen 是 IM_REPORT_KEY 解码后的长度（32 字节随机值，base64，第 4.1 节）。
+const ReportKeyLen = 32
+
 // DynamicCheck 是要查库的配置检查项（F-ACC-03 规则 3 的密钥台账、F-ACC-09 规则 1 的邀请码总量）。
 // 启动保护里的检查项都是静态的（config.productionChecks），这些在启动后还会变，每次查询现算。
 type DynamicCheck struct {
@@ -499,6 +553,26 @@ func objstoreCheck(ctx context.Context, obj *objstore.Client) DynamicCheck {
 		return DynamicCheck{ID: "objstore_reachable", Detail: detail}
 	}
 	return DynamicCheck{ID: "objstore_reachable", Passed: true, Detail: "对象存储：可以连通，服务端凭证能按最终前缀列举"}
+}
+
+// wordsCheck 是配置检查的"词库是否为空"（F-MOD-01 规则 6，第 14.2 节）：为空时不拦截，只告警，不拒绝启动（open 模式另见 configureModeration）。
+// Detail 只有数量，不含任何词。
+func wordsCheck(ctx context.Context, st *store.SQLite, enabled bool) DynamicCheck {
+	n, err := st.CountActiveWords(ctx)
+	if err != nil {
+		return DynamicCheck{ID: "moderation_words", Detail: "词库：查询失败"}
+	}
+	if n == 0 {
+		return DynamicCheck{ID: "moderation_words", Detail: fmt.Sprintf("告警：词库为空，发送不拦截（IM_MOD_ENABLED：%s）", onOff(enabled))}
+	}
+	return DynamicCheck{ID: "moderation_words", Passed: true, Detail: fmt.Sprintf("词库：%d 个启用的词（IM_MOD_ENABLED：%s）", n, onOff(enabled))}
+}
+
+func onOff(on bool) string {
+	if on {
+		return "开启"
+	}
+	return "关闭"
 }
 
 // DynamicChecks 算一遍。查询失败算没通过，不当成通过。

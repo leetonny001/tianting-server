@@ -328,3 +328,22 @@ tests:
         values: '1x40'
     alert_rule_test:
       - {eval_time: 35m, alertname: 版本不一致, exp_alerts: []}
+
+  # 词库加载失败（C6，BE-492 第 4 条）：重新加载失败一次就告警；没有失败不告警。
+  - interval: 1m
+    input_series:
+      - series: 'im_mod_reload_errors_total{job="im",node_id="n1"}'
+        values: '0 0 0 1 1 1'
+    alert_rule_test:
+      - {eval_time: 2m, alertname: 词库加载失败, exp_alerts: []}
+      - eval_time: 4m
+        alertname: 词库加载失败
+        exp_alerts:
+          - exp_labels: {severity: warning, job: im, node_id: n1}
+            exp_annotations: {value: '重新加载失败', threshold: '词库重新加载失败 > 0（旧词库继续生效）', page: /config}
+  - interval: 1m
+    input_series:
+      - series: 'im_mod_reload_errors_total{job="im",node_id="n1"}'
+        values: '0x20'
+    alert_rule_test:
+      - {eval_time: 15m, alertname: 词库加载失败, exp_alerts: []}

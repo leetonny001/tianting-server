@@ -1,4 +1,4 @@
-# PRD-ops F-OPS-07 规则 1：11 条告警。每条在 alerts_test.yml 里有触发、不触发和边界用例。
+# PRD-ops F-OPS-07 规则 1：11 条告警，加 C6 的词库加载失败（PRD-chat 第 14.2 节）。每条在 alerts_test.yml 里有触发、不触发和边界用例。
 # 通知模板不输出节点地址标签，只用 node_id。
 groups:
   - name: im
@@ -139,6 +139,16 @@ groups:
           value: '{{ $value }} 个版本'
           threshold: '不一致持续 30 分钟'
           page: /nodes
+
+      # C6（PRD-chat 第 14.2 节、F-OPS-07，BE-492 第 4 条）：词库重新加载失败时沿用旧词库（F-MOD-01 异常），新加、停用的词不生效。
+      # C 批次唯一默认发通知的告警；举报积压（im_reports_pending）的告警默认不开（F-MOD-04 规则 7）。
+      - alert: 词库加载失败
+        expr: increase(im_mod_reload_errors_total{job="im"}[10m]) > 0
+        labels: {severity: warning}
+        annotations:
+          value: '重新加载失败'
+          threshold: '词库重新加载失败 > 0（旧词库继续生效）'
+          page: /config
 
       # 不通知，只给 Alertmanager 做抑制：节点下线中时压住它的警告级告警（规则 4）。
       - alert: 节点下线中

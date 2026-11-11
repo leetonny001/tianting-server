@@ -30,6 +30,14 @@ func TestLabelsAreBounded(t *testing.T) {
 	for _, by := range []string{RecallBySender, RecallByOwner, RecallByAdmin} {
 		m.Recalls.WithLabelValues(by).Inc()
 	}
+	// C6（AC-CHAT-90-17 的 TC-CHAT-90-47 第 3 条）：scene 有界，没有 userId、wordId、reportId。
+	for _, scene := range BlockScenes {
+		m.Blocked.WithLabelValues(scene).Inc()
+	}
+	m.ModReloadErrors.Inc()
+	m.ReportUndecryptable.Inc()
+	m.RegisterReportsPending(func() float64 { return 1 })
+	m.Commands.WithLabelValues(CmdLabel("report"), Code(4510)).Inc()
 	if p := m.LabelProblems(); len(p) != 0 {
 		t.Errorf("problems: %v", p)
 	}
@@ -48,6 +56,8 @@ func TestLabelCheckCatchesViolations(t *testing.T) {
 		{"target", "goal", "target value"},
 		{"kind", "evil.exe", "kind value"},
 		{"op", "fileId", "op value"},
+		{"scene", "u1", "scene value"},
+		{"wordId", "7", "allow list"},
 	} {
 		if got := labelProblem(tc.name, tc.value); !strings.Contains(got, tc.want) {
 			t.Errorf("labelProblem(%s, %s) = %q, want %q", tc.name, tc.value, got, tc.want)

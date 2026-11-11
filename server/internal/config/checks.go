@@ -130,12 +130,40 @@ func productionChecks(cfg Server) []Check {
 	// 没配可信代理时 /v1/* 只接受本进程终止的 TLS，经代理的请求都被拒绝。不拒绝启动：不用账号功能的部署不受影响。
 	add("v1_https", fmt.Sprintf("/v1/* 只接受 HTTPS；可信代理 %d 个网段（0 个时经代理的请求都被拒绝）", len(a.Gateway.Guard.TrustedProxies)))
 
-	// 开放注册（PRD-chat F-ACC-01 规则 2，AC-ACC-01-19）：C6 上线前 IM_MOD_ENABLED 没有实现，所以一律拒绝。逐项报错随 C6。
-	flag0 := []string(nil)
-	if a.Account.RegisterMode == account.ModeOpen {
-		flag0 = append(flag0, "IM_REGISTER_MODE=open is refused in production: it requires content moderation (IM_MOD_ENABLED), which is not available yet")
+	// C6 敏感词和举报（PRD-chat 第 4.1 节、F-OPS-10 的 moderation 项，BE-492 第 3、4 条）：开关打开时要 IM_V13_ADMIN_FEATURES=1
+	// （举报了也没有手段处理，AC-MOD-01-10）和隐私说明版本（发送内容会过检查、举报证据要告知，AC-ACC-10-5）。
+	// IM_REPORT_KEY 缺失、长度不对、和其他密钥相同在 Load 里已经拒绝（任何环境），这里只显示"已设置 / 未设置"，不含值。
+	// IM_CLIENT_CUSTOM_MSG=1 只告警（AC-MOD-02-15）：custom 不过敏感词检查。词库是否为空要读库，见 app.DynamicChecks 的 moderation_words。
+	var mod []string
+	if a.Moderation.Enabled && !a.V13AdminFeatures {
+		mod = append(mod, "IM_MOD_ENABLED=1 requires IM_V13_ADMIN_FEATURES=1 in production: reports cannot be acted on without the second batch admin APIs")
 	}
-	add("register_mode", "IM_REGISTER_MODE："+cmp.Or(a.Account.RegisterMode, account.ModeInvite), flag0...)
+	if a.Moderation.Enabled && a.Account.PrivacyVersion == "" {
+		mod = append(mod, "IM_MOD_ENABLED=1 requires IM_PRIVACY_NOTICE_VERSION in production: the privacy notice must cover content checks and report evidence")
+	}
+	modDetail := fmt.Sprintf("IM_MOD_ENABLED：%s；IM_REPORT_KEY：%s；IM_CLIENT_CUSTOM_MSG：%s", enabledText(a.Moderation.Enabled),
+		cmpText(len(a.ReportKey) > 0, "已设置", "未设置"), enabledText(!a.Moderation.ClientCustomOff))
+	if len(mod) == 0 && !a.Moderation.ClientCustomOff {
+		out = append(out, Check{ID: "moderation", Passed: false, Applicable: true, Detail: "告警：IM_CLIENT_CUSTOM_MSG=1，客户端可以发 custom（不过敏感词检查）；" + modDetail})
+	} else {
+		add("moderation", modDetail, mod...)
+	}
+
+	// 开放注册（PRD-chat F-ACC-01 规则 2，AC-ACC-01-9）：逐项检查，错误信息指出缺哪一条（backend-chat 第 106 条：AC-ACC-01-19 的输入
+	// 不满足这些条件，结果仍是拒绝）。词库非空要读库，在 app.New 的迁移之后判断（RequireWords）。
+	var open []string
+	if a.Account.RegisterMode == account.ModeOpen {
+		if !a.Moderation.Enabled {
+			open = append(open, "IM_REGISTER_MODE=open requires IM_MOD_ENABLED=1 in production (content moderation)")
+		}
+		if !a.V13AdminFeatures {
+			open = append(open, "IM_REGISTER_MODE=open requires IM_V13_ADMIN_FEATURES=1 in production (ban, mute and delete)")
+		}
+		if !cfg.PublicOpenAck {
+			open = append(open, "IM_REGISTER_MODE=open requires IM_PUBLIC_OPEN_ACK=1 in production (the legal steps for public registration are done)")
+		}
+	}
+	add("register_mode", "IM_REGISTER_MODE："+cmp.Or(a.Account.RegisterMode, account.ModeInvite)+"（open 另要词库非空，启动时读库检查）", open...)
 
 	// 不再有业务方后，token.issue 是能以任何用户身份登录的最高权限（F-ACC-07 规则 3，R-CS-26）：默认拒绝，显式放行时告警。
 	issuers := 0

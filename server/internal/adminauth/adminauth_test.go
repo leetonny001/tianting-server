@@ -139,3 +139,32 @@ func TestMemoryNonces(t *testing.T) {
 		t.Errorf("after expiry: ok=%v err=%v", ok, err)
 	}
 }
+
+// TC-MOD-04-08（AC-MOD-04-8，BE-492 第 3 条 ④）：report.evidence 是正文类 scope。console 同时带 report.evidence 和 msg.meta
+// 拒绝启动，错误信息指出正文类 scope 只能在独立的 bodyAccess 调用方上；只配在没有别的 scope 的 console-msgread 上通过。
+// 另外 4 个 C6 scope 都在目录里（AC-KEY-02-3：拼错的 scope 拒绝启动）。
+func TestTC_MOD_04_08_ReportEvidenceIsBodyScope(t *testing.T) {
+	if !IsBodyScope(ScopeReportEvidence) || IsBodyScope(ScopeReportRead) || IsBodyScope(ScopeReportHandle) || IsBodyScope(ScopeModerationWords) {
+		t.Fatal("only report.evidence is a body scope among the C6 scopes")
+	}
+	for _, s := range []Scope{ScopeModerationWords, ScopeReportRead, ScopeReportHandle, ScopeReportEvidence} {
+		if !knownScope(s) {
+			t.Errorf("%s is not in the scope catalog", s)
+		}
+	}
+	mixed := []callerJSON{{ID: "console", Alg: AlgEd25519, PublicKey: pubKey, BodyAccess: true, Scopes: []Scope{ScopeMsgMeta, ScopeReportEvidence}}}
+	if _, err := parseCallers(mixed, nil); err == nil || !strings.Contains(err.Error(), "message body scopes are only allowed on a separate bodyAccess caller") {
+		t.Errorf("console with report.evidence and msg.meta: %v", err)
+	}
+	noFlag := []callerJSON{{ID: "console", Alg: AlgEd25519, PublicKey: pubKey, Scopes: []Scope{ScopeMsgMeta, ScopeReportEvidence}}}
+	if _, err := parseCallers(noFlag, nil); err == nil || !strings.Contains(err.Error(), "bodyAccess: true") {
+		t.Errorf("report.evidence without bodyAccess: %v", err)
+	}
+	ok := []callerJSON{
+		{ID: "console", Alg: AlgEd25519, PublicKey: pubKey, Scopes: []Scope{ScopeMsgMeta, ScopeModerationWords, ScopeReportRead, ScopeReportHandle}},
+		{ID: "console-msgread", Alg: AlgEd25519, PublicKey: pubKey, BodyAccess: true, Scopes: []Scope{ScopeMsgBodyGroup, ScopeMsgQuarantine, ScopeReportEvidence}},
+	}
+	if callers, err := parseCallers(ok, nil); err != nil || !callers[1].Has(ScopeReportEvidence) || callers[0].Has(ScopeReportEvidence) {
+		t.Errorf("split callers: %+v %v", callers, err)
+	}
+}

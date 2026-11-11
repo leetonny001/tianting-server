@@ -31,6 +31,11 @@ const (
 	ScopeStatsRead      Scope = "stats.read"     // 数据概览（F-ADM-70，P1）
 	ScopeAccountInvite  Scope = "account.invite" // 邀请码（PRD-chat F-ACC-09 规则 2）
 	ScopeTest           Scope = "test"
+	// C6 敏感词和举报（PRD-chat 第 11.6 节、第 14.1 节，BE-492）。report.evidence 是正文类（IsBodyScope），只能在 bodyAccess 调用方上。
+	ScopeModerationWords Scope = "moderation.words" // 词库维护（operator、moderator）
+	ScopeReportRead      Scope = "report.read"      // 举报队列、举报元数据、按用户查命中次数（moderator，P-48 ③）
+	ScopeReportHandle    Scope = "report.handle"    // 结案（moderator）
+	ScopeReportEvidence  Scope = "report.evidence"  // 证据授权、证据读取、证据文件（console-msgread）
 )
 
 // AllScopes 是 scope 目录；调用方配置里出现目录以外的 scope 拒绝启动（防止拼错后静默失效）。
@@ -39,12 +44,13 @@ var AllScopes = []Scope{
 	ScopeGroupRead, ScopeGroupWrite, ScopeGroupDissolve, ScopeSocialSettings, ScopeSocialFriends,
 	ScopeMsgMeta, ScopeMsgBodyGroup, ScopeMsgBodyC2C, ScopeMsgQuarantine, ScopeMsgDelete,
 	ScopeMuteWrite, ScopePushUser, ScopePushAll, ScopePushRoom, ScopeAuditRead, ScopeStatsRead, ScopeAccountInvite, ScopeTest,
+	ScopeModerationWords, ScopeReportRead, ScopeReportHandle, ScopeReportEvidence,
 }
 
 // IsBodyScope 报告 scope 是否能读消息正文。正文类 scope 只能配置在唯一的 bodyAccess 调用方上，
-// 且该调用方不能有其他 scope（PRD-admin F-KEY-02 规则 3）。
+// 且该调用方不能有其他 scope（PRD-admin F-KEY-02 规则 3）。C6 起 report.evidence 也是（F-MOD-04 规则 3，AC-MOD-04-8）。
 func IsBodyScope(s Scope) bool {
-	return s == ScopeMsgBodyGroup || s == ScopeMsgBodyC2C || s == ScopeMsgQuarantine
+	return s == ScopeMsgBodyGroup || s == ScopeMsgBodyC2C || s == ScopeMsgQuarantine || s == ScopeReportEvidence
 }
 
 func knownScope(s Scope) bool {
