@@ -296,7 +296,7 @@ func New(cfg Config) (*App, error) {
 	accounts, err := account.New(account.Deps{
 		Config: cfg.Account, Store: st, Signer: signer, Router: router, Clock: clk, Faults: accountFaults, Log: cfg.Logger,
 		Logins: m.AccountLogins, Registers: m.Registers, InviteAutoDisabled: m.InviteAutoDisabled,
-		RefreshReissue: m.RefreshReissue, RefreshReplay: m.RefreshReplay, Cleaner: svc, Avatars: avatars,
+		RefreshReissue: m.RefreshReissue, RefreshReplay: m.RefreshReplay, Cleaner: svc, Avatars: avatars, Content: svc,
 	})
 	if err != nil {
 		st.Close()
@@ -446,6 +446,7 @@ func New(cfg Config) (*App, error) {
 		NodeID: gw.NodeID, Failures: m.AdminAuthFailures,
 	}, signer, st, h, inv, svc, clk, cfg.TestMode, cfg.Logger)
 	adm.WithSocial(svc)
+	adm.WithContent(svc)
 	adm.WithSessions(h)
 	adm.WithTestFaults(a)
 	if cfg.TestMode {
@@ -506,6 +507,8 @@ func registerJobs(s *scheduler.Scheduler, st *store.SQLite, svc *logic.Service, 
 	})
 	// 提及计数清理到已读之后（PRD-chat 第 12.1 节，C4）。不跟开关：关掉之后表里的行也要清。
 	s.Register("mention_purge", jobPeriod, svc.PurgeMentions)
+	// C6 命中记录保留 IM_MOD_HITS_DAYS（F-MOD-02 规则 7）。不跟 IM_MOD_ENABLED（P-48 ④：保留期是对用户的承诺）。
+	s.Register("moderation_hits_purge", jobPeriod, svc.PurgeHits)
 }
 
 // configureModeration 是 C6 的启动检查（BE-492 第 3 条）：生产 open 模式要求词库非空（AC-ACC-01-9，迁移之后才能读库）；

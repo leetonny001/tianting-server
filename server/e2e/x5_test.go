@@ -245,6 +245,7 @@ var adminSamples = map[string]adminSample{
 	"POST /admin/moderation/words/import":     {nil, "POST", "/admin/moderation/words/import", map[string]any{"words": []string{"ZXQ-S-2"}}, 200},
 	"PATCH /admin/moderation/words/{wordId}":  {nil, "PATCH", "/admin/moderation/words/999", map[string]any{"state": "disabled"}, 404},
 	"DELETE /admin/moderation/words/{wordId}": {nil, "DELETE", "/admin/moderation/words/999", nil, 404},
+	"GET /admin/moderation/hits":              {nil, "GET", "/admin/moderation/hits?userId=alice", nil, 200},
 }
 
 // AC-KEY-02-2：遍历全部管理路由 × "有该 scope / 只有其他 scope"两种调用方。

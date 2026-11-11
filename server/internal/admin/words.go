@@ -4,6 +4,7 @@ import (
 	"errors"
 	"net/http"
 	"strconv"
+	"time"
 
 	"tianting/server/internal/adminauth"
 	"tianting/server/internal/moderation"
@@ -39,6 +40,9 @@ func (a *Admin) registerWords(mux *http.ServeMux) {
 	a.route(mux, "POST", "/admin/moderation/words/import", adminauth.ScopeModerationWords, a.importWords)
 	a.route(mux, "PATCH", "/admin/moderation/words/{wordId}", adminauth.ScopeModerationWords, a.patchWord)
 	a.route(mux, "DELETE", "/admin/moderation/words/{wordId}", adminauth.ScopeModerationWords, a.deleteWord)
+	if a.content != nil {
+		a.route(mux, "GET", "/admin/moderation/hits", adminauth.ScopeReportRead, a.userHits)
+	}
 }
 
 // wordsChanged 通知各节点重建词库快照（10 秒内生效，规则 2）。
@@ -207,4 +211,47 @@ func (a *Admin) deleteWord(w http.ResponseWriter, r *http.Request) {
 	}
 	a.wordsChanged()
 	writeJSON(w, http.StatusOK, struct{}{})
+}
+
+// ContentService 是 C6 的业务层部分（由 logic.Service 实现）。
+type ContentService interface {
+	HitsDays() int
+}
+
+// WithContent 接上 C6 的业务层。要在 Register 之前调用；不跟开关（P-48 ④）。
+func (a *Admin) WithContent(svc ContentService) { a.content = svc }
+
+const maxRecentHits = 50
+
+// userHits 是 GET /admin/moderation/hits?userId=（scope report.read，P-48 ③：命中次数只给有 report.read 的）：
+// 保留期内按场景的次数和最近 50 条（时间、场景、wordId），没有任何内容（backend-chat 第 114 条）。不检查用户是否存在。写审计（targets 是 userId）。
+func (a *Admin) userHits(w http.ResponseWriter, r *http.Request) {
+	uid := r.URL.Query().Get("userId")
+	if !protocol.ValidID(uid) {
+		writeErr(w, protocol.Errorf(protocol.CodeInvalidID, "invalid userId"))
+		return
+	}
+	days := a.content.HitsDays()
+	since := a.clock.Now().Add(-time.Duration(days) * 24 * time.Hour).UnixMilli()
+	counts, recent, err := a.store.UserHits(r.Context(), uid, since, maxRecentHits)
+	if err != nil {
+		a.internal(w, "user hits", err)
+		return
+	}
+	type hitJSON struct {
+		At     int64  `json:"at"`
+		Scene  string `json:"scene"`
+		WordID int64  `json:"wordId"`
+	}
+	out := make([]hitJSON, len(recent))
+	for i, h := range recent {
+		out[i] = hitJSON{h.At, h.Scene, h.WordID}
+	}
+	noteAuditCount(r.Context(), len(out))
+	writeJSON(w, http.StatusOK, struct {
+		UserID string         `json:"userId"`
+		Days   int            `json:"days"`
+		Counts map[string]int `json:"counts"`
+		Recent []hitJSON      `json:"recent"`
+	}{uid, days, counts, out})
 }

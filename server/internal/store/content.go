@@ -55,3 +55,19 @@ type ReportStore interface {
 	// CountPendingReportsBefore 返回 created_at < before 的待处理举报数（im_reports_pending，F-MOD-04 规则 7）。
 	CountPendingReportsBefore(ctx context.Context, before int64) (int, error)
 }
+
+// HitStore 是命中记录（F-MOD-02 规则 7，moderation_hits）：只有用户、场景、词 ID、时间，不存内容。
+type HitStore interface {
+	// RecordHit 写一行。写入失败不影响拦截结果（调用方只记日志）。
+	RecordHit(ctx context.Context, h ModHit) error
+	// UserHits 返回 at >= since 的按场景次数和最近 limit 条（新的在前），给 GET /admin/moderation/hits（backend-chat 第 114 条）。
+	UserHits(ctx context.Context, userID string, since int64, limit int) (counts map[string]int, recent []ModHit, err error)
+	// PurgeHits 删除 at < before 的行（moderation_hits_purge），返回行数。
+	PurgeHits(ctx context.Context, before int64) (int, error)
+}
+
+// ModHit 是 moderation_hits 的一行。
+type ModHit struct {
+	UserID, Scene string
+	WordID, At    int64
+}

@@ -127,6 +127,10 @@ func (s *Service) send(ctx context.Context, c delivery.Session, raw json.RawMess
 	if perr := req.Validate(); perr != nil {
 		return nil, false, perr
 	}
+	// 第 1 步（F-MOD-02 规则 4）：IM_CLIENT_CUSTOM_MSG=0 时客户端不能发 custom，否则绕过敏感词检查（AC-MOD-02-6）。只影响客户端 send。
+	if req.Type == protocol.MsgCustom && s.mod.cfg.ClientCustomOff {
+		return nil, false, protocol.WithReason(protocol.CodeBadRequest, protocol.ReasonCustomDisabled, "custom messages are disabled for clients")
+	}
 	isFile := req.Type == protocol.MsgImage || req.Type == protocol.MsgFile
 	if isFile && !s.files.enabled {
 		// IM_FILES_ENABLED 关闭：4000，不是共同规则的 4030（F-FILE 的写法，AC-FILE-01-14）。
@@ -192,12 +196,14 @@ func (s *Service) send(ctx context.Context, c delivery.Session, raw json.RawMess
 
 	// 第 6 步附件预检（PRD-chat 第 4.3 节）。第 6～10 步失败退还新对象配额（R-CB-20）。
 	stored := req.Body
-	var attach string
+	var attach, fileName string
 	if isFile {
-		if perr := s.precheckFile(ctx, uid, req); perr != nil {
+		f, perr := s.precheckFile(ctx, uid, req)
+		if perr != nil {
 			onReject()
 			return nil, false, perr
 		}
+		fileName = f.Name // 第 9 步查服务端记录的文件名（backend-chat 第 111 条）
 		stored, attach = storedFileBody(req), req.Body.FileID()
 	}
 	// 第 7 步引用校验（4040 quoteUnavailable）、第 8 步 @ 所有人的权限和过滤 userIds（4030 mentionAllForbidden）。
@@ -220,7 +226,7 @@ func (s *Service) send(ctx context.Context, c delivery.Session, raw json.RawMess
 	}
 	// 第 9 步敏感词（F-MOD-02 规则 5）：在已有的全部权限判定之后，被拒绝的用户探测不到词库；已扣发送令牌，第 6～10 步失败退还新对象配额
 	// （AC-MOD-02-12）；@ 所有人次数在保存事务里才扣，这里拦下就不扣（AC-MOD-02-16）。
-	if perr := s.checkSendContent(ctx, uid, req); perr != nil {
+	if perr := s.checkSendContent(ctx, uid, req, fileName); perr != nil {
 		onReject()
 		return nil, false, perr
 	}

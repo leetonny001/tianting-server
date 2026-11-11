@@ -31,24 +31,24 @@ func fileKindFor(msgType string) string {
 
 // precheckFile 是第 4.3 节第 6 步的附件预检：存在且属于发送者（否则 4048）、类型相符（4000 fileKindMismatch）、ready（否则 4096）。
 // 真正的绑定在 SaveMessage 事务里（第 10 步），预检通过之后状态仍可能变化，那时同样 4096。
-func (s *Service) precheckFile(ctx context.Context, uid string, req protocol.SendReq) *protocol.Error {
+func (s *Service) precheckFile(ctx context.Context, uid string, req protocol.SendReq) (store.File, *protocol.Error) {
 	f, err := s.store.GetFile(ctx, req.Body.FileID())
 	switch {
 	case errors.Is(err, store.ErrNotFound):
-		return protocol.Errorf(protocol.CodeFileNotFound, "file not found")
+		return store.File{}, protocol.Errorf(protocol.CodeFileNotFound, "file not found")
 	case err != nil:
-		return s.internal("get file", err)
+		return store.File{}, s.internal("get file", err)
 	}
 	if f.Owner != uid {
-		return protocol.Errorf(protocol.CodeFileNotFound, "file not found")
+		return store.File{}, protocol.Errorf(protocol.CodeFileNotFound, "file not found")
 	}
 	if f.Kind != fileKindFor(req.Type) {
-		return protocol.WithReason(protocol.CodeBadRequest, protocol.ReasonFileKindMismatch, "file kind mismatch")
+		return store.File{}, protocol.WithReason(protocol.CodeBadRequest, protocol.ReasonFileKindMismatch, "file kind mismatch")
 	}
 	if f.State != store.FileReady {
-		return protocol.Errorf(protocol.CodeFileNotReady, "file not ready")
+		return store.File{}, protocol.Errorf(protocol.CodeFileNotReady, "file not ready")
 	}
-	return nil
+	return f, nil
 }
 
 // storedFileBody 是保存的正文：只有 fileId。文件名、大小、宽高在下发时按文件记录填写（F-FILE-02 规则 1），

@@ -137,6 +137,7 @@ type Store interface {
 	MsgActionStore
 	ConvSettingsStore
 	WordStore
+	HitStore
 	ReportStore
 
 	// SaveMessage 为消息分配会话内递增 seq 并保存。

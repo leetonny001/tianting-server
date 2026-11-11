@@ -226,6 +226,11 @@ func (s *Service) friendApply(ctx context.Context, c delivery.Session, raw json.
 	if !s.social.applyDay.Allow(uid) || !s.social.applyTargetDay.Allow(uid+":"+req.To) {
 		return nil, quotaExceeded()
 	}
+	// 附言过敏感词（F-MOD-02 规则 2，C6）：格式、限流之后，F-SOC-02 的存在性判断（ApplyFriend 里）之前，
+	// 所以响应和对方是否存在无关（AC-MOD-02-5，backend-chat 第 112 条）。
+	if s.CheckContent(ctx, uid, SceneFriendApply, msg) {
+		return nil, contentBlocked()
+	}
 	now := s.clock.Now()
 	status, ch, err := s.store.ApplyFriend(ctx, store.ApplyFriendParams{
 		From: uid, To: req.To, Message: msg, Source: source, SourceRef: sourceRef, Remark: remark,

@@ -28,6 +28,8 @@ const (
 var auditedReadScopes = map[adminauth.Scope]bool{
 	adminauth.ScopeUserSessions: true, adminauth.ScopeMsgMeta: true, adminauth.ScopeMsgBodyGroup: true,
 	adminauth.ScopeMsgBodyC2C: true, adminauth.ScopeMsgQuarantine: true, adminauth.ScopeAuditRead: true,
+	// C6：举报队列、举报详情、按用户查命中都是个人数据（F-MOD-04 规则 2"每次打开举报单写审计"，ADMIN.md 的命中一行）。
+	adminauth.ScopeReportRead: true,
 }
 
 func audited(method string, scope adminauth.Scope) bool {
@@ -92,6 +94,8 @@ func auditDigest(r *http.Request, route string, body []byte) (targets, summary s
 	}
 	add(r.PathValue("userId"))
 	add(r.PathValue("groupId"))
+	add(r.PathValue("reportId"))     // C6：举报接口只记 reportId（AC-MOD-03-8）
+	add(r.URL.Query().Get("userId")) // GET /admin/moderation/hits?userId=
 	var fields map[string]json.RawMessage
 	_ = json.Unmarshal(body, &fields)
 	var s string

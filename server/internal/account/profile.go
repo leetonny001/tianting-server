@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 
+	"tianting/server/internal/moderation"
 	"tianting/server/internal/protocol"
 	"tianting/server/internal/store"
 )
@@ -30,6 +31,10 @@ func (s *Service) UpdateProfile(ctx context.Context, userID string, in ProfileIn
 		if nickname == "" || protocol.TextLen(nickname) > NicknameMaxLen {
 			return protocol.Errorf(protocol.CodeBadRequest, "invalid nickname")
 		}
+		// 改昵称过敏感词（C6）：在格式之后、写入之前；命中时昵称不变（AC-MOD-02-5）。
+		if s.Content != nil && s.Content.CheckContent(ctx, userID, moderation.SceneNickname, nickname) {
+			return contentBlocked()
+		}
 		switch err := s.Store.UpdateNickname(ctx, userID, nickname); {
 		case errors.Is(err, store.ErrNotFound):
 			return protocol.Errorf(protocol.CodeUserNotFound, "user not found")
@@ -45,4 +50,15 @@ func (s *Service) UpdateProfile(ctx context.Context, userID string, in ProfileIn
 		return s.Avatars.BindAvatar(ctx, userID, *in.AvatarFileID)
 	}
 	return nil
+}
+
+// ContentChecker 是敏感词检查（C6，F-MOD-02 规则 2，由 logic.Service 实现）：命中返回 true，命中记录和指标由实现方负责。
+// uid 为空表示还没有用户（注册），只计指标不写记录（backend-chat 第 113 条）。
+type ContentChecker interface {
+	CheckContent(ctx context.Context, uid, scene, text string) bool
+}
+
+// contentBlocked 是 451 / 4510，不带 details、不说命中了哪个词（F-MOD-02 规则 6）。
+func contentBlocked() *protocol.Error {
+	return protocol.Errorf(protocol.CodeContentBlocked, "content blocked")
 }

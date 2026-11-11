@@ -15,6 +15,7 @@ import (
 	"github.com/google/uuid"
 
 	"tianting/server/internal/delivery"
+	"tianting/server/internal/moderation"
 	"tianting/server/internal/protocol"
 	"tianting/server/internal/store"
 )
@@ -152,6 +153,11 @@ func (s *Service) groupCreate(ctx context.Context, c delivery.Session, raw json.
 	}
 	if len(members)+1 > cfg.ClientGroupMaxMembers {
 		return nil, protocol.Errorf(protocol.CodeGroupMemberLimitExceeded, "group member limit exceeded")
+	}
+	// 群名过敏感词（F-MOD-02 规则 2，C6）：在开关和人数之后、配额和建群之前；4510 不扣建群配额，群没有建出来（AC-MOD-02-5）。
+	// groupCreate 没有公告字段（backend-chat 第 129 条）。
+	if s.CheckContent(ctx, uid, SceneGroupName, name) {
+		return nil, contentBlocked()
 	}
 	// 配额在存储层判重之后才生效：重试已经成功的建群不受配额影响（规则 1）；失败和判重命中都退还。
 	allowed := s.social.groupCreateDay.Allow(uid)
@@ -419,7 +425,30 @@ func (s *Service) groupUpdate(ctx context.Context, c delivery.Session, raw json.
 	if perr := s.groupOpAllowed(uid, req.GroupID); perr != nil {
 		return nil, perr
 	}
-	tips, err := s.store.UpdateGroupProfile(ctx, req.GroupID, uid, name, notice, s.nowMs())
+	// 群名、公告过敏感词（F-MOD-02 规则 2，C6）：在群权限判定之后（存储层的同一事务里，backend-chat 第 112 条），命中就不写。
+	// 匹配在事务里做（只是计算），命中记录在事务结束之后写（SQLite 只有一个写者）。
+	var blockedScene string
+	var blockedHit moderation.Hit
+	check := func() error {
+		for _, f := range []struct {
+			scene string
+			text  *string
+		}{{SceneGroupName, name}, {SceneGroupNotice, notice}} {
+			if f.text == nil {
+				continue
+			}
+			if hit, ok := s.blocked(f.scene, *f.text); ok {
+				blockedScene, blockedHit = f.scene, hit
+				return errContentBlocked
+			}
+		}
+		return nil
+	}
+	tips, err := s.store.UpdateGroupProfile(ctx, req.GroupID, uid, name, notice, s.nowMs(), check)
+	if errors.Is(err, errContentBlocked) {
+		s.recordHit(ctx, uid, blockedScene, blockedHit)
+		return nil, contentBlocked()
+	}
 	if err != nil {
 		return nil, s.groupErr("update group", err)
 	}

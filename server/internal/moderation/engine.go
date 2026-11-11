@@ -170,3 +170,17 @@ func (e *Engine) Match(text string) (Hit, bool) {
 	}
 	return Hit{}, false
 }
+
+// 检查场景（moderation_hits.scene、im_blocked_total 的 scene，backend-chat 第 110 条），和 metrics.BlockScenes 一致，取值有界。
+const (
+	SceneText        = "text"
+	SceneFileName    = "fileName"
+	SceneNickname    = "nickname"
+	SceneUsername    = "username"
+	SceneGroupName   = "groupName"
+	SceneGroupNotice = "groupNotice"
+	SceneFriendApply = "friendApply"
+)
+
+// Scenes 是全部场景（测试用来核对和 metrics.BlockScenes 一致）。
+var Scenes = []string{SceneText, SceneFileName, SceneNickname, SceneUsername, SceneGroupName, SceneGroupNotice, SceneFriendApply}

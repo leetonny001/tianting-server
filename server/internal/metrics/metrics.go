@@ -45,6 +45,7 @@ const (
 	AccountClosed        = "closed"
 	AccountInviteInvalid = "invite_invalid"
 	AccountTaken         = "taken"
+	AccountBlocked       = "blocked" // 用户名或昵称命中敏感词（C6，4510）
 )
 
 // complete 的结果（im_file_uploads_total 的 result 标签，PRD-chat 第 14.2 节）。按错误码归类，取值有限。
@@ -313,7 +314,7 @@ var allowedLabelValues = map[string]map[string]bool{
 	"platform":  set("android", "ios", "web", "pc", "unknown"),
 	"conv_type": set("c2c", "group", "room", "unknown"),
 	"result": set(AccountOK, AccountInvalid, AccountLocked, AccountRateLimited, AccountBusy, AccountBanned, AccountPending,
-		AccountError, AccountBadRequest, AccountClosed, AccountInviteInvalid, AccountTaken,
+		AccountError, AccountBadRequest, AccountClosed, AccountInviteInvalid, AccountTaken, AccountBlocked,
 		HandshakeOK, HandshakeRateLimited, HandshakeBadPlatform, HandshakeAuthRequired, HandshakeTokenInvalid,
 		HandshakeTokenRevoked, HandshakeTokenExpired, HandshakeError, HandshakeOriginDenied, OpsOK, OpsUnauthorized, OpsForbidden, OpsThrottled, OpsError,
 		FileOK, FileMismatch, FileTypeDenied, FileNotReady, FileQuota, FileUnavailable, FileGone, FileError, "unknown"),

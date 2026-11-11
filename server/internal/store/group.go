@@ -111,8 +111,9 @@ type GroupStore interface {
 	SetGroupRole(ctx context.Context, groupID, actor, target string, admin bool, now int64) (*Message, error)
 	// ClientDissolveGroup 校验权限后解散，返回被移出的成员。
 	ClientDissolveGroup(ctx context.Context, groupID, actor string, now int64) ([]string, error)
-	// UpdateGroupProfile 改群名 / 公告，每改一项一条提示消息（renamed、noticeUpdated）。
-	UpdateGroupProfile(ctx context.Context, groupID, actor string, name, notice *string, now int64) ([]Message, error)
+	// UpdateGroupProfile 改群名 / 公告，每改一项一条提示消息（renamed、noticeUpdated）。check 非 nil 时在权限判定之后、写入之前调用，
+	// 返回错误就回滚并原样返回（C6 的敏感词在群权限判定之后，backend-chat 第 112 条）；check 只做计算，不做 IO。
+	UpdateGroupProfile(ctx context.Context, groupID, actor string, name, notice *string, now int64, check func() error) ([]Message, error)
 	ListGroupMembers(ctx context.Context, groupID string, after *MemberKey, limit int) (rows []GroupMemberRow, next *MemberKey, err error)
 	// ListGroupMembersMatching 同 ListGroupMembers，只返回 userId 以 keyword 开头（区分大小写）或昵称以它开头（ASCII 不区分大小写）的成员
 	// （PRD-chat F-MEN-01 规则 6，C4）。keyword 为空时和 ListGroupMembers 相同。

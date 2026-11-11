@@ -11,6 +11,8 @@ import (
 	"sync/atomic"
 	"testing"
 	"time"
+
+	"tianting/server/internal/metrics"
 )
 
 // 只用特征词（F-MOD-01 规则 5）：badword、违规词、ZXQ-*。
@@ -248,4 +250,11 @@ func (w lockedWriter) Write(p []byte) (int, error) {
 
 func newTestLogger(b *strings.Builder, mu *sync.Mutex) *slog.Logger {
 	return slog.New(slog.NewTextHandler(lockedWriter{b, mu}, nil))
+}
+
+// 场景名两处一致（backend-chat 第 110 条）：moderation_hits.scene 和 im_blocked_total 的 scene 标签。
+func TestScenesMatchMetrics(t *testing.T) {
+	if !slices.Equal(Scenes, metrics.BlockScenes) {
+		t.Errorf("moderation.Scenes %v != metrics.BlockScenes %v", Scenes, metrics.BlockScenes)
+	}
 }

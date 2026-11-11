@@ -167,3 +167,53 @@ func (s *SQLite) ListWords(ctx context.Context, q WordQuery) ([]BlockedWord, int
 	}
 	return out, next, nil
 }
+
+// ---- 命中记录（BE-494） ----
+
+func (s *SQLite) RecordHit(ctx context.Context, h ModHit) error {
+	_, err := s.db.ExecContext(ctx, `INSERT INTO moderation_hits (user_id, scene, word_id, at) VALUES (?, ?, ?, ?)`, h.UserID, h.Scene, h.WordID, h.At)
+	return err
+}
+
+func (s *SQLite) UserHits(ctx context.Context, userID string, since int64, limit int) (map[string]int, []ModHit, error) {
+	rows, err := s.db.QueryContext(ctx, `SELECT scene, COUNT(*) FROM moderation_hits WHERE user_id = ? AND at >= ? GROUP BY scene`, userID, since)
+	if err != nil {
+		return nil, nil, err
+	}
+	counts := map[string]int{}
+	for rows.Next() {
+		var scene string
+		var n int
+		if err := rows.Scan(&scene, &n); err != nil {
+			rows.Close()
+			return nil, nil, err
+		}
+		counts[scene] = n
+	}
+	if err := rows.Close(); err != nil {
+		return nil, nil, err
+	}
+	rows, err = s.db.QueryContext(ctx, `SELECT user_id, scene, word_id, at FROM moderation_hits WHERE user_id = ? AND at >= ? ORDER BY at DESC, rowid DESC LIMIT ?`, userID, since, limit)
+	if err != nil {
+		return nil, nil, err
+	}
+	defer rows.Close()
+	var recent []ModHit
+	for rows.Next() {
+		var h ModHit
+		if err := rows.Scan(&h.UserID, &h.Scene, &h.WordID, &h.At); err != nil {
+			return nil, nil, err
+		}
+		recent = append(recent, h)
+	}
+	return counts, recent, rows.Err()
+}
+
+func (s *SQLite) PurgeHits(ctx context.Context, before int64) (int, error) {
+	res, err := s.db.ExecContext(ctx, `DELETE FROM moderation_hits WHERE at < ?`, before)
+	if err != nil {
+		return 0, err
+	}
+	n, _ := res.RowsAffected()
+	return int(n), nil
+}

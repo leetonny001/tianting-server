@@ -55,6 +55,7 @@ type Admin struct {
 	dropKicks   func(bool)
 	mod         *ModerationConfig // 第二批开启时非 nil（IM_V13_ADMIN_FEATURES）
 	pusher      PushService       // 系统推送开启时非 nil（IM_PUSH_ENABLED）
+	content     ContentService    // C6（BE-494～496）：app 一定会接上；测试里单独构造 Admin 时可以为 nil
 	clock       clock.Clock
 	log         *slog.Logger
 	testMode    bool

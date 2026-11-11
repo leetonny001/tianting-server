@@ -541,7 +541,7 @@ func (s *SQLite) ClientDissolveGroup(ctx context.Context, groupID, actor string,
 	return members, tx.Commit()
 }
 
-func (s *SQLite) UpdateGroupProfile(ctx context.Context, groupID, actor string, name, notice *string, now int64) ([]Message, error) {
+func (s *SQLite) UpdateGroupProfile(ctx context.Context, groupID, actor string, name, notice *string, now int64, check func() error) ([]Message, error) {
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
 		return nil, err
@@ -549,6 +549,11 @@ func (s *SQLite) UpdateGroupProfile(ctx context.Context, groupID, actor string, 
 	defer tx.Rollback()
 	if _, _, err := authorizeGroup(ctx, tx, groupID, actor, OpUpdate, true); err != nil {
 		return nil, err
+	}
+	if check != nil {
+		if err := check(); err != nil {
+			return nil, err
+		}
 	}
 	var tips []Message
 	if name != nil {

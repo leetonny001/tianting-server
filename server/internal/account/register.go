@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"tianting/server/internal/metrics"
+	"tianting/server/internal/moderation"
 	"tianting/server/internal/protocol"
 	"tianting/server/internal/store"
 	"tianting/server/internal/testhook"
@@ -90,6 +91,14 @@ func (s *Service) register(ctx context.Context, in RegisterInput, ip string) (*A
 		}
 		if !ok {
 			return nil, metrics.AccountInviteInvalid, inviteInvalid()
+		}
+	}
+	// 用户名、昵称过敏感词（C6，F-MOD-02 规则 2）：邀请码之后、用户名占用判断之前（backend-chat 第 112 条：已被占用的用户名同样 4510，
+	// 不泄露"用户名已存在"）。还没有用户，只计指标不写命中记录（第 113 条）；没有写入账号，邀请码次数不变。
+	if s.Content != nil {
+		if s.Content.CheckContent(ctx, "", moderation.SceneUsername, userID) ||
+			(protocol.TrimText(in.Nickname) != "" && s.Content.CheckContent(ctx, "", moderation.SceneNickname, nickname)) {
+			return nil, metrics.AccountBlocked, contentBlocked()
 		}
 	}
 	if s.reserved[userID] {
