@@ -17,7 +17,7 @@
 ```
 
 - `id` 为 `[a-z0-9-]{3,32}`；不同调用方的密钥不能相同，也不能等于 JWT 密钥或旧管理密钥（否则拒绝启动）。Ed25519 调用方只配置公钥。
-- 每个接口要求一个 scope（下表"scope"列）；scope 不足 403 / 4030。正文类 scope（`msg.body.*`、`msg.quarantine`）只能配置在唯一一个 `"bodyAccess": true` 的调用方上，且该调用方不能有其他 scope。
+- 每个接口要求一个 scope（下表"scope"列）；scope 不足 403 / 4030。正文类 scope（`msg.body.*`、`msg.quarantine`，C6 起还有 `report.evidence`）只能配置在唯一一个 `"bodyAccess": true` 的调用方上，且该调用方不能有其他 scope。
 - 可选 `allowedCIDRs`：来源不在范围内 403 / 4030；`disabled: true` 的调用方 401 / 4017。
 
 **请求头**：`X-IM-Caller`（调用方 id）、`X-IM-Timestamp`（毫秒）、`X-IM-Nonce`（16～64 个 base64url 字符，每次随机）、`X-IM-Signature`（base64url 无填充）；可选 `X-IM-Operator`（后台操作人，如 `admin:a_01J…`）、`X-Request-Id`（≤ 64）、`X-IM-Target-Node`（目标节点，必须等于服务端 `IM_NODE_ID`）。
@@ -120,13 +120,45 @@ P1（PRD-admin G-ADM-07、G-ADM-13、G-ADM-17）：
 | `POST /admin/messages/delete` | `{convId, msgIds, reason}` | `{deleted:[{msgId, seq}]}` | `msg.delete`。单次 ≤ 50（4131）；不存在 404 / 4044；不在该会话或是群提示消息 400 / 4000，任何一条不合法整批不删。已删除的幂等成功，不再发事件。**已撤回的同样幂等成功**（C4，PRD-chat F-RCL-04 规则 1）：不出现在 `deleted` 里、不写 `deletedAt`、状态和文案保持撤回、不发事件，审计照写。原文加密进隔离区；被删的提及不再计入 `mentionUnread` |
 | `POST /admin/msg-grants` | `{convId, operator, reason, ticket, quarantine?}` | `{grantId, expiresAt}` | 群 `msg.body.group`，单聊 `msg.body.c2c`，`quarantine=true` 要 `msg.quarantine`。`operator` 必须等于签名的 `X-IM-Operator`。授权 15 分钟。`IM_C2C_BODY_ACCESS=off` 时单聊 403 / 4030 `reason:"c2cBodyDisabled"`。配额（Asia/Shanghai 自然日）：每操作人 20、每调用方 200，超出 429 / 4292 |
 | `POST /admin/convs/messages/body` | `{grantId, convId, beforeSeq?, limit?}` | `{messages, hasMore}` | 同上。`limit` ≤ 50。授权不存在、过期、换了会话或操作人 403 / 4039。**后台版序列化**（C4，RC2-21）：`deleted` 只表示后台删除；撤回的消息 `deleted=false`、`recalled=true`、`recalledAt`、`recalledBy`。普通授权：被删、撤回的消息没有 `body`。隔离授权：只返回被删、撤回的消息和原文（文件消息带文件名），一条都没有（含已到期）404 / 4044。响应 `Cache-Control: no-store` |
-| `POST /admin/files/{fileId}/fetch` | `{convId, msgId, variant?: "original" \| "thumb"}` | 文件字节 | **C4 新增（PRD-chat 第 11.6 节，F-RCL-04，BE-470 第 4 条定的形状）**。审核员看被撤回或被后台删除的消息里的图片、文件，console-server 代理（CS-202），不给 console 发预签名地址。scope `msg.quarantine`（C4；C6 增加 `report.evidence`），**还要有这个会话有效的隔离授权**（同一调用方、同一 `X-IM-Operator`、`quarantine=true`、未过期，按会话查找，请求里不带 `grantId`），没有 403 / 4039；scope 不足 403 / 4030；单聊受 `IM_C2C_BODY_ACCESS`（关闭时 403 / 4030 `reason:"c2cBodyDisabled"`）。`fileId` 必须属于 `msgId`、`msgId` 属于 `convId`、消息已撤回或已被后台删除、对象还在保留期，否则 404 / 4048（不区分原因）；`variant` 缺省 `original`，`thumb` 只有图片有。响应 `Content-Type` 按服务端记录、`Content-Disposition: attachment`（不带文件名）、`X-Content-Type-Options: nosniff`、`Cache-Control: no-store`。写审计（`fileId`、`msgId`、`variant`，不含文件名） |
+| `POST /admin/files/{fileId}/fetch` | `{convId, msgId, variant?: "original" \| "thumb"}` | 文件字节 | **C4 新增（PRD-chat 第 11.6 节，F-RCL-04，BE-470 第 4 条定的形状）**。审核员看被撤回或被后台删除的消息里的图片、文件，console-server 代理（CS-202），不给 console 发预签名地址。scope `msg.quarantine`（C4；C6 增加 `report.evidence` 路径，见下面"敏感词和举报"一节），**还要有这个会话有效的隔离授权**（同一调用方、同一 `X-IM-Operator`、`quarantine=true`、未过期，按会话查找，请求里不带 `grantId`），没有 403 / 4039；scope 不足 403 / 4030；单聊受 `IM_C2C_BODY_ACCESS`（关闭时 403 / 4030 `reason:"c2cBodyDisabled"`）。`fileId` 必须属于 `msgId`、`msgId` 属于 `convId`、消息已撤回或已被后台删除、对象还在保留期，否则 404 / 4048（不区分原因）；`variant` 缺省 `original`，`thumb` 只有图片有。响应 `Content-Type` 按服务端记录、`Content-Disposition: attachment`（不带文件名）、`X-Content-Type-Options: nosniff`、`Cache-Control: no-store`。写审计（`fileId`、`msgId`、`variant`，不含文件名） |
 
 - `GET /admin/users/{userId}`、`GET /admin/users` 增加 `ban`（`null` 或 `{until, reason, by, at}`）和 `mutedUntil`（禁言中才出现，永久为 `null`）；`GET /admin/groups/{groupId}/members` 的成员增加 `mutedUntil`；`POST /admin/convs/messages/query` 的消息增加 `deleted`、`deletedAt`、`deletedBy`（正文读取的响应也有）；C4 再增加 `recalled`、`recalledAt`、`recalledBy`（`recalledBy` 是用户 ID，撤回是群内自治，不写后台审计，F-RCL-02 规则 5）。过期的记录按没有处理。
 - `POST /admin/users/token`、`POST /demo/login`：封禁中 403 / 4034，`details.bannedUntil`（永久为 `null`）。到期自动解除。
 - `by`、`deletedBy` 的格式是 `{caller}:{operator}`。审计记录这些接口的 `reason`、`msgIds`、`ticket`、时长，不记正文；正文读取的 summary 带 `seqFrom`、`seqTo`、`count`。
 - 配置：`IM_QUARANTINE_KEY`（≥ 32 字节，不能与其他密钥相同，生产必填）、`IM_QUARANTINE_DAYS`（默认 30，1～365）、`IM_C2C_BODY_ACCESS`（默认 `off`，没有管理接口能改）。
 - 已知限制：删除后 WAL 里的旧帧要等检查点才被覆盖；备份里的原文按备份保留期留存（F-ADM-31 规则 9）。
+
+## 敏感词和举报（PRD-chat 第 10 节、第 11.6 节，C6）
+
+**形状随 BE-491 写定，实现随 BE-493（词库）、BE-494（命中）、BE-496（举报处理）**；在那之前这些路由还不存在。`IM_MOD_ENABLED` 关闭时只拦客户端的 `report` 和敏感词检查，这些管理接口和清理任务（`report_purge`、`moderation_hits_purge`）照常（P-48 ④，backend-chat 第 108 条）。旧密钥都不能调用（403 / 4030）。
+
+scope（PRD-chat 第 14.1 节，PRD-admin F-KEY-02）：
+
+| scope | 类别 | 用途 |
+|---|---|---|
+| `moderation.words` | 普通 | 词库维护（`operator`、`moderator`） |
+| `report.read` | 普通 | 举报队列、举报元数据、按用户查命中次数（`moderator`；命中次数只给有 `report.read` 的，P-48 ③） |
+| `report.handle` | 普通 | 结案（`moderator`） |
+| `report.evidence` | **正文类**（`adminauth.IsBodyScope`） | 证据授权、证据读取、证据文件；只能配在 `bodyAccess` 调用方（`console-msgread`），`console` 主凭证调用 403 / 4030（AC-MOD-04-4）。和 `msg.meta` 配在同一个调用方拒绝启动（AC-MOD-04-8） |
+
+| 接口 | scope | 请求 / 查询参数 | 成功响应 | 说明 |
+|---|---|---|---|---|
+| `GET /admin/moderation/words` | `moderation.words` | `q`、`state`（`active` / `disabled`）、`cursor`、`limit` | `{words:[{wordId, word, state, createdAt, updatedAt}], nextCursor}` | `q` 按标准化后（`norm`）的子串匹配；按 `wordId` 倒序。`word` 是原文，后台按纯文本显示（AC-MOD-01-7）。不写审计 |
+| `POST /admin/moderation/words` | `moderation.words` | `{word}` | `{word:{wordId, word, state, createdAt, updatedAt}, created}` | 单个添加。去首尾空白后为空或超过 64 个码点 400 / 4000（backend-chat 第 102 条）。**按标准化后的 `norm` 去重**：已有的（含停用的）返回已有的那条、`created=false`、状态不变（第 100 条） |
+| `PATCH /admin/moderation/words/{wordId}` | `moderation.words` | `{state}` | `{word:{…}}` | 只改 `state`（`active` / `disabled`），停用的词不进自动机。不存在 404 / 4040 |
+| `DELETE /admin/moderation/words/{wordId}` | `moderation.words` | — | `{}` | 物理删除；`moderation_hits` 里的 `wordId` 保留，不级联。不存在 404 / 4040 |
+| `POST /admin/moderation/words/import` | `moderation.words` | `{words:[string]}` | `{added, duplicate, invalid}` | 一次最多 5000 条，超出 400 / 4131、整批不写入（AC-MOD-01-4）。空行、超过 64 个码点的跳过、计入 `invalid`（AC-MOD-01-9）；和已有的（含停用的）或同一批里前面的 `norm` 相同的计入 `duplicate`（第 100、103 条）。后台页面读 txt（一行一个，UTF-8）后拆成数组提交 |
+| `GET /admin/moderation/hits` | `report.read` | `userId` | `{userId, days, counts:{scene: n}, recent:[{at, scene, wordId}]}` | 这个用户保留期内（`days` = `IM_MOD_HITS_DAYS`，默认 90）按场景的命中次数和最近 50 条（新的在前），**没有任何内容**，看词要另有 `moderation.words`（第 114 条）。`scene` 是 `text`、`fileName`、`nickname`、`username`、`groupName`、`groupNotice`、`friendApply`（第 110 条），没有命中的场景不出现。`userId` 格式错 400 / 4004；不检查用户是否存在（没有记录就是空）。写审计（`targets` 是 userId） |
+| `GET /admin/reports` | `report.read` | `state`（`pending` / `handled` / `rejected`）、`reason`、`targetType`、`from`、`to`（毫秒）、`cursor`、`limit` | `{items:[{targetKey, targetType, convType?, convId?, msgIds?, userId?, groupId?, count, latestAt, reports:[{reportId, reason, state, createdAt}]}], nextCursor}` | 按对象聚合（第 117 条：消息是 `convId` + 排序后的 `msgIds`，用户是 `userId`，群是 `groupId`），`count` 是筛选范围内的条数，按 `latestAt` 倒序；`targetKey` 不透明，只用于分页和前端去重。**单聊消息举报只有 `convType: "c2c"`，不带 `convId`、`msgIds`**（参与者要在详情里填理由才看，F-MOD-04 规则 2）；群消息带 `convType: "group"`、`convId`、`msgIds`。没有举报人、`note` 和任何正文。`limit` 只接受 20 / 50 / 100，默认 50 |
+| `GET /admin/reports/{reportId}` | `report.read` | — | `{reportId, targetType, convType?, convId?, msgIds?, userId?, groupId?, reporter, targetUser?, targetReportCount?, reason, state, createdAt, messages?:[{msgId, seq?, from?, type?, bodyLength?, fileSize?}], handledBy?, handledAt?, conclusion?}` | 元数据（F-MOD-04 规则 2）：举报人、被举报人（`targetUser`：消息的发送者或被举报的用户，群举报没有）、时间、理由、消息类型和长度；`targetReportCount` 是 `targetUser` 保留期内被举报的总次数（所有类型）。**没有 `note`、正文和文件名**（AC-MOD-04-10、04-11）；证据已过期或元数据解不开时 `messages` 只有 `msgId`。单聊举报的理由和每天 50 个的配额由 console-server 负责（CS-207，和 F-ADM-30 规则 3 合并）。每次调用写审计（只记 `reportId`）。不存在 404 / 4040 |
+| `POST /admin/reports/{reportId}/resolve` | `report.handle` | `{result: "handled" \| "rejected", reason}` | `{}` | 结案（F-MOD-04 规则 5）。`reason` 去首尾空白后 1～200 个码点，存为 `conclusion`。只对 `pending` 生效：已结案的 409 / 4098，状态不变（AC-MOD-04-5）。**不自动执行任何处置**，删除、禁言、封禁、下线、解散走各自的接口和审计。举报人和被举报人都不收任何帧。不存在 404 / 4040 |
+| `POST /admin/report-grants` | `report.evidence` | `{reportId, reason}` | `{grantId, expiresAt}` | 证据授权（F-MOD-04 规则 3，同 `msg-grants` 的流程，动态码由 console 校验）：工单号自动用 `reportId`；必须带签名的 `X-IM-Operator`，授权绑定调用方 + 操作人 + `reportId`，15 分钟；配额和 `msg-grants` 合并（每操作人 20、每调用方 200，429 / 4292）。**单聊消息举报和用户举报按单聊对待**（P-48 ①）：`IM_C2C_BODY_ACCESS=off` 时 403 / 4030 `reason:"c2cBodyDisabled"`（AC-MOD-04-3），`on` 时只要 `report.evidence`（P-48 ⑤）；群消息举报、群举报走授权、不看这个开关。`reason` 规则同结案。不存在 404 / 4040 |
+| `POST /admin/reports/{reportId}/evidence` | `report.evidence` | `{grantId}` | `{messages:[{msgId, seq, from, type, ts, body?, recalled?, recalledAt?, recalledBy?}], note?, undecryptable?}` | 证据读取：只含被举报的消息，不带上下文。`body` 同 WS 的 `MsgBody`（含文件名、已撤回消息的隔离原文），只存了元数据的（单聊 `off` 期间的举报、隔离原文已过期、消息已物理删除）没有 `body`；用户举报、群举报 `messages` 为空数组（只存了元数据，P-48 ①）。`note` 只在举报人写了时出现。**密钥不匹配**（AES-GCM 验证失败）：`{messages: [], undecryptable: true}`，告警指标加 1，不影响结案（AC-MOD-04-14）。授权不存在、过期、换了举报或操作人 403 / 4039；读的时候再查一次单聊开关，`off` 时单聊消息举报、用户举报 403 / 4030 `c2cBodyDisabled`（`off` 期间的举报之后打开开关也没有正文，AC-MOD-03-10）。响应 `Cache-Control: no-store`。审计只记 `reportId`、授权前 8 位 |
+| `POST /admin/files/{fileId}/fetch`（`report.evidence` 路径） | `report.evidence` | `{convId, msgId, variant?, grantId}` | 文件字节 | 审核员看被举报的图片、文件（缩略图和原图都能看，R-CS-12），console-server 代理（AC-MOD-04-12）。**`grantId` 必填**，必须是这个调用方 + 操作人的、没过期的**举报授权**，而且这条举报的证据引用了这个 `fileId`、`msgId`、`convId`；任何一条不符合（含没有 `grantId`）403 / 4039（backend-chat 第 109 条，AC-MOD-04-16）。单聊 `off` 时 403 / 4030 `c2cBodyDisabled`（AC-MOD-04-13）。对象按 `evidence_until` 保留，原消息是否撤回、删除都不影响。`grantId` 是隔离授权时按上一节的 `msg.quarantine` 路径处理；不带 `grantId` 只走 `msg.quarantine` 路径（兼容 C4）。响应头和审计同上一节 |
+
+- 审计（F-KEY-04，AC-MOD-01-6、AC-MOD-03-8）：词库接口只记操作、`wordId` 和数量（`count`、`added`、`duplicate`、`invalid`），**不记词内容**；举报接口只记 `reportId`、`targetType`、`reason`（举报理由枚举），不记 `note`、正文、文件名；请求日志不打请求体。
+- 隐私（P-48 ①②）：用户举报、群举报只存元数据（对象 ID、举报时间），不快照昵称、群名、公告；`note` 一律只在加密的证据里；`reports` 行和证据一起在 180 天（`IM_REPORT_EVIDENCE_DAYS`）整条删除，"被举报次数"只按这 180 天算。
+- `cursor`、`limit` 的约定同"后台查询"一节。
 
 ## 系统推送（PRD-live v1.0 L1，PRD-admin F-ADM-50）
 

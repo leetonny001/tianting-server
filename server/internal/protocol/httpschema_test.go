@@ -75,6 +75,12 @@ func TestHTTPClientSchema(t *testing.T) {
 		// C5（BE-482 第 3 条）：features.convSettings 是布尔。
 		{"ConfigResponse", `{"registerMode":"invite","demoLogin":false,"features":{"files":true,"msgActions":true,"convSettings":true},"limits":{"usernameMinLen":4,"usernameMaxLen":32,"passwordMinLen":8,"passwordMaxLen":128,"nicknameMaxLen":32,"deviceNameMaxLen":64}}`, true},
 		{"ConfigResponse", `{"registerMode":"invite","demoLogin":false,"features":{"files":true,"convSettings":"on"},"limits":{"usernameMinLen":4,"usernameMaxLen":32,"passwordMinLen":8,"passwordMaxLen":128,"nicknameMaxLen":32,"deviceNameMaxLen":64}}`, false},
+		// C6（BE-491 第 3 条）：features.moderation 是布尔；注册、改资料命中敏感词的 451 / 4510 不带 details。
+		{"ConfigResponse", `{"registerMode":"invite","demoLogin":false,"features":{"files":true,"msgActions":true,"convSettings":true,"moderation":true},"limits":{"usernameMinLen":4,"usernameMaxLen":32,"passwordMinLen":8,"passwordMaxLen":128,"nicknameMaxLen":32,"deviceNameMaxLen":64}}`, true},
+		{"ConfigResponse", `{"registerMode":"invite","demoLogin":false,"features":{"files":true,"moderation":1},"limits":{"usernameMinLen":4,"usernameMaxLen":32,"passwordMinLen":8,"passwordMaxLen":128,"nicknameMaxLen":32,"deviceNameMaxLen":64}}`, false},
+		{"ErrorResponse", `{"code":4510,"msg":"content blocked"}`, true},
+		{"ErrorResponse", `{"code":4510,"msg":"content blocked","details":{"wordId":"w1"}}`, false},
+		{"ErrorResponse", `{"code":4031,"msg":"x","details":{"scope":"user"}}`, true},
 	} {
 		v, err := jsonschema.UnmarshalJSON(jsonReader(tc.json))
 		if err != nil {

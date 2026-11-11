@@ -104,7 +104,7 @@ func TestClientScopeCodes(t *testing.T) {
 			}
 		}
 	}
-	for _, c := range []int{4000, 4004, 4010, 4011, 4012, 4018, 4019, 4030, 4034, 4048, 4095, 4096, 4131, 4139, 4150, 4290, 4292, 4294, 5000, 5030, 5032} {
+	for _, c := range []int{4000, 4004, 4010, 4011, 4012, 4018, 4019, 4030, 4034, 4048, 4095, 4096, 4131, 4139, 4150, 4290, 4292, 4294, 4510, 5000, 5030, 5032} {
 		if !client[c] {
 			t.Errorf("%d is not in the client scope", c)
 		}
@@ -132,7 +132,7 @@ func TestClientScopeCodes(t *testing.T) {
 }
 
 func TestHTTPStatus(t *testing.T) {
-	for code, want := range map[int]int{4042: 404, 4090: 409, 4013: 401, 4131: 400, 4290: 429, 5030: 503, 4049: 404, 5999: 599} {
+	for code, want := range map[int]int{4042: 404, 4090: 409, 4013: 401, 4131: 400, 4290: 429, 5030: 503, 4049: 404, 5999: 599, 4510: 451, 4098: 409} {
 		if got := HTTPStatus(code); got != want {
 			t.Errorf("HTTPStatus(%d) = %d, want %d", code, got, want)
 		}

@@ -458,3 +458,123 @@ func TestTC_CHAT_90_38_C5FrameVectorsServerParse(t *testing.T) {
 		}
 	}
 }
+
+// TC-CHAT-90-46（AC-CHAT-90-10 的 C6 服务端部分，BE-491）：frames.json 里名字以"C6）"结尾的用例用服务端真实的解析跑一遍。
+// 上行 report 走严格解码 + Validate：valid 必须通过、invalid 必须被拒绝（4000、4004、4007、4131 或缺 id 的 4003），
+// 所以"message 缺 msgIds""message 带 userId""reason 不在枚举"这类判断 Schema 和服务端一致。下行的 ack report 用服务端的模型
+// 解码再编码，结果和用例逐字段相同；错误 ack 用 protocol.Error 解码再编码，4510 没有 details（F-MOD-02 规则 6）。
+func TestTC_CHAT_90_46_C6FrameVectorsServerParse(t *testing.T) {
+	raw, err := os.ReadFile("../../../protocol/vectors/frames.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var vf struct {
+		Valid, Invalid []struct {
+			Name  string          `json:"name"`
+			Frame json.RawMessage `json:"frame"`
+		}
+	}
+	if err := json.Unmarshal(raw, &vf); err != nil {
+		t.Fatal(err)
+	}
+	type head struct {
+		ID    string          `json:"id"`
+		Cmd   string          `json:"cmd"`
+		Data  json.RawMessage `json:"data"`
+		Error json.RawMessage `json:"error"`
+	}
+	parseUp := func(h head) *protocol.Error {
+		if h.ID == "" {
+			return protocol.Errorf(protocol.CodeMissingRequestID, "missing id")
+		}
+		req, perr := decode[protocol.ReportReq](h.Data)
+		if perr != nil {
+			return perr
+		}
+		return req.Validate()
+	}
+	roundTrip := func(t *testing.T, name string, h head) string {
+		t.Helper()
+		if h.Cmd != protocol.CmdAck {
+			t.Errorf("%s: C6 vector not checked by the server (cmd %s)", name, h.Cmd)
+			return ""
+		}
+		if h.Error != nil {
+			var e protocol.Error
+			if err := json.Unmarshal(h.Error, &e); err != nil {
+				t.Errorf("%s: decode error: %v", name, err)
+				return ""
+			}
+			if e.Code == protocol.CodeContentBlocked && e.Details != nil {
+				t.Errorf("%s: 4510 carries details", name)
+			}
+			got, _ := json.Marshal(&e)
+			if !sameJSON(t, got, h.Error) {
+				t.Errorf("%s: server encodes\n%s\nwant\n%s", name, got, h.Error)
+			}
+			return "error"
+		}
+		var ack protocol.ReportAck
+		if err := json.Unmarshal(h.Data, &ack); err != nil || ack.ReportID == "" {
+			t.Errorf("%s: decode report ack: %v", name, err)
+			return ""
+		}
+		got, _ := json.Marshal(ack)
+		if !sameJSON(t, got, h.Data) {
+			t.Errorf("%s: server encodes\n%s\nwant\n%s", name, got, h.Data)
+		}
+		return "report"
+	}
+	seen := map[string]int{}
+	targets := map[string]int{}
+	for _, v := range vf.Valid {
+		if !strings.Contains(v.Name, "C6）") {
+			continue
+		}
+		var h head
+		_ = json.Unmarshal(v.Frame, &h)
+		seen["valid/"+h.Cmd]++
+		if h.Cmd == protocol.CmdReport {
+			if perr := parseUp(h); perr != nil {
+				t.Errorf("valid/%s: server rejects: %v", v.Name, perr)
+			}
+			var d struct{ TargetType string }
+			_ = json.Unmarshal(h.Data, &d)
+			targets[d.TargetType]++
+			continue
+		}
+		if kind := roundTrip(t, "valid/"+v.Name, h); kind != "" {
+			seen["down/"+kind]++
+		}
+	}
+	for _, v := range vf.Invalid {
+		if !strings.Contains(v.Name, "C6）") {
+			continue
+		}
+		var h head
+		_ = json.Unmarshal(v.Frame, &h)
+		seen["invalid/"+h.Cmd]++
+		if h.Cmd != protocol.CmdReport {
+			continue // 下行的非法帧只给 Schema 和 SDK 用
+		}
+		switch perr := parseUp(h); {
+		case perr == nil:
+			t.Errorf("invalid/%s: server accepts", v.Name)
+		case perr.Code != protocol.CodeBadRequest && perr.Code != protocol.CodeInvalidConvID && perr.Code != protocol.CodeInvalidID &&
+			perr.Code != protocol.CodeBatchLimitExceeded && perr.Code != protocol.CodeMissingRequestID:
+			t.Errorf("invalid/%s: code %d, want 4000 / 4004 / 4007 / 4131 / 4003", v.Name, perr.Code)
+		}
+	}
+	// BE-491 第 5 条：三种 targetType 各至少一个合法的；message 缺 msgIds、message 带 userId、reason=xxx 等非法的；ack {reportId}；
+	// 4510 的错误 ack（没有 details）。
+	for k, n := range map[string]int{"valid/report": 3, "invalid/report": 10, "down/report": 1, "down/error": 1, "invalid/ack": 2} {
+		if seen[k] < n {
+			t.Errorf("frames.json has %d C6 vectors of %s, want >= %d (BE-491 第 5 条): %v", seen[k], k, n, seen)
+		}
+	}
+	for _, tt := range []string{protocol.ReportTargetMessage, protocol.ReportTargetUser, protocol.ReportTargetGroup} {
+		if targets[tt] == 0 {
+			t.Errorf("frames.json has no valid C6 report of targetType %s", tt)
+		}
+	}
+}
