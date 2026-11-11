@@ -7,7 +7,6 @@
 
 | # | 日期 | 事项 | 为什么需要你 | 不处理的影响 | 建议 |
 |---|---|---|---|---|---|
-| P-47 | 2026-11-11 | **C5 之后做什么**：工作队列 Q29（C5）只剩 FE-686 三端验收和校准，之后队列里没有不受阻的项（Q26 C3、Q27 厂商推送按你"推送后续做"暂停，Q16 PC 等 P-14）。PRD-chat 第一批剩下的是 C6 敏感词和举报（F-MOD-01～04，`IM_MOD_ENABLED`；`IM_ENV=production` 且开放注册时要求 `IM_MOD_ENABLED=1`，见 PRD-chat v1.7 AC-ACC-01-9） | CH-27 规定 C3～C6 由你决定要不要做、什么时候做 | C5 收尾后自主开发没有可取的项，会停下来 | 建议 C5 校准后开始 **C6**（不依赖推送；而且是生产开放注册的前提），C3 等 P-41 的账号准备好再恢复。回复"开始 C6"或"恢复 C3"或另定 |
 | P-41 | 2026-11-10 | **C3 要你亲自做的事**（PRD-chat 第 20.3 节、P-13、P-28）：⑤ APNs：付费 Apple Developer 账号、给 `com.tianting.im` 开 Push、建 APNs Key 下载 `.p8`、记 Key ID 和 Team ID、`.p8` 放服务器 0600；⑥ FCM：建 Firebase 项目、加 Android 应用 `com.tianting.app`、`google-services.json`（只在发布时注入，不进仓库）、服务账号 JSON 放服务器 0600；⑦ 服务器网络：部署地能访问 `api.push.apple.com`、`api.sandbox.push.apple.com`、`fcm.googleapis.com` 和 Google OAuth；⑧ 真机：Android 13+（有谷歌服务）、iPhone、一台没有谷歌服务的国内 Android；~~⑨ P-28 第 3 问~~（2026-11-10 已答：主要中国大陆，见 P-42） | 要你的账号、付费、设备和服务器；AI 不接触账号和密钥；⑨ 只有你知道 | 不做时 C3 的 34 条后端 AC 用假 APNs、假 FCM 验收，11 条前端 AC 在模拟器用替身验收；6 条手工 AC（AC-APN-01-6、03-5、04-1、04-2、05-3、06-2）记未执行，"后台收通知"演示做不了 | ⑤⑥ 在 C3 三端验收（FE-656）前办好；⑦ 随部署；⑧ 和 P-13 一起 |
 | P-9 | 2026-11-04 | M3 手工验收（FE-248 及任务单记录的手工项）：iPhone 15 Safari 安全区截图、macOS / iOS Safari 拼音输入录屏、VoiceOver | 需要真机和人工操作，AI 无法独立完成 | 不阻塞开发，但 M3 不能算验收完成 | 社交页面完成后一起做，一次跑完 M3 演示路径；回复"社交页面完成后我来做"或指定其他人 |
 | P-10 | 2026-11-04 | 下载 SecLists 的 `10-million-password-list-top-10000.txt` 作为弱密码表（PRD-admin F-CON-04 规则 1，约 80KB，来自 github.com/danielmiessler/SecLists） | 下载外部文件需要确认 | 目前用手写的 406 条暂行表，能拦住常见长口令，但覆盖不如正式列表；不阻塞开发，上线前必须换 | 回复"可以下载"，或自己放到 `tianting-console-server/assets/weak-passwords.txt` |
@@ -29,6 +28,7 @@
 
 | # | 日期 | 事项 | 结论 |
 |---|---|---|---|
+| P-47 | 2026-11-11 | C5 之后做什么 | Frank 回复"开始 C6"：C5 校准后开始 C6 敏感词和举报（F-MOD-01～04）；C3 等 P-41 的账号准备好再恢复。词库负责人和举报处理人（CH-19、CH-22）在 C6 上线前指定，开发只用特征词，不阻塞 |
 | P-46 | 2026-11-10 | C5 分发时的待决定项（backend-chat.md 问题 72、81、82、86） | Frank 回复"都按建议"：① 6 条推送相关 P0 AC 记"未执行（等 C3）"，不算失败，C5 先内部验收，C3 恢复后补跑再关闭；② `IM_CONV_SETTINGS_ENABLED` 关掉后已有的置顶、免打扰、删除照常生效，只拦新命令、隐藏入口；③ 注销到期时在 `account_cleanup` 第 ② 步一并删除单聊的会话设置，隐私清单草稿加一行；④ 删除会话后对方新消息里的引用摘要照常显示（同 F-QUO-02 规则 6） |
 | P-45 | 2026-11-10 | 下载地址里带文件名，会进 iOS 系统日志（frontend-chat.md 问题 51） | Frank 回复"按建议"：原生客户端（Android、iOS）申请下载地址时，服务端签入不带文件名的 `attachment`；H5 保持现状。PRD-chat 升 v1.7 写明，改服务端和两套原生 SDK 的请求参数 |
 | P-44 | 2026-11-10 | C4 SDK 和页面实现时的待决定项（console-chat.md 问题 14、18，frontend-chat.md 问题 21、29） | Frank 回复"都按建议"：① 后台下载撤回文件先不限次数，靠审计和隔离授权有效期约束，上线后看审计再定；② 后台正文页撤回的消息不能勾选删除；③ 接受老版本 sdk-ts 引用副本等下次重拉才清（F-RCL-03 规则 7）；④ `POST /admin/files/{fileId}/fetch` 增加可选 `grantId`，console 带上，im-server 校验属于该会话且未过期，PRD-chat 升 v1.6 |
