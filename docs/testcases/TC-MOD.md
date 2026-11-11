@@ -297,12 +297,14 @@
 - 步骤：
   1. 注册：昵称"违规词"；用户名 `badwordx`；用户名 `takenuser` + 昵称"违规词"
   2. u1 `PATCH /v1/account/profile {nickname:"违规词"}`
-  3. u1 `groupCreate {name:"违规词群"}`；o 对 g1 `groupUpdate {name:"违规词"}`、`groupUpdate {notice:"违规词"}`；`groupCreate` 带含词的公告
-  4. u1 对 u2 发 `friendApply {note:"违规词"}`；对不存在的 `nouser` 发同样的申请
+  3. u1 `groupCreate {name:"违规词群"}`；o 对 g1 `groupUpdate {name:"违规词"}`、`groupUpdate {notice:"违规词"}`（`groupCreate` 没有公告字段，公告只能经 `groupUpdate` 写，backend-chat 第 129 条）
+  3a. 建群的检查顺序（backend-chat 第 137 条，F-MOD-02 规则 5）：先用不含词的名字建群成功，再加词后用同一 `clientReqId` 重试；邀请不是好友的 u4、群名含词；都是好友、群名含词；建群配额用完后群名含词
+  4. u1 对 u2 发 `friendApply {message:"违规词"}`；对不存在的 `nouser` 发同样的申请
 - 预期结果：
   1. 注册都是 451 / 4510，没有账号写入，邀请码次数不变；`takenuser` 那一次也是 4510（不泄露用户名已存在，backend-chat 第 112 条）
   2. 4510，昵称不变
   3. 都是 4510，没有建群，g1 名字和公告不变
+  3a. 重试返回第一次的 `groupId`（判重优先）；邀请非好友是 4035（带 `userId`，和群名不含词时逐字节相同），不是 4510、不记命中；都是好友时 4510、记一条 `groupName` 命中、建群配额退还；配额用完是 4292，不是 4510
   4. 两次申请的响应逐字节相同（4510），u2 没有申请记录
   5. 管理接口改昵称、改群名含"违规词"：成功（规则 3 不查管理接口）
 

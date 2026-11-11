@@ -6,7 +6,10 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
+	"net/http/httptest"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -219,6 +222,124 @@ func TestTC_MOD_02_05_OtherScenes(t *testing.T) {
 	}
 }
 
+// TC-MOD-02-05（AC-MOD-02-5）建群的检查顺序（F-MOD-02 规则 5，backend-chat 第 137 条，BE-499）：群名过敏感词在存储层同一事务的
+// 判重、建群配额、加群上限和被邀请人权限判定之后，和 groupUpdate 一致。
+//   - 重试已经成功的建群（群名后来进了词库）：返回第一次的 groupId（判重优先），不记命中；
+//   - 邀请了不是好友的人 + 群名含词：4035（带 userId，和群名不含词时逐字节相同），不是 4510，不记命中——被拒绝的人探测不到词库，
+//     也没有比原来多透露好友关系（4035 本来就带 userId）；
+//   - 都是好友 + 群名含词：4510，群没建出来，记一条 groupName 命中，建群配额退还；
+//   - 配额用完 + 群名含词：4292，不是 4510。
+func TestTC_MOD_02_05_GroupCreateOrder(t *testing.T) {
+	e := newC6Env(t, nil)
+	e.usersNamed("u1", "u2", "u3", "u4")
+	e.mutual("u1", "u2", "u3")
+	e.settings(map[string]any{"groupCreateDailyLimit": 2})
+	u1 := e.dial("u1", "web")
+	first := mustAck[protocol.GroupCreateAck](t, u1.call(protocol.CmdGroupCreate, map[string]any{"clientReqId": "req-ord-00001", "name": "ZXQWORD 群", "members": []string{"u2", "u3"}}))
+	e.wordReady(u1, "u2", "ZXQWORD")
+	retry := mustAck[protocol.GroupCreateAck](t, u1.call(protocol.CmdGroupCreate, map[string]any{"clientReqId": "req-ord-00001", "name": "ZXQWORD 群", "members": []string{"u2", "u3"}}))
+	if retry.GroupID != first.GroupID {
+		t.Errorf("retry: %s, want %s", retry.GroupID, first.GroupID)
+	}
+	notFriend := func(name, req string) frame {
+		f := u1.call(protocol.CmdGroupCreate, map[string]any{"clientReqId": req, "name": name, "members": []string{"u2", "u4"}})
+		mustErr(t, f, protocol.CodeNotFriend)
+		if f.Error.UserID != "u4" {
+			t.Errorf("4035 userId = %q", f.Error.UserID)
+		}
+		return f
+	}
+	if a, b := notFriend("ZXQWORD 群", "req-ord-00002"), notFriend("普通群", "req-ord-00003"); errBody(a) != errBody(b) {
+		t.Errorf("4035 depends on the name: %s vs %s", errBody(a), errBody(b))
+	}
+	if n := e.count(`SELECT COUNT(*) FROM moderation_hits`); n != 0 {
+		t.Errorf("a retry or a denied create recorded hits: %d", n)
+	}
+	assertBlocked(t, "groupCreate", u1.call(protocol.CmdGroupCreate, map[string]any{"clientReqId": "req-ord-00004", "name": "新 ZXQWORD 群", "members": []string{"u2", "u3"}}), "ZXQWORD")
+	if n := e.count(`SELECT COUNT(*) FROM chat_groups`); n != 1 {
+		t.Errorf("groups = %d, want 1", n)
+	}
+	if n := e.count(`SELECT COUNT(*) FROM moderation_hits WHERE user_id = 'u1' AND scene = 'groupName'`); n != 1 {
+		t.Errorf("groupName hits = %d, want 1", n)
+	}
+	// 配额 2：第一个群用了 1 个，4035、4510 都退还，所以还能建 1 个；之后用完，含词的群名也是 4292。
+	createG(t, u1, "u2", "u3")
+	mustErr(t, u1.call(protocol.CmdGroupCreate, map[string]any{"clientReqId": "req-ord-00005", "name": "ZXQWORD", "members": []string{"u2", "u3"}}), protocol.CodeQuotaExceeded)
+	if n := e.count(`SELECT COUNT(*) FROM moderation_hits`); n != 1 {
+		t.Errorf("hits after quota = %d, want 1", n)
+	}
+}
+
+// TC-CHAT-90-47 第 1 步的 im_blocked_total（AC-CHAT-90-17，BE-499）：7 个场景（backend-chat 第 110 条）各命中一次，每个场景的序列正好加 1；
+// 注册命中另计 im_registers_total{result="blocked"}；im_blocked_total 只有 scene 一个标签，取值都在第 110 条的 7 个里（没有 userId、wordId）。
+func TestTC_CHAT_90_47_BlockedScenes(t *testing.T) {
+	e := newC6FileEnv(t, nil)
+	e.addWord("违规词")
+	e.addWord("badword")
+	tok := e.token("u1")
+	e.token("u2")
+	e.token("u3")
+	e.token("u9")
+	e.adminPost("/admin/test/social/seed", map[string]any{"silent": true, "friends": []any{
+		map[string]any{"owner": "u1", "peer": "u2"}, map[string]any{"owner": "u2", "peer": "u1"},
+		map[string]any{"owner": "u1", "peer": "u3"}, map[string]any{"owner": "u3", "peer": "u1"},
+	}}, adminKey)
+	scenes := []string{"text", "fileName", "nickname", "username", "groupName", "groupNotice", "friendApply"}
+	before := map[string]float64{}
+	for _, s := range scenes {
+		before[s] = blockedMetric(t, e.app, s)
+	}
+	regBefore := metricOr0(t, e.app, `im_registers_total{result="blocked"}`)
+	c := e.dial("u1", "web")
+	assertBlocked(t, "text", sendWait(c, "c2c", "u2", "违规词"))
+	doc := e.uploadFile(tok, "违规词.pdf", "application/pdf", pad([]byte("%PDF-1.4"), 2048))
+	assertBlocked(t, "fileName", sendFile(c, "c2c", "u2", "bs-doc-0001", "file", doc, nil))
+	e.newInvite("INVITE-MOD-0047", 10, time.Now().Add(24*time.Hour))
+	acct := e.register("plainuser", map[string]any{"inviteCode": "INVITE-MOD-0047"})
+	if code, b := e.callV1(http.MethodPatch, "/v1/account/profile", acct.AccessToken, map[string]any{"nickname": "违规词"}); code != 451 {
+		t.Errorf("nickname: %d %s", code, b)
+	}
+	if code, b, _ := e.post("/v1/account/register", e.freshIP(), regBody("badwordx", map[string]any{"inviteCode": "INVITE-MOD-0047"})); code != 451 {
+		t.Errorf("username: %d %s", code, b)
+	}
+	assertBlocked(t, "groupName", c.call(protocol.CmdGroupCreate, map[string]any{"clientReqId": "req-bs-00001", "name": "违规词", "members": []string{"u2", "u3"}}))
+	gid := createG(t, c, "u2", "u3").GroupID
+	assertBlocked(t, "groupNotice", c.call(protocol.CmdGroupUpdate, map[string]any{"groupId": gid, "notice": "违规词"}))
+	assertBlocked(t, "friendApply", c.call(protocol.CmdFriendApply, map[string]any{"to": "u9", "message": "违规词"}))
+	for _, s := range scenes {
+		if got := blockedMetric(t, e.app, s); got != before[s]+1 {
+			t.Errorf("im_blocked_total{scene=%q}: %v -> %v", s, before[s], got)
+		}
+	}
+	if got := metricOr0(t, e.app, `im_registers_total{result="blocked"}`); got != regBefore+1 {
+		t.Errorf(`im_registers_total{result="blocked"}: %v -> %v`, regBefore, got)
+	}
+	srv := httptest.NewServer(e.app.MetricsHandler())
+	defer srv.Close()
+	resp, err := http.Get(srv.URL)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+	body, _ := io.ReadAll(resp.Body)
+	n := 0
+	for line := range strings.Lines(string(body)) {
+		rest, ok := strings.CutPrefix(line, "im_blocked_total{")
+		if !ok {
+			continue
+		}
+		n++
+		labels, _, _ := strings.Cut(rest, "}")
+		v, ok := strings.CutPrefix(labels, `scene="`)
+		if !ok || strings.Contains(labels, ",") || !slices.Contains(scenes, strings.TrimSuffix(v, `"`)) {
+			t.Errorf("unexpected series: %s", strings.TrimSpace(line))
+		}
+	}
+	if n != len(scenes) {
+		t.Errorf("im_blocked_total has %d series, want %d", n, len(scenes))
+	}
+}
+
 // TC-MOD-02-06（AC-MOD-02-6）：IM_CLIENT_CUSTOM_MSG=0 时客户端 custom 400 / 4000 customDisabled，消息未保存。
 // TC-MOD-02-11（AC-MOD-02-11）：=1（开发默认）时成功，见 TestTC_CHAT_90_41_ModSwitchOff。
 func TestTC_MOD_02_06_CustomDisabled(t *testing.T) {
@@ -426,4 +547,25 @@ func TestTC_MOD_02_16_MentionAll(t *testing.T) {
 	}
 	e.resetLimits("o")
 	mustAck[protocol.SendAck](t, sendMentions(o, gid, nextCmid("ma"), "@所有人 hi", nil, true)) // 次数还在（每小时 1 次）
+}
+
+// metricOr0 读一个序列的值（name 含标签），没有这个序列时是 0。
+func metricOr0(t *testing.T, a *app.App, name string) float64 {
+	t.Helper()
+	srv := httptest.NewServer(a.MetricsHandler())
+	defer srv.Close()
+	resp, err := http.Get(srv.URL)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+	b, _ := io.ReadAll(resp.Body)
+	for line := range strings.Lines(string(b)) {
+		if v, ok := strings.CutPrefix(strings.TrimSpace(line), name+" "); ok {
+			var f float64
+			json.Unmarshal([]byte(v), &f)
+			return f
+		}
+	}
+	return 0
 }

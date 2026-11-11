@@ -151,5 +151,5 @@ func (s *Service) PurgeHits(ctx context.Context) (int, error) {
 // HitsDays 是命中记录的保留天数（GET /admin/moderation/hits 的 days）。
 func (s *Service) HitsDays() int { return s.mod.cfg.HitsDays }
 
-// errContentBlocked 让存储层的事务在权限判定之后、写入之前停下（groupUpdate，backend-chat 第 112 条）。
+// errContentBlocked 让存储层的事务在权限判定之后、写入之前停下（groupCreate、groupUpdate，backend-chat 第 112、137 条）。
 var errContentBlocked = errors.New("content blocked")

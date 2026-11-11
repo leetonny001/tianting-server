@@ -248,6 +248,11 @@ func (s *SQLite) CreateClientGroup(ctx context.Context, p CreateClientGroupParam
 			return "", false, nil, m, err
 		}
 	}
+	if p.Check != nil {
+		if err := p.Check(); err != nil {
+			return "", false, nil, "", err
+		}
+	}
 	name := p.Name
 	if name == "" { // 前 3 个成员（含自己，按 members 顺序）的昵称，超过 50 码点截断
 		parts := make([]string, 0, 3)

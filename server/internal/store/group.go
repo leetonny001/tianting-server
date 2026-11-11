@@ -68,6 +68,9 @@ type CreateClientGroupParams struct {
 	MaxMembers, MaxJoined        int
 	Now                          int64
 	QuotaDenied                  bool // 今天的建群配额已用完：判重没命中时返回 ErrCreateQuota
+	// Check 在判重、配额、加群上限和全部被邀请人的权限判定之后、写入之前调用（敏感词，F-MOD-02 规则 5，backend-chat 第 137 条）；
+	// 返回错误就回滚、原样返回。nil 不检查。
+	Check func() error
 }
 
 // InviteFailure 是邀请失败的一项。
