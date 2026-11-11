@@ -18,6 +18,9 @@
 //	IM_ADMIN_KEY          旧的共享管理密钥（请求头 X-Admin-Key，只能访问 v1.2 已有接口；production 至少 32 字节）
 //	IM_ADMIN_LEGACY       production 下设为 1 才接受 IM_ADMIN_KEY（启动日志和 /readyz 告警）
 //	IM_C2C_BODY_ACCESS    on | off（默认）：单聊消息正文的后台查看总开关，只能改配置重启，没有任何接口能打开
+//	IM_MOD_ENABLED        C6 敏感词和举报开关（默认关）；打开时要 IM_REPORT_KEY（32 字节 base64，和其他密钥不同，没有默认值），
+//	                      生产还要 IM_V13_ADMIN_FEATURES=1 和 IM_PRIVACY_NOTICE_VERSION（见 deploy/MODERATION-RUNBOOK.md）
+//	IM_CLIENT_CUSTOM_MSG  客户端能否发 custom，生产默认 0、其他默认 1
 //	IM_ADMIN_ADDR         管理接口 /admin/* 的监听地址，默认 127.0.0.1:8081；off 关闭。对外端口上没有管理接口
 //	IM_ADMIN_TLS_CERT / IM_ADMIN_TLS_KEY  管理端口的 TLS 证书和私钥；production 下管理地址不是回环地址时必须配置
 //	IM_ADMIN_ALLOWED_CIDRS 管理端口允许的来源网段（逗号分隔），只看 TCP 对端地址

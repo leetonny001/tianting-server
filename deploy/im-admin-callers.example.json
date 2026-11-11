@@ -9,7 +9,8 @@
       "social.settings", "social.friends",
       "msg.meta", "msg.delete", "mute.write", "audit.read", "stats.read",
       "push.user", "push.all",
-      "account.invite"
+      "account.invite",
+      "moderation.words", "report.read", "report.handle"
     ],
     "pushTypes": ["notice", "activity"],
     "allowedCIDRs": ["10.0.0.0/8"]
@@ -19,7 +20,7 @@
     "alg": "ed25519",
     "publicKey": "CHANGE_ME_BASE64_ED25519_PUBLIC_KEY",
     "bodyAccess": true,
-    "scopes": ["msg.body.group", "msg.quarantine"],
+    "scopes": ["msg.body.group", "msg.quarantine", "report.evidence"],
     "allowedCIDRs": ["10.0.0.0/8"]
   }
 ]

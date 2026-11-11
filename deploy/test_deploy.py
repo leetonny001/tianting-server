@@ -316,8 +316,9 @@ class AdminCallersExample(unittest.TestCase):
         self.assertEqual(console, {
             "user.read", "user.write", "user.kick", "user.sessions", "group.read", "group.write", "group.dissolve",
             "social.settings", "social.friends", "msg.meta", "audit.read", "stats.read", "user.ban", "msg.delete", "mute.write", "push.user", "push.all", "account.invite",
+            "moderation.words", "report.read", "report.handle",  # C6（PRD-chat 第 14.1 节，BE-498 第 2 条）
         })
-        self.assertEqual(set(by_id["console-msgread"]["scopes"]), {"msg.body.group", "msg.quarantine"})
+        self.assertEqual(set(by_id["console-msgread"]["scopes"]), {"msg.body.group", "msg.quarantine", "report.evidence"})
         self.assertTrue(by_id["console-msgread"]["bodyAccess"])
 
     def test_push_all_has_push_types_and_no_key_is_committed(self):

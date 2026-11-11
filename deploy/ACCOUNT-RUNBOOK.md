@@ -6,7 +6,7 @@
 
 | 配置 | 说明 |
 |---|---|
-| `IM_REGISTER_MODE` | `closed` / `invite` / `open`，默认 `invite`。生产环境 `open` 拒绝启动（C6 上线前一律拒绝） |
+| `IM_REGISTER_MODE` | `closed` / `invite` / `open`，默认 `invite`。生产环境 `open` 要 `IM_MOD_ENABLED=1`、`IM_V13_ADMIN_FEATURES=1`、`IM_PUBLIC_OPEN_ACK=1` 和非空词库，缺哪一条拒绝启动时指出哪一条（C6，见 `MODERATION-RUNBOOK.md` 第 1、6 节） |
 | `IM_REFRESH_KEYS`、`IM_REFRESH_ACTIVE_KID` | refresh 密钥，独立于 JWT 密钥。没配时账号接口 503 / 5030，其他功能不受影响 |
 | `IM_REFRESH_OVERLAP` | 默认 2 分钟，必须大于 60 秒（SDK 超时 30 秒 + 网关超时 30 秒），否则配置错误 |
 | `IM_ALLOW_TOKEN_ISSUE` | 生产环境有调用方带 `token.issue` 时必须设为 1 才能启动，配置检查一直显示 `token_issue_caller` 告警。这个权限能以任何用户身份登录，没有业务方后应该去掉 |
