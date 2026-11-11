@@ -1,9 +1,9 @@
-# console-server 任务单：天听聊天产品第一批（后台配合，C1、C2、C3、C4、C5）
+# console-server 任务单：天听聊天产品第一批（后台配合，C1、C2、C3、C4、C5、C6）
 
 | 项 | 内容 |
 |---|---|
-| 依据 | [PRD-chat v1.7](../prd/PRD-chat-v1.7.md)（冻结）第 11.6、14 节、F-ACC-09、F-APN-01 规则 4、F-RCL-04 和 F-CVS-03 规则 2；[PRD-admin v1.2](../prd/PRD-admin-v1.4.md) 基座（权限点、两阶段审计、错误码）；[errors.json](../../protocol/errors.json) |
-| 范围 | **C1、C2、C3、C4、C5**（CH-27）。C3 是 Frank 2026-11-10 决定按顺序继续的，同一天又决定"推送后续做，先做功能"，**C3 已暂停**（CS-203 保留）；C4 同一天决定接着做（CS-202 从 C2 挪来，CS-204 新增）；C5 是 Frank 2026-11-10 说"开始 C5"后分发的（CS-205，QUEUE Q29）。词库、举报（`moderation.words`、`report.*`、`console-msgread` 增加 `report.evidence`）属于 C6，这里不做 |
+| 依据 | [PRD-chat v1.7](../prd/PRD-chat-v1.7.md)（冻结）第 11.6、14 节、F-ACC-09、F-APN-01 规则 4、F-RCL-04、F-CVS-03 规则 2 和 F-MOD-01～04；[PRD-admin v1.2](../prd/PRD-admin-v1.4.md) 基座（权限点、两阶段审计、错误码）；[errors.json](../../protocol/errors.json) |
+| 范围 | **C1、C2、C3、C4、C5**（CH-27）。C3 是 Frank 2026-11-10 决定按顺序继续的，同一天又决定"推送后续做，先做功能"，**C3 已暂停**（CS-203 保留）；C4 同一天决定接着做（CS-202 从 C2 挪来，CS-204 新增）；C5 是 Frank 2026-11-10 说"开始 C5"后分发的（CS-205，QUEUE Q29）。C6（词库、举报：`moderation.words`、`report.*`、`console-msgread` 增加 `report.evidence`）是 Frank 2026-11-11 说"开始 C6"后分发的（CS-206～CS-208，PENDING P-47，QUEUE Q30） |
 | 负责 | 后端（AI） |
 | 仓库 | tianting-console-server（Go）。管理后台页面在 tianting-admin，见 [frontend-chat.md](frontend-chat.md)；im-server 接口见 [backend-chat.md](backend-chat.md) |
 | 编号 | **CS-200 起** |
@@ -21,6 +21,7 @@
 | CS-204 | ✅ 完成（console 一侧，页面随 FE-671） | console-server@427131e（**本地结果，CI 不运行**：真实 Postgres 17、真实 im-server `IM_MSG_ACTIONS_ENABLED=1`、`IM_FILES_ENABLED=1` + 假 S3，`go test -race -count=1 ./...` 全过）。元数据白名单 `messageMeta`、正文白名单 `bodyMessage` 加 `recalled`、`recalledAt`、`recalledBy`（`omitempty`）；`body` 原样透传（`quote`、`mentions` 在里面）。新增 `e2e/recall_test.go` 3 个用例：`TestTC_RCL_04_07_MetaRecalled`（AC-RCL-04-7：撤回的文本、文件两层响应都有 `recalled*`，没有 `body`、文件名、`fileSize`，字段只在白名单内）、`TestTC_RCL_04_03_BodyRecalled`（AC-RCL-04-3：普通授权撤回的 `deleted` 没有、`recalled=true`、没有 `body`；隔离授权有原文；`quote`、`mentions` 透传；引用文字不进元数据、console 审计和日志）、`TestTC_RCL_04_01_DeleteRecalled`（AC-RCL-04-1 经 console 的一次：200、元数据仍是撤回、没有 `msgDeleted`（哨兵法）、两边审计都有；响应丢失 504 / 5040 后对账补 `success`、不是 `localOnly` 或不一致）。单聊 `IM_C2C_BODY_ACCESS` 没有在 console 另测（im-server TC-RCL-04-05 覆盖，console 透传）。变异见 CS-202 一行 |
 | CS-202 | ✅ 完成（console 一侧，页面随 FE-671；批次 C4） | console-server@427131e（**本地结果**，同上）。新路由 `POST /console/api/files/{fileId}/fetch`（`msg.quarantine.read`、POST、请求体 `{convId, msgId, variant?}`），用 `console-msgread` 调 im-server 的 fetch；`imclient.Stream` 流式透传（不落盘、不缓存，超时只算到响应头）；固定 `Content-Disposition: attachment`（不带文件名）、`nosniff`、`no-store`，CSP 不变；两阶段审计 `msg.file.fetch`（intent 记 `fileId`、`msgId`、`variant`、授权前 8 位，result 记字节数；不记文件名）。授权按这个浏览器会话的隔离授权查、并比到期时间（问题 14）。新增 `TestTC_RCL_04_09_FetchViaConsole`（AC-RCL-04-9 console 一侧：没有权限点 4030、没有授权 / 只有普通授权 / 换浏览器会话 / 过期 4039 且不调用 im-server；有授权原图、缩略图 SHA-256 一致；没撤回、`fileId` 不属于 `msgId` 404 / 4048；主凭证直接调 im-server 4030；intent 写失败 5031 不调用；审计、全库、日志、请求都没有文件名）、`imclient.TestStream`；矩阵（AC-ADM-05-1）加了这个路由的样本（矩阵世界改成打开撤回和文件）。**变异 13 项全部被发现**（到期判断、`attachment`、隔离标志、路由权限点、元数据和正文的 `recalled`、审计 `fileId`、intent 失败、Stream 超时、Content-Type、对账按 localOnly、`nosniff`、本地过期不解绑）。单聊 `IM_C2C_BODY_ACCESS=off` 没有在 console 另测（im-server TC-RCL-04-09 单聊部分覆盖，console 透传 4030） |
 | CS-205 | ✅ 完成 | console-server@6f99519（**本地结果，CI 不运行**：真实 Postgres 17、真实 im-server@383bc0a 开 `IM_CONV_SETTINGS_ENABLED`、`IM_MSG_ACTIONS_ENABLED`、`IM_FILES_ENABLED`、`IM_C2C_BODY_ACCESS=on` + 假 S3，`go test -race -count=1 ./...` 全过）。代码没有改。新增 `e2e/cvs_test.go` 的 `TestTC_CVS_03_01_AdminQueriesUnaffected`（TC-CVS-03-01 第 4 步，AC-CVS-03-1，问题 19）：u1 置顶、免打扰后删除和 u2 的单聊（10 条，含特征串和撤回的图片）和群 g1；先确认 u1 的 `convs.deleted` 有这两个会话、`sync` 为空，再验后台的客服元数据、审核员正文、隔离原文、经 console 取撤回文件（原图、缩略图哈希）、用户会话列表都和删除前逐条一致，审计照写；u1 的 `pinned`、`notifyOff`、`clearedSeq` 不出现在任何后台响应里。反证 6 处（在 im-server 副本上改：元数据、正文、隔离原文、文件代理分别套用删除者的 clearedSeq，用户会话列表套用隐藏条件，用户详情多返回会话设置）都能抓到。见问题 20、21；**问题 20、22 补齐**（console 是白名单结构、不透传）：console-server@25b9922（用户详情：只放 `UserRow` 实际读的字段和 console 自己的 `account`、`accountUnavailable`，按原始 JSON 挑键，保留"键在不在"和 `null` 的含义）、@8988242（用户列表：外层 `users`、`nextCursor`，行内 `userId`、`nickname`、`createdAt`、`online`、`official`、`ban {until}`、`mutedUntil`；`TestBatch2` 列表断言改成只验 `ban.until`，封禁理由只在详情，依据 AC-ADM-13-9）、@57da60f（群列表、群成员、用户所在群、数据概览：`imRead` 换成 `imList`，分页外层只放列表和 `nextCursor`，行内按各页面实际读的字段；已有 e2e 断言没有改）。新增 `TestUserDetailWhitelist`、`TestUserListWhitelist` 和 `e2e/list_whitelist_test.go` 4 个用例：键集合和页面字段完全一致，翻页照常，im-server 多返回的字段（含 `convSettings`、未知字段）都不透传；反证 13 + 10 + 34 处都能抓到。console 里已经没有原样透传 im-server 响应的读接口。`go test -race -count=1 ./...` 全过（本地） |
+| CS-206～CS-208 | ⬜ 未开始 | 2026-11-11 分发（C6，QUEUE Q30） |
 
 ## 总览
 
@@ -31,9 +32,10 @@
 | C3 | CS-203 | 0.5 | 0.5 | 一致 |
 | C4 | CS-204（另做从 C2 挪来的 CS-202） | 0.5 | 1.5（这里 0.5，页面 FE-671 1） | 合计一致；CS-202 的 0.5 仍算在 C2 行（第 18 节按 C2 估的），C4 实际要做 1 |
 | C5 | CS-205 | 0.5 | 0.5（管理后台页面没有改动） | 一致 |
+| C6 | CS-206～CS-208 | 3 | 6（这里 3，页面 FE-696 1、FE-697 2） | 合计一致 |
 | 公共 | — | 0 | 0 | 一致 |
 
-**依赖顺序**：BE-421 → CS-200；BE-434 → CS-201；BE-453、BE-457 → CS-203 → BE-459（C3 暂停）；BE-474 → CS-204、CS-202 → FE-671 → BE-480；BE-485 → CS-205 → BE-489（C5）。
+**依赖顺序**：BE-421 → CS-200；BE-434 → CS-201；BE-453、BE-457 → CS-203 → BE-459（C3 暂停）；BE-474 → CS-204、CS-202 → FE-671 → BE-480；BE-485 → CS-205 → BE-489（C5）；BE-493、BE-494 → CS-206 → FE-696；BE-496、CS-202 → CS-207、CS-208 → FE-697 → BE-499（C6）。
 
 ---
 
@@ -117,9 +119,50 @@
   3. 管理后台页面没有 C5 的改动（第 14.1 节没有 C5 的行），运维后台也没有（AC-CHAT-90-17 的 C5 列是"—"）。
 - 工作量：0.5 人日（console + 后台页面列）
 
+### CS-206 词库接口和命中查询
+- 优先级：P0
+- 批次：C6
+- 仓库：tianting-console-server
+- 依赖：BE-493、BE-494
+- AC：AC-MOD-01-5、AC-MOD-01-6、AC-MOD-02-14
+- 内容：
+  1. 权限点（PRD-chat 第 14.1 节，PRD-admin 5.2 节随 BE-497 改）：`moderation.words` 给运营、审核；超管、客服、审计员没有（AC-MOD-01-5：`support` 添加词 403 / 4030）。AC-ADM-05-1 的参数化矩阵加新路由。
+  2. 路由：`GET` / `POST` / `PATCH` / `DELETE /console/api/moderation/words`、`POST .../import`，用主凭证 `console`（加 scope `moderation.words`，部署配置见 BE-498 第 2 条）转调 im-server。写操作走两阶段审计，动作名 `moderation.word.add`、`.update`、`.delete`、`.import`；**intent 和 result 只记操作、`wordId` 和数量，不记词内容**（AC-MOD-01-6）；请求日志不打请求体。
+  3. 命中查询 `GET /console/api/moderation/hits?userId=`：console 权限点 `report.read`（第 27 条，要 Frank 定；定之前只给审核），转调 im-server（scope `report.read`）；查询本身写审计（`moderation.hits.view`，记 `userId`）。
+  4. 页面见 FE-696。
+- 工作量：1 人日（console + 后台页面列）
+
+### CS-207 举报队列、详情、结案
+- 优先级：P0
+- 批次：C6
+- 仓库：tianting-console-server
+- 依赖：BE-496
+- AC：AC-MOD-03-1、AC-MOD-04-1、AC-MOD-04-2、AC-MOD-04-5、AC-MOD-04-10、AC-MOD-04-11、AC-MOD-04-14
+- 内容：
+  1. 权限点：`report.read`、`report.handle` 只给审核（`moderator`）；`support`、`operator` 读队列、结案都是 403 / 4030（AC-MOD-04-2）；超管默认没有，应急授权照旧（第 14.1 节）。主凭证 `console` 加 scope `report.read`、`report.handle`。
+  2. 队列 `GET /console/api/reports`（状态、理由、时间筛选，聚合次数）；详情 `GET /console/api/reports/{id}`：**每次打开写审计** `report.view`（F-MOD-04 规则 2）；**单聊举报要理由**，配额每天 50 个，和单聊元数据查询（`bizmeta.go` 第 142 行的 `msg.meta.c2c`）合并计算，超出 429 / 4292（AC-MOD-04-10）；console 的响应是白名单结构（同第 20、22 条的做法），没有 `note`、文件名（AC-MOD-04-10 第 3 种、AC-MOD-04-11）。
+  3. 结案 `POST /console/api/reports/{id}/resolve`（结论 + 理由，`report.handle`）：两阶段审计 `report.handle`；**写审计失败操作不执行，503 / 5031，未结案**（AC-MOD-04-14 后半，沿用 console 已有的审计写失败注入）；im-server 回 4098 时原样返回，页面刷新（AC-MOD-04-5）。
+  4. 页面上的"跳转已有操作"（删除消息、禁言、封禁、强制下线、解散群）只是链接到现有页面，各自走现有权限和审计（F-MOD-04 规则 5）；AC-MOD-04-1 的审计顺序 `report.view`、`report.evidence.grant`、`msg.delete`、`report.handle` 在这里和 CS-208 一起验。
+  5. 页面见 FE-697。
+- 工作量：1 人日（console + 后台页面列）
+
+### CS-208 举报证据：授权、读取、文件代理
+- 优先级：P0
+- 批次：C6
+- 仓库：tianting-console-server
+- 依赖：BE-496、CS-202
+- AC：AC-MOD-03-5、AC-MOD-03-11、AC-MOD-04-1、AC-MOD-04-3、AC-MOD-04-4、AC-MOD-04-9、AC-MOD-04-12、AC-MOD-04-13、AC-MOD-04-16
+- 内容：
+  1. 权限点 `report.evidence`（审核，敏感）；超管没有应急授权时 403 / 4030（AC-MOD-04-9）。只经 `console-msgread`（加 scope `report.evidence`）调用 im-server；主凭证 `console` 调用 403（AC-MOD-04-4，im-server 一侧在 BE-496）。
+  2. 授权 `POST /console/api/reports/{id}/evidence-grant`：流程同 F-ADM-08（理由 + **当次动态码**，不享受 step-up 窗口；工单号自动用举报 ID；配额在 im-server 和正文授权合并）；授权绑定这个浏览器会话（同 CS-202、第 14 条的做法）；审计 `report.evidence.grant`（记 `reportId`、授权前 8 位）。单聊在 `IM_C2C_BODY_ACCESS=off` 时 im-server 403 `c2cBodyDisabled`，原样返回，页面显示"单聊正文查看未开启"（AC-MOD-04-3）。
+  3. 读证据 `POST /console/api/reports/{id}/evidence`：返回正文、隔离原文（AC-MOD-03-5、03-11）、`note`、文件名，响应带水印需要的授权前 8 位；`undecryptable` 原样透传（页面显示"证据无法解密"）。审计 `report.evidence.view`，不记内容。
+  4. 文件代理：沿用 CS-202 的实现，新增路由 `POST /console/api/reports/{id}/files/{fileId}/fetch`（`report.evidence`，请求体 `{msgId, variant}`，带这个会话绑定的举报授权的 `grantId`，第 26 条）；**缩略图和原图都可以取**；固定响应头：图片校验类型后按 `inline` + 固定 `Content-Type` + `nosniff` 返回（页面同源 `<img>` 显示），其他类型只有 `attachment`；**后台 CSP 不变**（F-CON-10 规则 4，AC-MOD-04-12，第 25 条）。没有授权 403 / 4039（AC-MOD-04-16）；单聊文件 `off` 时 403 `c2cBodyDisabled`（AC-MOD-04-13）。两阶段审计 `report.file.fetch`（不记文件名）。
+  5. 页面见 FE-697。
+- 工作量：1 人日（console + 后台页面列）
+
 ---
 
-运维后台（第 14.2 节）的配置检查和指标都由 im-server 提供（BE-423、BE-438、BE-457），`tianting-ops` 的配置检查页按接口数据显示。C1、C2 没有页面改动；C3 的推送项见 CS-203。C4 的撤回指标 `im_recalls_total{by}` 和配置检查项 `msg_actions` 由 im-server 提供（BE-471），运维后台按接口数据通用显示，C4 不改页面（如果配置检查页是写死的项，随 FE-672 走查时补）。治理的项随 C6。
+运维后台（第 14.2 节）的配置检查和指标都由 im-server 提供（BE-423、BE-438、BE-457），`tianting-ops` 的配置检查页按接口数据显示。C1、C2 没有页面改动；C3 的推送项见 CS-203。C4 的撤回指标 `im_recalls_total{by}` 和配置检查项 `msg_actions` 由 im-server 提供（BE-471），运维后台按接口数据通用显示，C4 不改页面（如果配置检查页是写死的项，随 FE-672 走查时补）。C6 的治理指标和 `moderation` 检查项也由 im-server 提供（BE-492 第 4 条），配置检查页（`tianting-ops/src/pages/Config.tsx`）按接口数据通用显示，C6 不改运维后台页面。
 
 ---
 
@@ -149,3 +192,8 @@
 20. **用户详情接口不是白名单**（CS-205 实测）：`internal/app/bizusers.go` 的 `getUser` 把 im-server 的响应读进 `map[string]any` 后原样返回，和"console 是白名单结构、不透传"的设计不符；im-server 以后在用户详情里加字段（比如会话设置）会直接透到后台页面。**协调方定（按已有设计补齐，不改产品行为）**：改成按后台页面实际用到的字段白名单输出，加用例；CS-205 的用例同时兜住。
 21. **后台用户会话列表不隐藏用户删除的会话**（CS-205 实测）：im-server `ListUserConvMeta` 不套用删除会话的隐藏条件。符合 F-CVS-03 规则 2"后台查询不受影响"，按此验收，不改。
 22. **还有 5 处读接口原样透传 im-server 的响应**（CS-205 第 20 条之后实测）：用户列表、群列表、群成员、用户所在群、数据概览都用 `imRead` 原样返回。**协调方定（按已有设计补齐，不改产品行为）**：都改成按页面实际读取的字段白名单输出，已在 console-server@8988242、57da60f 完成。
+23. **console 权限点和 im-server scope 同名不同层**（CS-206～208，C6 分发时记）：`moderation.words`、`report.read`、`report.handle`、`report.evidence` 既是 console 的权限点（PRD-chat 第 14.1 节，给哪个角色）又是 im-server 的 scope（第 11.6 节，给哪个调用方）。console 先按权限点判后台账号，再用主凭证或 `console-msgread` 调 im-server；两边都要配，缺一边都是 403 / 4030。
+24. **词库操作的审计不记词内容**（CS-206，AC-MOD-01-6）：F-CON-08 规则 4 说 intent 含参数摘要，词就是参数，但 AC 要求审计搜不到词。按 AC：只记操作、`wordId` 和数量（同第 6 条 `note` 的做法）。
+25. **证据图片内联和 CS-202 的只下载不同**（CS-208）：F-MOD-04 规则 3"图片校验后内联，其他只提供附件"；CS-202（隔离原文的文件）是一律 `attachment`。举报路径按规则 3：服务端先校验图片类型（文件头和白名单一致），固定 `Content-Type`、`nosniff`、`inline`；隔离路径不变。后台 CSP 的 `img-src` 已含 `'self'` 的话不用改，**改 CSP 就是放宽，不允许**（AC-CON-10-3 不变），CS-208 实现时先核对。
+26. **举报文件用单独的路由**（CS-208）：不复用 `POST /console/api/files/{fileId}/fetch`（它的权限点是 `msg.quarantine.read`、授权是隔离授权），新开 `POST /console/api/reports/{id}/files/{fileId}/fetch`，权限点 `report.evidence`，`grantId` 用这个浏览器会话绑定的举报授权（backend-chat 第 109 条）。
+27. **按用户查命中次数的 console 权限点**（CS-206、FE-696）：第 14.1 节写词库页有命中统计、权限 `moderation.words`（运营也有）；im-server 的接口要 `report.read`。**要 Frank 定**（backend-chat 第 121 条）；定之前只给 `report.read`（审核）。

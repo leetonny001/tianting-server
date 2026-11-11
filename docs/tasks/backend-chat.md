@@ -1,17 +1,17 @@
-# 后端任务单：天听聊天产品第一批（C1 账号、C2 图片和文件、C3 离线推送、C4 撤回引用 @、C5 会话设置、公共部分）
+# 后端任务单：天听聊天产品第一批（C1 账号、C2 图片和文件、C3 离线推送、C4 撤回引用 @、C5 会话设置、C6 敏感词和举报、公共部分）
 
 | 项 | 内容 |
 |---|---|
-| 依据 | [PRD-chat v1.7](../prd/PRD-chat-v1.7.md)（冻结）第 4～9、11、12、14、15、16、17、18、20.3 节；[ARCH-v1](../arch/ARCH-v1.md)；[协议](../../protocol/README.md)、[错误码](../../protocol/ERRORS.md)、[管理接口](../../protocol/ADMIN.md) |
-| 范围 | **C1、C2、C3、C4 和公共部分**（PRD 决定 CH-27）。C3 是 Frank 2026-11-10 决定按顺序继续的，**同一天又决定"推送后续做，先做功能"，C3 已暂停**（任务和用例保留）；C4 是同一天决定接着做的；**C5 是 Frank 2026-11-10 在聊天里说"开始 C5"后分发的**（第 17 节 C5 行，QUEUE Q29）。C6 的 AC 不进任务；【全部】的 AC 验证到 C5 为止的部分（PRD 第 15 节累计表，C3 那一列等 C3 恢复） |
+| 依据 | [PRD-chat v1.7](../prd/PRD-chat-v1.7.md)（冻结）第 4～10、11、12、14、15、16、17、18、20.3 节；[ARCH-v1](../arch/ARCH-v1.md)；[协议](../../protocol/README.md)、[错误码](../../protocol/ERRORS.md)、[管理接口](../../protocol/ADMIN.md) |
+| 范围 | **C1、C2、C3、C4 和公共部分**（PRD 决定 CH-27）。C3 是 Frank 2026-11-10 决定按顺序继续的，**同一天又决定"推送后续做，先做功能"，C3 已暂停**（任务和用例保留）；C4 是同一天决定接着做的；**C5 是 Frank 2026-11-10 在聊天里说"开始 C5"后分发的**（第 17 节 C5 行，QUEUE Q29）；**C6 是 Frank 2026-11-11 在聊天里说"开始 C6"后分发的**（第 17 节 C6 行，PENDING P-47，QUEUE Q30）。【全部】的 AC 验证到 C6 为止的部分（PRD 第 15 节累计表，C3 那一列等 C3 恢复） |
 | 负责 | 后端（AI） |
 | 仓库 | im-server（GitHub 仓库 `tianting-server`，本地 `im-mvp/server/`）；协议在同仓库 `protocol/`，部署在 `deploy/`，工具在 `tools/` |
-| 编号 | **BE-400 起**。公共 BE-400～BE-408，C1 BE-410～BE-424，C2 BE-430～BE-440，C3 BE-450～BE-460，C4 BE-470～BE-481，C5 BE-482～BE-490 |
+| 编号 | **BE-400 起**。公共 BE-400～BE-408，C1 BE-410～BE-424，C2 BE-430～BE-440，C3 BE-450～BE-460，C4 BE-470～BE-481，C5 BE-482～BE-490，C6 BE-491～BE-499 |
 | 起点 | 现有迁移到 `0014_admin_stats.sql`；只有 SQLite；`IM_V13_ADMIN_FEATURES` 默认关闭；`tools/objstore-contract` 已有合同工具 |
-| 完成定义 | 任务内的 AC 都有通过的自动化测试，用例名带 TC 编号（[TC-ACC](../testcases/TC-ACC.md)、[TC-FILE](../testcases/TC-FILE.md)、[TC-APN](../testcases/TC-APN.md)、[TC-RCL](../testcases/TC-RCL.md)、[TC-QUO](../testcases/TC-QUO.md)、[TC-MEN](../testcases/TC-MEN.md)、[TC-CVS](../testcases/TC-CVS.md)、[TC-CHAT](../testcases/TC-CHAT.md)）；`go test -race ./...` 全过；默认配置下 `server/e2e` 现有文件不改代码全过（AC-ACC-07-1）；Schema、向量、`ERRORS.md`、`ADMIN.md` 同步；`python3 -I tools/trace.py --check` 没有缺口 |
+| 完成定义 | 任务内的 AC 都有通过的自动化测试，用例名带 TC 编号（[TC-ACC](../testcases/TC-ACC.md)、[TC-FILE](../testcases/TC-FILE.md)、[TC-APN](../testcases/TC-APN.md)、[TC-RCL](../testcases/TC-RCL.md)、[TC-QUO](../testcases/TC-QUO.md)、[TC-MEN](../testcases/TC-MEN.md)、[TC-CVS](../testcases/TC-CVS.md)、[TC-MOD](../testcases/TC-MOD.md)、[TC-CHAT](../testcases/TC-CHAT.md)）；`go test -race ./...` 全过；默认配置下 `server/e2e` 现有文件不改代码全过（AC-ACC-07-1）；Schema、向量、`ERRORS.md`、`ADMIN.md` 同步；`python3 -I tools/trace.py --check` 没有缺口 |
 | 环境限制 | **CI 现在不运行**（[PENDING](../reports/PENDING.md) P-21，Actions 预算是 $0），所有结果都是本地结果，要标明。开发机不装软件；真实 MinIO 要 Frank 同意才能临时构建。压测机 P-12、真机和渗透 P-13 未到位。**C3 的真实 APNs、FCM 要 Frank 先做 PRD 第 20.3 节的账号和网络步骤**（PENDING P-40），之前只用假通道 |
 
-格式说明：每个任务的 `- AC：` 一行列出它负责满足的验收标准，追溯矩阵由 `tools/trace.py` 从这一行生成。一条 AC 可以出现在多个任务里（功能任务 + 验收任务）。C6 只写在任务内容里说明，不进 `- AC：` 行。
+格式说明：每个任务的 `- AC：` 一行列出它负责满足的验收标准，追溯矩阵由 `tools/trace.py` 从这一行生成。一条 AC 可以出现在多个任务里（功能任务 + 验收任务）。C6 的 AC 从 2026-11-11 分发起进 `- AC：` 行。
 
 ## 进度
 
@@ -73,7 +73,8 @@
 | BE-488 | ✅ 完成 | `43911a8`。**本地结果，CI 不运行**。PRD-core **v1.6 → v1.7**：F-CONV-01 规则 4 作废（删除线保留原文），规则 1～3 加注 `pinned*`、`notifyOff`、`deleted`、隐藏条件、置顶排序；F-CONV-02 规则 5 总未读口径；F-GRP-03 规则 4 先查 `deleted`；128 条 AC 不变。PRD-ui **v1.4 → v1.5**：第 126 行、第 11 节、G-UI-07、08 去掉"不做"（"仅本地置顶"仍不做）；F-UI-04 规则 4、5、7、9；F-UI-23 加注，AC-UI-23-1、23-2 只加注、断言不变，TC-UI-23-01、02 同步；6.1 节 `color.surface.pinned`（浅色 `#F3F4F8`、深色 `#23262E`，取值按协调方转来的 tianting-web FE-683），6.2 节 L27～L31、D27～D31（另加 31 号小红点 3:1：浅色 4.40、深色 3.13）；6.6 节 `bell-off`，并按 tianting-web `src/components/Icon.tsx` 补列 C2 起已在用的图标（第 92 条）；279 条 AC 不变。旧版标"已被取代"，`trace.py`、frontend-chat 链接同步。`docs/sdk/README.md` 加 C5 接口和规则；隐私清单草稿加第 19～23 项（不是法律文本）。P-46 ③：`account_cleanup` 第 ② 步在 `RemoveUserSocial` 同一事务删除这个用户的全部 `conv_settings`，对方的不动（e2e `cvs_account_test.go`，反证 2 处都能抓到）。PRD-admin、PRD-social、PRD-ops 不改（第 3 条） |
 | BE-489 | 🟡 后端用例完成，等 C3 的 5 条未执行 | 报告 [c5-backend-acceptance-2026-11-11.md](../reports/c5-backend-acceptance-2026-11-11.md)，`5b38668`。**本地结果，CI 不运行**。30 条 AC：通过 19、部分通过 6、未执行 5、失败 0。AC-CVS-02-8、04-3，AC-MEN-03-2、03-3，AC-APN-04-4 **未执行（等 C3）**，AC-CVS-02-1 只验了 `unread` 那一半记部分通过（BE-490，P-46 按 P-43 ② 不算失败）；端到端 4 条的客户端部分随 FE-686；AC-CHAT-90-2 的 TC-PERF 等 P-12。新增特征串检查文件 `e2e/cvs_markers_test.go`（`TestTC_CVS_03_01_MarkersOnlyAffectSelf`：ZXQ-CVS-1、ZXQ-CVS-2 在 u1 的 `convs`、两个方向的 `sync`、`convDeleted`、文件地址都搜不到，u2、后台、库照常，`scan-logs` 扫日志和 `admin_audit`）。`chat-sync.json` 的 format 说明改为 `readSeq = maxSeq − unread`（frontend-chat 问题 69，用例数据逐字节不变）。没有改实现，没有新问题。全量 `go vet`、`go test ./...`、`go test -race ./...`、console-server 全量 `-race`（临时 Postgres）都通过 |
 | BE-490 | ⬜ 未开始 | 依赖 C3（AC-CVS-02-1、02-8、04-3，AC-MEN-03-2、03-3，AC-APN-04-4），C3 恢复后再做 |
-| 全部 | 🟡 C1、C2 已校准 | 见 [c1-acceptance-2026-11-07.md](../reports/c1-acceptance-2026-11-07.md) 第 9 节、[c2-calibration-2026-11-10.md](../reports/c2-calibration-2026-11-10.md)：人日不能直接换算成 AI 用时，瓶颈是本机资源和待决定项。C3 已分发（暂停）；C4 2026-11-10 已分发；C5 2026-11-10 已分发；C6 等 Frank 决定 |
+| BE-491～BE-499 | ⬜ 未开始 | 2026-11-11 分发（C6，QUEUE Q30）。不依赖 C3，没有"C3 恢复后做"的任务（文末第 94 条）；开发只用特征词，上线门槛见 BE-498 第 4 条 |
+| 全部 | 🟡 C1、C2 已校准 | 见 [c1-acceptance-2026-11-07.md](../reports/c1-acceptance-2026-11-07.md) 第 9 节、[c2-calibration-2026-11-10.md](../reports/c2-calibration-2026-11-10.md)：人日不能直接换算成 AI 用时，瓶颈是本机资源和待决定项。C3 已分发（暂停）；C4 2026-11-10 已分发；C5 2026-11-10 已分发；C6 2026-11-11 已分发 |
 
 ## 总览
 
@@ -85,23 +86,24 @@
 | C3 推送 | BE-450～BE-460 | 19.5 | 协议、迁移和开关、令牌注册、吊销删令牌、在线判断和补推、队列和 worker、内容和隐私、APNs 和 FCM 通道、部署、验收、文档（假通道 BE-406 的 1 人日在公共里） |
 | C4 撤回引用 @ | BE-470～BE-481 | 14.5 | 协议、迁移和开关、撤回命令、撤回的下发和隔离、后台接口和文件代理接口、引用、@ 和 @ 所有人、提及计数、共享向量、冻结文档、验收；撤回和推送的衔接（BE-481，等 C3） |
 | C5 会话设置 | BE-482～BE-490 | 8 | 协议、迁移和开关、置顶和免打扰、删除会话、多端同步、共享向量、冻结文档、验收；免打扰和推送的衔接（BE-490，等 C3） |
+| C6 敏感词和举报 | BE-491～BE-499 | 11 | 协议、迁移和开关、词库、发送检查、举报提交、举报处理接口、冻结文档、部署和上线门槛、验收；没有依赖 C3 的任务 |
 
 **人日对照（PRD-chat 第 18 节）**
 
-| 第 18 节的列 | 公共 | C1 | C2 | C3 | C4 | C5 | 落在 |
-|---|---|---|---|---|---|---|---|
-| 服务端 | 3 | 18.5 | 14.5 | 13 | 8.5 | 5 | 本单：BE-400～402、405；BE-410～421；BE-430～437；BE-450 0.5、BE-451 1.5、BE-452 2、BE-453 1.5、BE-454 2、BE-455 3、BE-456 1、BE-457 1.5；C4：BE-470 0.5、BE-471 0.5、BE-472 1.5、BE-473 0.5、BE-474 0.5、BE-475 1.5、BE-476 2、BE-477 1、BE-481 0.5；C5：BE-482 0.5、BE-483 1、BE-484 1、BE-485 1.5、BE-486 0.5、BE-490 0.5 |
-| console + 后台页面 | 0 | 1.5 | 2.5 | 0.5 | 1.5 | 0.5 | [console-chat](console-chat.md) 和 [frontend-chat](frontend-chat.md)；C3：CS-203；C4：CS-204 0.5、FE-671 1（CS-202 的 0.5 挪到 C4 做，人日仍记在 C2）；C5：CS-205 0.5（页面没有改动） |
-| sdk-ts / sdk-kotlin / sdk-swift | 1 / 1 / 1 | 3.5 / 4 / 4 | 3.5 / 5.5 / 5.5 | 0 / 3 / 3 | 3 / 4.5 / 4.5 | 1.5 / 2.5 / 2.5 | [frontend-chat](frontend-chat.md)；C3：FE-650、FE-651（sdk-ts 只同步协议副本，随 BE-450）；C4：FE-660；FE-661、662；FE-663、664；C5：FE-680；FE-681；FE-682 |
-| H5 / Android / iOS | 0 | 5 / 5.5 / 5.5 | 6 / 8 / 8 | 0 / 5 / 5 | 5 / 6 / 6 | 2 / 3 / 3 | [frontend-chat](frontend-chat.md)；C3：FE-652、653；FE-654、655；C4：FE-665、666；FE-667、668；FE-669、670；C5：FE-683；FE-684；FE-685 |
-| 测试 | 6 | 8.5 | 9.5 | 6 | 8 | 4 | 公共 6：BE-402～406。C1：BE-422 5 + FE-620 3.5。C2：BE-440 5.5 + FE-640 4。C3：BE-459 3.5 + FE-656 2.5。C4：BE-478 1 + BE-480 3.5 + FE-672 3.5。C5：BE-487 0.5 + BE-489 2 + FE-686 1.5 |
-| 部署 | 1 | 1.5 | 3 | 2 | 0 | 0 | BE-407；BE-423；BE-438 2 + BE-439 1；BE-458 2；C4 没有；C5 没有 |
-| 文档 | 4 | 3 | 1.5 | 1 | 1.5 | 0.5 | 公共：BE-400 1、BE-401 0.5、BE-408 2.5。C1：BE-423 1.5、BE-424 1、FE-620 0.5。C2：BE-438 1、BE-439 0.5。C3：BE-450 0.5、BE-460 0.5。C4：BE-470 0.5、BE-479 1。C5：BE-488 0.5 |
-| **合计（三份任务单）** | **17** | **60.5** | **67.5** | **38.5** | **48.5** | **24.5** | **256.5，和第 18 节一致**（C3 本单 19.5、console-chat 0.5、frontend-chat 18.5；C4 本单 14.5、console-chat 0.5、frontend-chat 33.5；C5 本单 8、console-chat 0.5、frontend-chat 16） |
+| 第 18 节的列 | 公共 | C1 | C2 | C3 | C4 | C5 | C6 | 落在 |
+|---|---|---|---|---|---|---|---|---|
+| 服务端 | 3 | 18.5 | 14.5 | 13 | 8.5 | 5 | 6.5 | 本单：BE-400～402、405；BE-410～421；BE-430～437；BE-450 0.5、BE-451 1.5、BE-452 2、BE-453 1.5、BE-454 2、BE-455 3、BE-456 1、BE-457 1.5；C4：BE-470 0.5、BE-471 0.5、BE-472 1.5、BE-473 0.5、BE-474 0.5、BE-475 1.5、BE-476 2、BE-477 1、BE-481 0.5；C5：BE-482 0.5、BE-483 1、BE-484 1、BE-485 1.5、BE-486 0.5、BE-490 0.5；C6：BE-491 0.5、BE-492 1、BE-493 1.5、BE-494 1.5、BE-495 1、BE-496 1 |
+| console + 后台页面 | 0 | 1.5 | 2.5 | 0.5 | 1.5 | 0.5 | 6 | [console-chat](console-chat.md) 和 [frontend-chat](frontend-chat.md)；C3：CS-203；C4：CS-204 0.5、FE-671 1（CS-202 的 0.5 挪到 C4 做，人日仍记在 C2）；C5：CS-205 0.5（页面没有改动）；C6：CS-206 1、CS-207 1、CS-208 1，FE-696 1、FE-697 2 |
+| sdk-ts / sdk-kotlin / sdk-swift | 1 / 1 / 1 | 3.5 / 4 / 4 | 3.5 / 5.5 / 5.5 | 0 / 3 / 3 | 3 / 4.5 / 4.5 | 1.5 / 2.5 / 2.5 | 1 / 1 / 1 | [frontend-chat](frontend-chat.md)；C3：FE-650、FE-651（sdk-ts 只同步协议副本，随 BE-450）；C4：FE-660；FE-661、662；FE-663、664；C5：FE-680；FE-681；FE-682；C6：FE-690；FE-691；FE-692 |
+| H5 / Android / iOS | 0 | 5 / 5.5 / 5.5 | 6 / 8 / 8 | 0 / 5 / 5 | 5 / 6 / 6 | 2 / 3 / 3 | 1.5 / 2 / 2 | [frontend-chat](frontend-chat.md)；C3：FE-652、653；FE-654、655；C4：FE-665、666；FE-667、668；FE-669、670；C5：FE-683；FE-684；FE-685；C6：FE-693；FE-694；FE-695 |
+| 测试 | 6 | 8.5 | 9.5 | 6 | 8 | 4 | 5 | 公共 6：BE-402～406。C1：BE-422 5 + FE-620 3.5。C2：BE-440 5.5 + FE-640 4。C3：BE-459 3.5 + FE-656 2.5。C4：BE-478 1 + BE-480 3.5 + FE-672 3.5。C5：BE-487 0.5 + BE-489 2 + FE-686 1.5。C6：BE-499 2.5 + FE-698 2.5 |
+| 部署 | 1 | 1.5 | 3 | 2 | 0 | 0 | 0.5 | BE-407；BE-423；BE-438 2 + BE-439 1；BE-458 2；C4 没有；C5 没有；C6：BE-498 0.5 |
+| 文档 | 4 | 3 | 1.5 | 1 | 1.5 | 0.5 | 1.5 | 公共：BE-400 1、BE-401 0.5、BE-408 2.5。C1：BE-423 1.5、BE-424 1、FE-620 0.5。C2：BE-438 1、BE-439 0.5。C3：BE-450 0.5、BE-460 0.5。C4：BE-470 0.5、BE-479 1。C5：BE-488 0.5。C6：BE-491 0.5、BE-497 1 |
+| **合计（三份任务单）** | **17** | **60.5** | **67.5** | **38.5** | **48.5** | **24.5** | **28** | **284.5，和第 18 节一致**（C3 本单 19.5、console-chat 0.5、frontend-chat 18.5；C4 本单 14.5、console-chat 0.5、frontend-chat 33.5；C5 本单 8、console-chat 0.5、frontend-chat 16；C6 本单 11、console-chat 3、frontend-chat 14） |
 
-**差异说明**：合计和第 18 节没有差异，因为这里是按第 18 节的列拆分，不是独立重估，**都是低置信**。下面这些第 18 节没有单独算，也没有另加人日，如果 C1 校准时超出就从这里看：① 第 4.5 节没有列的暂停点和故障注入（BE-404、BE-405）；② `sessions revoke-all` 命令路径（BE-415）；③ 邀请码重新启用和可信出口网段的配置（BE-421、BE-423）。**C3 同样是按列拆分**，第 18 节没有单独算、这里也没有另加人日的：④ 官方文档核对后补的行为（JWT 定时重签、`ExpiredProviderToken` 重签重试、延迟重试队列、410 的 `timestamp` 比较，文末第 34～46 条）；⑤ 假通道按官方错误码补的注入（BE-406）；⑥ 真机等待和 Frank 的账号步骤（第 18 节本来就不含）。**C4 同样是按列拆分**：⑦ BE-481（撤回和推送的衔接，等 C3）的 0.5 从撤回行的服务端 3.5 里拆出，没有另加；⑧ CS-202（后台看文件内容）从 C2 挪到 C4 做，它的 0.5 人日仍算在 C2（第 18 节 C2 行），C4 实际要做的任务合计 49；⑨ 第 18 节没有单独算、这里也没有另加的：后台版和下行版序列化分开（BE-474）、`fetch` 接口（BE-474）、成员搜索的 `keyword`（BE-476）。**C5 同样是按列拆分**：⑩ BE-490（免打扰和推送的衔接，等 C3）的 0.5 从 C5 行服务端 5 里拆出，没有另加；⑪ 第 18 节没有单独算、这里也没有另加的：`files/urls.go` 和 `authorize` 的 `minSeq` 改造（BE-485）、角标聚合函数先做（BE-484）、`convSettings` 失效广播的发布端（BE-483）、后台查询的回归（CS-205）。
+**差异说明**：合计和第 18 节没有差异，因为这里是按第 18 节的列拆分，不是独立重估，**都是低置信**。下面这些第 18 节没有单独算，也没有另加人日，如果 C1 校准时超出就从这里看：① 第 4.5 节没有列的暂停点和故障注入（BE-404、BE-405）；② `sessions revoke-all` 命令路径（BE-415）；③ 邀请码重新启用和可信出口网段的配置（BE-421、BE-423）。**C3 同样是按列拆分**，第 18 节没有单独算、这里也没有另加人日的：④ 官方文档核对后补的行为（JWT 定时重签、`ExpiredProviderToken` 重签重试、延迟重试队列、410 的 `timestamp` 比较，文末第 34～46 条）；⑤ 假通道按官方错误码补的注入（BE-406）；⑥ 真机等待和 Frank 的账号步骤（第 18 节本来就不含）。**C4 同样是按列拆分**：⑦ BE-481（撤回和推送的衔接，等 C3）的 0.5 从撤回行的服务端 3.5 里拆出，没有另加；⑧ CS-202（后台看文件内容）从 C2 挪到 C4 做，它的 0.5 人日仍算在 C2（第 18 节 C2 行），C4 实际要做的任务合计 49；⑨ 第 18 节没有单独算、这里也没有另加的：后台版和下行版序列化分开（BE-474）、`fetch` 接口（BE-474）、成员搜索的 `keyword`（BE-476）。**C5 同样是按列拆分**：⑩ BE-490（免打扰和推送的衔接，等 C3）的 0.5 从 C5 行服务端 5 里拆出，没有另加；⑪ 第 18 节没有单独算、这里也没有另加的：`files/urls.go` 和 `authorize` 的 `minSeq` 改造（BE-485）、角标聚合函数先做（BE-484）、`convSettings` 失效广播的发布端（BE-483）、后台查询的回归（CS-205）。**C6 同样是按列拆分**：⑫ 没有依赖 C3 的 AC，没有从哪一列拆出任务；⑬ 第 18 节没有单独算、这里也没有另加的：`open` 模式的逐项启动检查（BE-492）、`fetch` 的举报授权路径（BE-496）、证据图片的同源内联（CS-208）、上线门槛清单（BE-498）；AC-MOD-02-13、AC-MOD-04-17 的功能 C1、C2 已有，只补用例。
 
-**依赖顺序**：BE-400、BE-401 → BE-408、BE-402、BE-403 → BE-405、BE-407 → BE-410 → BE-411 → BE-412 → BE-413、BE-414 → BE-415 → BE-416 → BE-417 → BE-418 → BE-419、BE-420、BE-421 → BE-424、BE-423 → BE-422 →（C1 结束，校准）→ BE-404、BE-406 → BE-430 → BE-431 → BE-432 → BE-433 → BE-434 → BE-435 → BE-436 → BE-437 → BE-438、BE-439 → BE-440 →（C2 校准，Frank 决定 C3）→ BE-450 → BE-406、BE-451、BE-460 → BE-452、BE-454 → BE-453、BE-455 → BE-456、BE-457 → BE-458 → CS-203 → BE-459。**C3 暂停后先做 C4**：BE-470 → BE-471、BE-478、BE-479 → BE-472、BE-475、BE-476（可以并行）→ BE-473、BE-477 → BE-474 → CS-204、CS-202 → BE-480；BE-481 等 C3 恢复后的 BE-455、BE-456。**C5**：BE-482 → BE-483、BE-487、BE-488 → BE-484 → BE-485 → BE-486 → CS-205 → BE-489；BE-490 等 C3 恢复后的 BE-406、BE-455、BE-456。console 和前端的依赖写在各自任务里。
+**依赖顺序**：BE-400、BE-401 → BE-408、BE-402、BE-403 → BE-405、BE-407 → BE-410 → BE-411 → BE-412 → BE-413、BE-414 → BE-415 → BE-416 → BE-417 → BE-418 → BE-419、BE-420、BE-421 → BE-424、BE-423 → BE-422 →（C1 结束，校准）→ BE-404、BE-406 → BE-430 → BE-431 → BE-432 → BE-433 → BE-434 → BE-435 → BE-436 → BE-437 → BE-438、BE-439 → BE-440 →（C2 校准，Frank 决定 C3）→ BE-450 → BE-406、BE-451、BE-460 → BE-452、BE-454 → BE-453、BE-455 → BE-456、BE-457 → BE-458 → CS-203 → BE-459。**C3 暂停后先做 C4**：BE-470 → BE-471、BE-478、BE-479 → BE-472、BE-475、BE-476（可以并行）→ BE-473、BE-477 → BE-474 → CS-204、CS-202 → BE-480；BE-481 等 C3 恢复后的 BE-455、BE-456。**C5**：BE-482 → BE-483、BE-487、BE-488 → BE-484 → BE-485 → BE-486 → CS-205 → BE-489；BE-490 等 C3 恢复后的 BE-406、BE-455、BE-456。**C6**：BE-491 → BE-492、BE-497 → BE-493、BE-495（可以并行）→ BE-494、BE-496 → BE-498、CS-206～CS-208 → BE-499；没有等 C3 的任务。console 和前端的依赖写在各自任务里。
 
 ---
 
@@ -1059,6 +1061,158 @@
 
 ---
 
+## C6 敏感词和举报
+
+> 2026-11-11 分发（依据 Frank 2026-11-11 在聊天里说"开始 C6"，PENDING P-47，满足第 17 节 C6 行"CH-27 校准后 Frank 决定继续"；QUEUE Q30）。依据 PRD 第 10 节 F-MOD-01～04，第 4.1、4.3、4.5、11、12、14、15、16 节的 C6 部分，其他章节标【C6】的 AC-ACC-01-9、AC-ACC-10-5、AC-CHAT-90-4，第 15 节累计表的 C6 列，第 17 节 C6 行，第 18 节 C6 行（28 人日）；后台部分另依据 PRD-admin v1.4 第 5 节（角色和权限点）、F-KEY-02、F-ADM-08、F-ADM-30 和第 12 节。开关 `IM_MOD_ENABLED`；证据密钥 `IM_REPORT_KEY`。
+> **开发不阻塞、上线有门槛**：词库负责人（CH-19）和举报处理人（CH-22）由 Frank 在 C6 上线前指定（第 20.3 节，P-47）。**仓库、代码、用例、向量、部署示例里都不放真实词库**（F-MOD-01 规则 5），开发和测试只用特征词：AC 原文里的 `违规词`、`badword`、`ZXQWORD` 和 `ZXQ-*` 特征串；性能用例的 10 万词由测试现场随机生成，不落盘、不提交。上线门槛清单见 BE-498 第 4 条（文末第 93 条）。
+> **C6 不依赖 C3**：逐条核对了 F-MOD-01～04 的 58 条和 AC-ACC-01-9、AC-ACC-10-5、AC-CHAT-90-4，没有一条的预期要推送 worker 或假通道（"2 秒内收不到任何帧"说的都是 WS 帧，用现有的哨兵法），所以**没有"C3 恢复后做"的任务**（文末第 94 条）。C3 恢复时 BE-459 补一条哨兵用例：4510 拦下的消息、举报、结案都不进推送队列。
+> **`IM_C2C_BODY_ACCESS` 和 C6 的关系**（文末第 95 条，都是 PRD 原文，不是新决定）：① 存证据时读开关（F-MOD-03 规则 5）：`off` 时单聊只存元数据（不存正文、文件名和文件引用，也就不延长文件保留）；`on` 时和群一样。② 读证据时再读一次（F-MOD-04 规则 4）：`off` 时单聊证据和单聊文件一律 403 / 4030 `c2cBodyDisabled`，不管当时存了什么（AC-MOD-04-3、04-13）；`off` 期间的举报，之后打开开关也没有正文（AC-MOD-03-10）。③ 单聊举报的元数据照常可看，要理由、每天 50 个，和 F-ADM-30 规则 3 合并（F-MOD-04 规则 2）。④ 开关只能改配置重启（PRD-admin F-KEY-02 规则 3），打开要先满足 PRD-admin 第 12 节第一行的 ①～④。⑤ `on` 时单聊证据用哪个权限读，PRD 没写，见第 104 条（要 Frank 定，不阻塞：第一批 `off`）。
+> 现状（2026-11-11 调查，tianting-server `a6a2a4f`）：没有 `blocked_words`、`moderation_hits`、`reports`、`report_evidence`、`report` 命令、4510、4098；没有 `IM_MOD_ENABLED`、`IM_REPORT_KEY`、`IM_CLIENT_CUSTOM_MSG`，客户端现在能发 `custom`；`config/checks.go` 第 133～136 行对生产 `open` 一律拒绝（注释"逐项报错随 C6"）；`adminauth.IsBodyScope`（`scope.go` 第 46 行）只有 `msg.body.*`、`msg.quarantine`；`admin/files_fetch.go` 只认 `msg.quarantine`（第 24 行注释"report.evidence 随 C6"）；`files.evidence_until` C2 已建列（`0017_files.sql` 第 32 行）；`account_events_purge` C1 已有（`app/app.go`、`account/service.go`）；第 4.3 节第 6～10 步失败退还 `newPeerReject` 的 `onReject` C2 已有（`logic/social.go` 第 731 行）；AES-GCM 加密器 `quarantine.Cipher` C4 已有，证据用同一实现、不同密钥；`golang.org/x/text` 已在 `go.mod`（标准化不加新依赖）。`friendApply`、`groupCreate`、`groupUpdate` 在 `logic/social.go` 第 184 行、`logic/group.go` 第 117、392 行；注册、改资料在 `account/register.go` 第 45 行、`account/profile.go` 第 24 行。console 的单聊元数据配额在 console-server `internal/app/bizmeta.go` 第 142 行（`dailyQuota("msg.meta.c2c", …)`）。
+> 迁移号：C6 用 `0020_moderation.sql`；C3 恢复时 BE-451 用下一个空号（同第 52、76 条）。
+
+### BE-491 协议变更（C6 部分）：report、4510、4098、管理接口
+- 优先级：P0
+- 批次：C6
+- 仓库：tianting-server（`protocol/`、`server/internal/protocol`）
+- 依赖：BE-482
+- AC：AC-CHAT-90-10
+- 内容：
+  1. `frame.schema.json`（第 11.1 节）：上行 `report {targetType, convId?, msgIds?, userId?, groupId?, reason, note?}` → `{reportId}`。Schema 按 `targetType` 用条件约束：`message` 必须有 `convId`、`msgIds`（非空数组），不能带 `userId`、`groupId`；`user` 必须有 `userId`；`group` 必须有 `groupId`；`reason` 是 `spam`、`abuse`、`porn`、`fraud`、`illegal`、`other`；`note` 字符串。**`msgIds` 超过 20 不写进 Schema**（服务端返回 4131，AC-MOD-03-2）；`note` 的 200 个码点由服务端按码点判（Schema 的长度是 UTF-16 单位，只能近似）。`convId` 不能是聊天室。
+  2. `errors.json`、`ERRORS.md`（第 11.5 节）：新增 4510 `CONTENT_BLOCKED`（451，`ws`、`client`，不重试，文案"消息包含不当内容，无法发送"，**不带 `details`**，F-MOD-02 规则 6）、4098 `REPORT_ALREADY_HANDLED`（409，`admin`、`console`，"举报已被处理"，动作"刷新列表"）。已有码的扩展：`4040` 加 `reason: reportTargetInvalid`；`4000` 加 `reason: customDisabled`；`4131` 的 scope 加 `ws`（举报超过 20 条，C4 已为 @ 加过的话核对即可）；`4292` 按"命令 + 码"加举报的文案"今天的举报次数已用完"（RC2-20）；`4030` 的 `featureDisabled`、`c2cBodyDisabled` 已有。
+  3. `http-client.schema.json`：`GET /v1/config` 的 `features` 增加 `moderation`（文末第 96 条；同 C4 的 `msgActions`、C5 的 `convSettings`，老服务端没有这个字段按 false）。
+  4. `ADMIN.md`（第 11.6 节）：scope 目录加 `moderation.words`、`report.read`、`report.handle`、`report.evidence`（正文类）；写清 `/admin/moderation/words`（含 `import`）、`/admin/moderation/hits`、`/admin/reports`、`/admin/reports/{id}`、`/admin/reports/{id}/resolve`、`/admin/report-grants`、`/admin/reports/{id}/evidence` 的请求和响应（PRD 没写，按第 97 条），以及 `POST /admin/files/{fileId}/fetch` 的 `report.evidence` 路径（第 109 条）。
+  5. `frames.json` 增加合法、非法用例：三种 `targetType` 各一个合法的；`message` 缺 `msgIds`、`message` 带 `userId`、`reason=xxx`（非法）；ack `{reportId}`；4510 的错误 ack（没有 `details`）。服务端 `logic` 用真实帧解析跑全部新用例（AC-CHAT-90-10 的 C6 服务端部分，TC-CHAT-90-46）。三套 SDK 同步 `protocol/` 副本，执行器随 FE-690～692。
+  6. 第 15 节累计表 AC-CHAT-90-15 的 C6 列是"—"：`chat-sync.json`、`account-session.json` 不加用例。
+- 工作量：1 人日（服务端 0.5；文档 0.5：`ERRORS.md`、`ADMIN.md`）
+
+### BE-492 迁移、配置、开关、启动检查和运维项
+- 优先级：P0
+- 批次：C6
+- 仓库：tianting-server（`store`、`config`、`app`、`adminauth`、`metrics`、`testhook`、`deploy/`）
+- 依赖：BE-491
+- AC：AC-ACC-01-9、AC-ACC-10-5、AC-MOD-01-10、AC-MOD-04-8、AC-MOD-02-10、AC-MOD-02-15、AC-MOD-03-14、AC-CHAT-90-2、AC-CHAT-90-17
+- 内容：
+  1. `0020_moderation.sql`（第 12.1 节，只加新表，SQLite / Postgres 兼容，时间 `BIGINT` 毫秒）：`blocked_words(word_id PK, word, norm, compact, state, created_at, updated_at)`，`norm` 唯一（第 100 条）；`moderation_hits(user_id, scene, word_id, at)`，索引 `(user_id, at)`、`(at)`；`reports(report_id PK, reporter, target_type, conv_id, target_user, group_id, msg_ids, reason, dedup_key, state, conclusion, handled_by, handled_at, created_at)`，索引 `(state, created_at)`、`(reporter, dedup_key, created_at)`、`(target_user)`；`report_evidence(report_id, idx, ciphertext, expires_at)`，`note`、文件名、正文都只在密文里（第 122 条）。Store 接口名先查有没有被占用（第 50 条的教训），走 `storetest` 契约用例，Postgres 随 B6。
+  2. 第 4.1 节配置：`IM_MOD_ENABLED`（默认关）、`IM_REPORT_DAILY`（20）、`IM_REPORT_EVIDENCE_DAYS`（180）、`IM_CLIENT_CUSTOM_MSG`（`IM_ENV=production` 时默认 0，否则默认 1）、`IM_REPORT_KEY`（32 字节随机值，base64）；`moderation_hits` 的 90 天 PRD 没有变量名，用 `IM_MOD_HITS_DAYS`（第 98 条）。开关关：不检查敏感词（AC-MOD-02-10），`report` 403 / 4030 `featureDisabled`（AC-MOD-03-14 后半），`features.moderation=false`；管理接口和定时清理照常（第 108 条，要 Frank 确认）。
+  3. 启动检查：① `IM_MOD_ENABLED=1` 时缺 `IM_REPORT_KEY`、长度不对、或和 `IM_QUARANTINE_KEY`、`IM_JWT_SECRET` 相同：**任何环境都启动失败**（第 99 条，同第 54 条的做法）。② 生产 + `IM_MOD_ENABLED=1`：要 `IM_V13_ADMIN_FEATURES=1`（AC-MOD-01-10，第 4.1 节）和 `IM_PRIVACY_NOTICE_VERSION`（AC-ACC-10-5，F-ACC-10 规则 4）。③ 生产 + `IM_REGISTER_MODE=open`：把 `checks.go` 第 133～136 行的一律拒绝改成逐项检查 `IM_MOD_ENABLED=1`、`IM_V13_ADMIN_FEATURES=1`、词库非空、`IM_PUBLIC_OPEN_ACK=1`，错误信息指出缺哪一条（AC-ACC-01-9）；词库非空要读库，放在迁移之后。AC-ACC-01-19 的输入不满足这些条件，结果仍是拒绝，用例不改（第 106 条）。④ 调用方配置：`report.evidence` 加进 `adminauth.IsBodyScope`，`console` 同时带 `report.evidence` 和 `msg.meta` 非 0 退出、指出正文类 scope 的限制（AC-MOD-04-8）；scope 目录加 4 个新 scope，未声明 scope 的新路由启动失败（AC-KEY-02-3 不变）。
+  4. 配置检查（F-OPS-10，第 14.2 节）新增 `moderation` 项：开关状态、词库是否为空（告警，F-MOD-01 规则 6）、`IM_REPORT_KEY` 是否已设置（不含值）、生产打开 `IM_CLIENT_CUSTOM_MSG` 的告警（AC-MOD-02-15）。指标（F-OPS-06）：`im_blocked_total{scene}`（场景见第 110 条）、`im_mod_reload_errors_total`、`im_reports_pending`（第 107 条），标签没有无界字段（AC-OPS-90-4）。告警（F-OPS-07）：词库加载失败是第一批唯一默认开的页面告警，加进 `deploy/` 的告警规则；举报积压的告警默认不开（F-MOD-04 规则 7）。运维后台的配置检查页是按接口数据通用显示的（`tianting-ops/src/pages/Config.tsx`），不改页面。AC-CHAT-90-17 的 C6 部分（TC-CHAT-90-47）。
+  5. 故障注入（第 4.5 节，只在测试模式生效，AC-CHAT-90-18 的生产拒绝不变）：`POST /admin/test/faults` 增加 `wordsReload`（重新加载失败）、`wordsStartupLoad`（启动加载失败）、`evidenceWrite`（证据写失败）。"证据密钥不匹配"用换一把 `IM_REPORT_KEY` 重启来造，不加注入。
+  6. AC-CHAT-90-2 的 C6 部分：开关关时现有 e2e 不改代码全过（TC-CHAT-90-41）；`IM_CLIENT_CUSTOM_MSG` 不跟 `IM_MOD_ENABLED` 走（第 105 条），开发和测试环境默认 1，现有发 `custom` 的 e2e 不受影响。
+- 工作量：1 人日（服务端）
+
+### BE-493 词库：存储、标准化、匹配、生效和管理接口
+- 优先级：P0
+- 批次：C6
+- 仓库：tianting-server（`moderation`（新包）、`store`、`admin`、`cache`）
+- 依赖：BE-492
+- AC：AC-MOD-01-1、AC-MOD-01-2、AC-MOD-01-3、AC-MOD-01-4、AC-MOD-01-6、AC-MOD-01-8、AC-MOD-01-9、AC-CHAT-90-4
+- 内容：
+  1. 管理接口（第 11.6 节，scope `moderation.words`）：`GET /admin/moderation/words?q=&state=&cursor=&limit=`；`POST`（单个；空、超过 64 个码点 400 / 4000，第 102 条）；`PATCH /{id}`（只改 `state`）；`DELETE /{id}`（物理删除，`moderation_hits` 的 `word_id` 保留、不级联）；`POST .../import`（`{words: [...]}`，一次最多 5000，超出 400 / 4131，AC-MOD-01-4；空行、超过 64 码点的跳过计入 `invalid`，AC-MOD-01-9；结果 `{added, duplicate, invalid}`，第 103 条）。**去重按 `norm`**（第 100 条）：已有的（含停用的）计入 `duplicate`，状态不变。
+  2. im-server 侧审计（F-KEY-04，AC-MOD-01-6）：`admin/audit.go` 的字段白名单只记操作、`wordId` 和数量（`count`、`added`、`duplicate`、`invalid`），**不记词内容**；请求日志不打请求体。console 一侧见 CS-206。
+  3. 标准化（规则 3）：NFKC → 去变音符（NFD 后去掉 `Mn`）→ 英文小写 → 去掉 Default_Ignorable（零宽、变体选择符、Bidi 控制等）得到 `norm`；再去掉空白和标点得到 `compact`。**词和待查文本用同一个函数**（第 101 条：词里本来有空格、标点的，`compact` 里也去掉）。只用于匹配，存储和下发的仍是原文（AC-MOD-02-3）。用已有的 `golang.org/x/text`，不加依赖。语料误判测一次（R-CS-17），结果写进 BE-499 的报告。
+  4. 匹配（规则 4）：`norm` 和 `compact` 各一个 Aho-Corasick 自动机，构建成不可变快照，用 `atomic.Pointer` 整体替换，匹配不加锁；返回第一个命中的 `word_id`（只用于记录，不返回给客户端）。AC-CHAT-90-4：10 万词（随机中英文，长度 2～8，测试现场生成）、5000 码点不命中的中文文本、10000 次单线程，P99 ≤ 2 ms（未校准）；写成 `go test -bench` + TC-CHAT-90-42，开发机结果只记录。
+  5. 生效（规则 2）：写操作提交后经 `cache.Invalidator` 发主题 `blockedWords`，各节点订阅后重建快照，10 秒内生效（AC-MOD-01-1、01-2）；另有 60 秒 TTL 兜底重载。双节点用现有 `twoNodes`（AC-MOD-01-3）。
+  6. 失败（F-MOD-01 异常）：重新加载失败沿用内存里的旧快照，`im_mod_reload_errors_total` 加 1，日志不含词（AC-MOD-01-8 第 1 种）；`IM_MOD_ENABLED=1` 时启动加载失败直接非 0 退出（第 2 种）；词库为空时不拦截、配置检查告警（第 3 种）。
+  7. 停用的词不进自动机。`IM_MOD_ENABLED=0` 时不加载、不建自动机，管理接口照常可用（第 108 条）。
+- 工作量：1.5 人日（服务端）
+
+### BE-494 发送检查：各场景、custom、命中记录
+- 优先级：P0
+- 批次：C6
+- 仓库：tianting-server（`logic`、`account`、`store`、`admin`）
+- 依赖：BE-493
+- AC：AC-MOD-02-1、AC-MOD-02-2、AC-MOD-02-3、AC-MOD-02-4、AC-MOD-02-5、AC-MOD-02-6、AC-MOD-02-7、AC-MOD-02-8、AC-MOD-02-11、AC-MOD-02-12、AC-MOD-02-13、AC-MOD-02-14、AC-MOD-02-16
+- 内容：
+  1. 单聊、群聊发送（第 4.3 节第 9 步，F-MOD-02 规则 5）：在格式、去重、禁言、限流、单聊权限 / 群成员、附件预检、引用校验、@ 所有人权限**之后**检查；命中 4510，消息不保存、不投递（AC-MOD-02-1）；已扣发送令牌；单聊新对象的 `newPeerReject` 走已有的 `onReject` 退还（AC-MOD-02-12；AC-MOD-02-13 的 4048、4096、4040 C2、C4 已经退还，C6 补用例）；@ 所有人次数在保存事务里扣，4510 不扣（AC-MOD-02-16）。被拉黑、被禁言的先返回 4036、4031（AC-MOD-02-7）。已保存的消息重发走第 2 步去重，不重新检查（AC-MOD-02-14 前半，规则 8）。
+  2. 检查内容（规则 2、3）：`text` 的 `text`；`image`、`file` 的**服务端记录的文件名**（`files.name`，不是客户端上行的字段，第 111 条；AC-MOD-02-4）；不查引用摘要、`tip`、管理接口写入的内容、系统通知、图片和文件内容；`custom` 不查（生产禁止客户端发送，第 3 条）。
+  3. `custom`（规则 4）：`IM_CLIENT_CUSTOM_MSG=0` 时客户端 `send` 的 `type=custom` 返回 400 / 4000 `reason: customDisabled`，消息不保存（AC-MOD-02-6）；`=1` 时行为和现在一样（AC-MOD-02-11）；只影响客户端 `send`，管理接口和 `frames.json` 不受影响。放在第 1 步格式校验里。
+  4. 其他场景（规则 2，AC-MOD-02-5）：注册的用户名和昵称（`/v1/account/register`，在邀请码校验之后、用户名唯一性判断之前，第 112 条）；改昵称（`PATCH /v1/account/profile`）；客户端的 `groupCreate` 群名和公告、`groupUpdate` 的群名和公告（在群权限判定之后）；**好友申请附言**（`friendApply`：格式、限流之后，**F-SOC-02 的存在性判断之前**，不存在的对象也返回 4510，响应和对方是否存在无关，第 112 条）。都是"内容未写入"。HTTP 接口返回 451 / 4510。C6 上线前已注册的违规用户名不能改名，后台封禁处理（规则 2，部署说明写明）。
+  5. 命中记录（规则 7）：写 `moderation_hits(user_id, scene, word_id, at)`，**不存消息全文**，日志只记场景和 `word_id`（AC-MOD-02-8）；场景名见第 110 条；注册时还没有用户，只计指标不写行（第 113 条）。写入失败不影响拦截结果。`im_blocked_total{scene}` 加 1。
+  6. 查询和清理：`GET /admin/moderation/hits?userId=`（scope `report.read`）返回这个用户在保留期内按场景的次数和最近 50 条（时间、场景、`word_id`），不含任何内容（第 114 条）；`moderation_hits_purge`（单节点定时任务，同 F-ADM-32）清除 `IM_MOD_HITS_DAYS` 之前的行，[IM 钟] 推进 91 天后被清除（AC-MOD-02-14 后半）。
+  7. 响应不告诉用户命中了哪个词（规则 6）：4510 没有 `details`，日志和审计也不记命中的词内容。
+- 工作量：1.5 人日（服务端）
+
+### BE-495 举报提交：校验、限额、幂等、证据加密和清理
+- 优先级：P0
+- 批次：C6
+- 仓库：tianting-server（`logic`、`store`、`files`、`scheduler`）
+- 依赖：BE-492
+- AC：AC-MOD-03-1、AC-MOD-03-2、AC-MOD-03-3、AC-MOD-03-4、AC-MOD-03-5、AC-MOD-03-6、AC-MOD-03-7、AC-MOD-03-8、AC-MOD-03-10、AC-MOD-03-11、AC-MOD-03-12、AC-MOD-03-13、AC-MOD-03-14、AC-MOD-03-15
+- 内容：
+  1. 校验顺序：格式（`reason` 不合法、`note` 超过 200 码点 400 / 4000，AC-MOD-03-13；`msgIds` 超过 20 400 / 4131，AC-MOD-03-2）→ 开关（4030 `featureDisabled`，AC-MOD-03-14）→ 每天限额（4292，AC-MOD-03-4，计数口径见第 115 条）→ 对象校验 → 幂等 → 写入。
+  2. 对象校验（规则 2、2a、3），失败一律 404 / 4040 `reason: reportTargetInvalid`，**响应逐字节相同**：`message`：举报人是参与者，消息都在同一会话、`seq ≥` 举报人的 `minSeq`（经 `authorize`，C5 的删除会话也算在内，AC-MOD-03-2）；**已撤回的**要 `readSeq ≥ seq`（AC-MOD-03-12 前半）；`user`：好友、或有共同会话、或有共同群（"共同会话"按第 116 条），完全没关联的和不存在的响应相同（AC-MOD-03-7）；`group`：当前成员，非成员和不存在的群响应相同（AC-MOD-03-13）。
+  3. 幂等（规则 4）：同一举报人对同一对象 24 小时内重复提交返回第一次的 `reportId`，不产生新记录（AC-MOD-03-3；"同一对象"按第 117 条）。
+  4. **证据快照**（规则 5）：在同一事务写 `reports` 和 `report_evidence`（AES-256-GCM，`IM_REPORT_KEY`，复用 `quarantine.Cipher` 的实现，AAD 绑定 `report_id`）。群消息：元数据 + 正文（含已撤回的隔离原文，隔离原文已过期的只有元数据，AC-MOD-03-12 后半）+ 文件引用；单聊：`IM_C2C_BODY_ACCESS=off` 时只存元数据（AC-MOD-03-10），`on` 时同群。`note` 也只在密文里（第 122 条）。用户、群举报的证据内容见第 118 条（要 Frank 定）。证据写失败 500 / 5000，没有记录（AC-MOD-03-14 前半，故障注入 `evidenceWrite`）。
+  5. 文件（F-FILE-06 规则 5，AC-MOD-03-15）：证据引用的文件写 `files.evidence_until = 举报时间 + IM_REPORT_EVIDENCE_DAYS`（取较大值），和 `retain_until` 分开；`file_purge` 在两者都过期后才删对象。普通用户取地址仍只看 `retain_until` 和消息状态：原消息正常时照常发放，过了原保留期 404 / 4048，证据仍可看。单聊在 `off` 时不存文件引用，所以不延长（第 95 条 ①）。
+  6. `report_purge`（规则 6，单节点定时任务）：证据过期（180 天）物理删除；[IM 钟] 推进 181 天后被删除（AC-MOD-03-6）。`reports` 行本身的保留期见第 119 条（要 Frank 定，定之前和证据一起删）。
+  7. 不通知（规则 7）：被举报人、举报人都不收任何帧（AC-MOD-03-1，哨兵法）；举报人身份只在管理接口出现。
+  8. 日志和审计（AC-MOD-03-8、AC-CHAT-90-5）：只记 `reportId`、`targetType`、`reason`，不记 `note`、正文、文件名；`im_reports_pending` 由 BE-496 维护。
+  9. AC-MOD-03-5、03-11 的审核员读取部分随 BE-496 和 CS-208；本任务验证原始字节搜不到 `ZXQ-RPT-1`（SQLite 检查点后主库和 WAL）。
+- 工作量：1 人日（服务端）
+
+### BE-496 举报处理：队列、证据授权、证据读取、结案
+- 优先级：P0
+- 批次：C6
+- 仓库：tianting-server（`admin`、`store`、`adminauth`）
+- 依赖：BE-495、BE-474
+- AC：AC-MOD-03-5、AC-MOD-03-11、AC-MOD-04-1、AC-MOD-04-3、AC-MOD-04-4、AC-MOD-04-5、AC-MOD-04-7、AC-MOD-04-10、AC-MOD-04-11、AC-MOD-04-13、AC-MOD-04-14、AC-MOD-04-16、AC-MOD-04-17
+- 内容：
+  1. 队列（规则 1，scope `report.read`）：`GET /admin/reports?state=&reason=&from=&to=&cursor=`，按对象聚合（第 117 条）返回次数和最新时间；`GET /admin/reports/{id}` 返回元数据：举报人、被举报人、时间、理由、消息类型和长度、该用户被举报的总次数。**`note` 和文件名按正文对待，不在这两个响应里**（AC-MOD-04-10 第 3 种、AC-MOD-04-11）；单聊举报的元数据要带理由（传法同现有的单聊元数据查询，没有 400 / 4000），每天 50 个的配额在 console（CS-207，和 F-ADM-30 规则 3 合并）。每次 `GET /admin/reports/{id}` 写 im-server 审计。
+  2. 证据授权（规则 3，scope `report.evidence`，只能在 `bodyAccess` 调用方 `console-msgread`）：`POST /admin/report-grants {reportId, reason}`，工单号自动用 `reportId`，配额和 `msg-grants` 合并（`grantsPerOperator`、`grantsPerCaller`，`admin/moderation.go` 第 32、33 行），授权绑定调用方 + `X-IM-Operator` + `reportId`；`console` 主凭证调用 403 / 4030（AC-MOD-04-4）。单聊举报在 `IM_C2C_BODY_ACCESS=off` 时 403 / 4030 `c2cBodyDisabled`，元数据照常（AC-MOD-04-3）。
+  3. 证据读取：`POST /admin/reports/{id}/evidence {grantId}` 返回解密后的消息（群：正文、隔离原文、文件名、缩略图和原图的引用）和 `note`；只含被举报的消息，不带上下文（规则 2）。**密钥不匹配**（AES-GCM 验证失败）：返回 `{undecryptable: true}`，告警指标加 1，结案不受影响（AC-MOD-04-14 前半）。
+  4. 文件（第 11.6 节，AC-MOD-04-13、04-16）：`POST /admin/files/{fileId}/fetch` 增加 `report.evidence` 路径：`grantId` 必须是这个调用方 + 操作人的、没过期的举报授权，且这条举报的证据引用了 `fileId`（`msgId`、`variant` 同 C4），否则 403 / 4039（第 109 条）；单聊 `off` 时 403 / 4030 `c2cBodyDisabled`；`variant` 支持缩略图和原图（审核员两份都看，R-CS-12）；响应头和 C4 相同（`attachment`、`nosniff`），对象按 `evidence_until` 保留。`msg.quarantine` 路径不变。
+  5. 结案（规则 5，scope `report.handle`）：`POST /admin/reports/{id}/resolve {result: handled|rejected, reason}`；条件更新 `state='pending'`，第二个 409 / 4098、状态不变（AC-MOD-04-5）；**不自动执行**任何处置，删除、禁言、封禁、下线、解散走各自的接口和审计（AC-MOD-04-1）；举报人和被举报人都不收帧（AC-MOD-04-7，规则 6）。`im_reports_pending`：超过 24 小时未处理的数量（规则 7，第 107 条）。
+  6. 元数据接口的文件名（AC-MOD-04-11，同 AC-ADM-30-7）：`msg.meta` 的两层响应都没有文件名，C2 已做，C6 补带特征串的用例。
+  7. AC-MOD-04-17：`account_events_purge` C1 已有，C6 只补 [IM 钟] 推进 181 天的用例（TC-MOD-04-17）。
+  8. 证据读取和授权的审计只记 `reportId`、授权前 8 位，不记正文、`note`、文件名（AC-CHAT-90-5）。
+- 工作量：1 人日（服务端）
+
+### BE-497 冻结文档变更（C6 涉及的部分）
+- 优先级：P1
+- 批次：C6
+- 仓库：tianting-server（`docs/`）
+- 依赖：BE-491
+- AC：无（文档任务；要作废、加注的 AC 列在内容里，不进这一行）
+- 内容（第 16.1、16.2 节 C6 的部分，走变更流程：PRD 升小版本，文末变更记录写原因，同步任务单和用例；做法同 BE-479 的 `40b9a85`、BE-488 的 `43911a8`）：
+  1. PRD-admin（v1.4 → v1.5）：F-ADM-60 从 P2 改到第一批（PRD-chat F-MOD），替换模式去掉；**AC-ADM-60-1 作废，并入 AC-MOD-01-1**，TC-ADM-60-01 改关联 AC-MOD-01-1；**AC-ADM-60-2 作废**，TC-ADM-60-02 删除；backend-admin BE-242 标"由 PRD-chat C6 取代"，`- AC：` 行去掉这两条（否则 `trace.py` 报 UNKNOWN）。F-KEY-02 规则 2 scope 目录加 `moderation.words`、`report.read`、`report.handle`、`report.evidence`；规则 3 正文类 scope 加 `report.evidence`；规则 4 `console` 加前三个、`console-msgread` 加 `report.evidence`。第 5.2 节矩阵：**`word.write`（P2，只有审核）换成 `moderation.words`（运营、审核）**，新增 `report.read`、`report.handle`、`report.evidence`（审核，超管默认没有），`moderator` 的职责加"举报处理"（第 14.1 节，第 120 条）。第 12 节：举报证据（含单聊证据）适用门槛的一行（同撤回隔离那一行，第 70 条已改"宿主 App"）。AC-ADM-05-1 的参数化表随矩阵扩展，文字不变。
+  2. PRD-social（升小版本）：F-SOC-02 附言在存在性判断之前过敏感词（C6），AC-SOC-02-5 不变，另有 AC-MOD-02-5。
+  3. PRD-ops（升小版本）：F-OPS-06 加 `im_blocked_total{scene}`、`im_mod_reload_errors_total`、`im_reports_pending`；F-OPS-07 加词库加载失败告警；F-OPS-10 加 `moderation` 检查项（BE-492 第 4 条）。AC 不变。
+  4. PRD-core、PRD-ui：第 16.1 节没有 C6 的 PRD-core 行（F-MSG-01 规则 6 的第 9 步已随 C4 写进说明的话核对即可）；PRD-ui F-UI-09 消息菜单加"举报"（第 13.3 节），资料卡、群信息页的"举报"，新增图标进 6.6 节清单（frontend-chat 第 80 条）。AC 不变。
+  5. ARCH-v1：S13、S14 内容安全从"业务方回调"改为内置敏感词和举报（第 16.1 节 ARCH 一行的 C6 部分）。
+  6. `docs/sdk/README.md`：`report(...)`、4510 的处理、`features.moderation`（随 FE-690～692）。
+  7. `docs/reports/privacy-notice-checklist-draft.md` 增加 C6 的告知项：发送内容会过敏感词检查（只拦截，不告诉命中的词）；命中记录（用户、场景、词、时间，不含全文）保留 90 天；举报证据加密保留 180 天，群消息含正文，单聊在单聊正文查看关闭时只有元数据；被举报人不会收到通知、举报人身份只有审核员可见；第 118、119 条定了之后补。**只是清单草稿，不代替法律文本**。
+  8. `tools/trace.py` 已加 C6 里程碑（本次分发）；PRD 升版时改 `PRDS` 文件名。
+- 工作量：1 人日（文档）
+
+### BE-498 C6 部署和上线门槛
+- 优先级：P0
+- 批次：C6
+- 仓库：tianting-server（`deploy/`、`docs/`）
+- 依赖：BE-492、BE-496
+- AC：无（部署任务；AC-MOD-01-10、AC-ACC-10-5 的启动检查在 BE-492）
+- 内容：
+  1. 部署说明：`IM_REPORT_KEY` 的生成（32 字节随机，和 `IM_QUARANTINE_KEY`、JWT 密钥不同）、保管和备份；**第一批不支持轮换**，换密钥后旧证据显示"证据无法解密"（F-MOD-04 异常，第 99 条）；部署示例只放占位值。
+  2. 调用方配置：`deploy/im-admin-callers.example.json` 的 `console` 加 `moderation.words`、`report.read`、`report.handle`，`console-msgread` 加 `report.evidence`；`deploy/test_deploy.py` 同步；**已部署环境要手动加**（同 console-chat 第 1 条的教训）。
+  3. 词库运维（CH-19）：生产词库只经后台导入（每次 ≤ 5000 条），不进仓库、不进镜像、不进备份以外的地方；词库为空时配置检查告警；词库加载失败的告警接到谁（Frank 指定）。
+  4. **上线门槛清单**（写进部署说明，生产打开 `IM_MOD_ENABLED=1` 前逐条确认，第 93 条）：① CH-19 词库负责人、来源、版权、更新已由 Frank 指定，生产词库已导入；② CH-22 举报处理人已指定，并在管理后台授予 `moderator`（敏感角色，授予时通知审计员）；③ PRD-admin 第 12 节 ②③④（隐私政策和用户协议发布、个人信息影响评估、操作规程和培训）完成，**举报证据查看适用**（PRD-chat 第 12.3 节、第 17 节）；④ `IM_PRIVACY_NOTICE_VERSION` 已配置，隐私说明含 BE-497 第 7 条的告知项（AC-ACC-10-5）；⑤ `IM_V13_ADMIN_FEATURES=1`（AC-MOD-01-10）；⑥ `IM_REPORT_KEY` 已生成并保管；⑦ 第 2 条的调用方 scope 已加；⑧ 生产 `IM_CLIENT_CUSTOM_MSG=0`（默认）；⑨ `IM_C2C_BODY_ACCESS` 保持 `off`，打开要 PRD-admin 第 12 节第一行 ①（法务书面确认），单聊举报因此基本只能按次数判断（CH-22、R-10）；⑩ 三端已发布带 `features.moderation` 的版本（第 17 节"SDK 发布后再开"）；⑪ 管理后台第一批的渗透测试（PRD-admin 第 12 节最后一行，P-13）。开放注册 `open` 不在 C6 上线范围：另要 `IM_PUBLIC_OPEN_ACK` 和第 12.3 节的法务手续。
+  5. 运维手册：词库加载失败怎么处理（旧词库继续生效，查日志和库）；举报积压指标的含义；`report_purge`、`moderation_hits_purge` 的运行检查。
+- 工作量：0.5 人日（部署）
+
+### BE-499 C6 后端验收
+- 优先级：P0
+- 批次：C6
+- 仓库：tianting-server（`server/e2e`）
+- 依赖：BE-494、BE-496、CS-206、CS-207、CS-208
+- AC：AC-CHAT-90-1、AC-CHAT-90-2、AC-CHAT-90-4、AC-CHAT-90-5、AC-CHAT-90-10、AC-CHAT-90-17、AC-MOD-03-1、AC-MOD-03-5、AC-MOD-04-1
+- 内容：
+  1. 按 [TC-MOD](../testcases/TC-MOD.md) 落地后端 e2e，`mod_*_test.go`，用例名带 TC 编号；特征串检查（`ZXQWORD`、`ZXQ-RPT-*`、`ZXQ-MOD-*`）单独一个文件，对日志、im-server 审计、console 审计、SQLite 主库和 WAL 做字节搜索。AC-ACC-01-9、AC-ACC-10-5 在 [TC-ACC](../testcases/TC-ACC.md)（TC-ACC-01-22、TC-ACC-10-05）。
+  2. 【全部】的 C6 部分（第 15 节累计表）：AC-CHAT-90-1 开词库（TC-CHAT-90-40，用 10 万随机词，开发机只记录）；90-2 C6 开关关（TC-CHAT-90-41）；90-5 举报、附言（TC-CHAT-90-43）；90-10 `report`（TC-CHAT-90-46）；90-17 治理指标（TC-CHAT-90-47）；90-4（TC-CHAT-90-42）。90-3 在 C6 不变，90-15 是"—"，不另跑。AC-KEY-02-2 的参数化表随 scope 目录扩展复跑。
+  3. 端到端 AC 的服务端部分：AC-MOD-03-1（举报后后台队列出现，u1 收不到帧）、AC-MOD-04-1（审核员走完查看、授权、读证据、删除、结案，审计顺序）。客户端和后台页面部分随 FE-698。
+  4. 写验收报告 `docs/reports/c6-backend-acceptance-<日期>.md`：写明本地结果、CI 不运行；性能未判定（P-12）；标准化的语料误判结果（BE-493 第 3 条）；上线门槛清单（BE-498 第 4 条）的状态；第 104、118、119 条等待决定时按什么实现。
+- 工作量：2.5 人日（测试）
+
+---
+
 ## PRD 问题的处理
 
 分发时发现的矛盾和缺口已在 [PRD-chat v1.1](../prd/PRD-chat-v1.1.md) 第 22 节修正。实现 C1 时发现的（PRD 冻结，没有改，都按最保守的理解实现，等 Frank 决定）：
@@ -1199,6 +1353,41 @@ C5 分发时发现的（2026-11-10，PRD 冻结，没有改；按"建议"一列�
 | 90 | F-CVS-02 异常、第 4.5 节 | "设置读取失败按没有免打扰处理"只说推送；`convs` 读设置失败怎么办没写 | `convs` 读设置失败是普通的 500 / 5000（和读会话失败一样），不降级成"没有设置"（否则删掉的会话会重新出现）；推送路径的降级在 BE-490 第 2 条 |
 | 91 | BE-487 第 1 条、P-46 ④（BE-487 实现时发现） | 第 1 条写本地清除时"引用这些消息的 `quote.text`"也清，和 P-46 ④"删除会话后，对方新消息里的引用摘要照常显示"冲突 | **已按 PRD 处理（实现 Frank 已定的 P-46 ④，同 frontend-chat 第 62 条，不是新决定）**：保留下来的消息（seq ≥ minSeq）里引用被清除消息的摘要照常显示；向量用例"本地清除（convs 路径）"里有一条这样的消息。第 1 条已改 |
 | 92 | PRD-ui 6.6 节、AC-UI-11-3（BE-488 时 FE-683 发现） | 6.6 节原来没有列 C2 起代码里在用的图标（图片、文件各类型、下载、关闭、缩放，以及设置、前进）；"图标在清单里"目前没有自动检查：check-assets 只查构建产物里的 svg 文件，lucide 是内联组件，查不到 | **已按 PRD 处理（补清单，不改行为）**：BE-488 按 tianting-web `src/components/Icon.tsx` 补进 PRD-ui v1.5 的 6.6 节。缺的自动检查记录在这里：建议各端加一个用例，从图标注册表（H5 是 `Icon.tsx` 的 `icons`）取出 Lucide 名字，和 6.6 节表格逐个比对（属于前端任务，没有分发） |
+
+C6 分发时发现的（2026-11-11，PRD 冻结，没有改；按"建议"一列实现，Frank 不同意再改）。**要 Frank 定的是第 104、108、118、119、121 条**（都不阻塞开发，定之前按建议实现）；第 95、105、106、107、120 条是"PRD 别处已写明"，按原文实现，**不算新决定**；其余是缺口或记录：
+
+| # | 位置 | 问题 | 建议 |
+|---|---|---|---|
+| 93 | 第 17 节 C6 行、第 20.3 节、PRD-admin 第 12 节 | C6 的开工条件里有"Frank 指定词库负责人和举报处理人"，P-47 定了开发不等它；上线门槛分散在第 4.1、12.3、17、20.3 节和 PRD-admin 第 12 节 | 记录：开发只用特征词，不阻塞；门槛汇总成清单写进部署说明（BE-498 第 4 条），生产打开 `IM_MOD_ENABLED=1` 前逐条确认 |
+| 94 | 第 10 节、C3 暂停（P-43） | C6 有没有依赖推送的 AC | 逐条核对没有：F-MOD 的"收不到任何帧"都是 WS 帧，哨兵法用普通消息就行，不要推送 worker。**没有"C3 恢复后做"的任务**。C3 恢复时 BE-459 补一条：4510 拦下的消息、举报、结案都不进推送队列（F-MOD-03 规则 7 的"不会收到任何通知"包括离线通知） |
+| 95 | F-MOD-03 规则 5、F-MOD-04 规则 4、AC-MOD-03-10、04-3、04-13、第 11.6 节 | `IM_C2C_BODY_ACCESS` 和举报的关系分散在几处 | **按 PRD 原文实现，不是新决定**（C6 开头的说明 ①～④）：存证据和读证据各读一次开关；`off` 时单聊只存元数据，因此不存文件引用、不延长文件保留（规则 5 的"只存元数据"，元数据的范围见 F-MOD-04 规则 2：举报人、被举报人、时间、理由、消息类型和长度）；读证据 `off` 一律 403 `c2cBodyDisabled`；之后打开开关也读不到 `off` 期间的正文 |
+| 96 | 第 4.1 节共同规则 | "`GET /v1/config` 的 `features` 告诉客户端隐藏入口"，C6 的字段名没写 | `features.moderation`（同第 75 条），`http-client.schema.json` 同步（BE-491 第 3 条）。只控制"举报"入口；4510 的提示不看它 |
+| 97 | 第 11.6 节 | 词库、命中、举报、证据授权、证据读取、结案几个接口只有路径和 scope，没有请求和响应 | BE-491 第 4 条在 `ADMIN.md` 写定，形状按 BE-493、494、496 的内容：导入 `{words}` → `{added, duplicate, invalid}`；授权 `{reportId, reason}` → `{grantId, expiresAt}`；证据 `{grantId}` → `{messages, note?, undecryptable?}`；结案 `{result, reason}` → `{}` |
+| 98 | F-MOD-02 规则 7、第 4.1 节 | `moderation_hits` 保留 90 天没有变量名 | `IM_MOD_HITS_DAYS`（90），定时任务 `moderation_hits_purge`（第 11.4 节已列） |
+| 99 | 第 4.1 节、第 14.2 节、F-MOD-04 异常 | `IM_REPORT_KEY` 只在配置检查一行出现，没写缺失时怎么办、能不能和别的密钥相同、怎么轮换 | 同第 54 条：`IM_MOD_ENABLED=1` 时缺失或长度不对，任何环境都启动失败；不能和 `IM_QUARANTINE_KEY`、JWT 密钥相同（同 F-KEY-02 规则 1 的思路）；**第一批不做轮换**，换密钥后旧证据走"证据无法解密"（F-MOD-04 异常已写这种情况），部署说明写明（BE-498 第 1 条） |
+| 100 | F-MOD-01 规则 1、AC-MOD-01-4 | "去重后入库"按原文还是标准化后去重没写 | 按标准化后的 `norm` 去重（`ＢＡＤＷＯＲＤ` 和 `badword` 是同一个词）；已有的（含停用的）算 `duplicate`，状态不变，要启用就单独启用 |
+| 101 | F-MOD-01 规则 3 | 第二遍"去掉空白和标点再匹配"，词本身含空格、标点时怎么办没写 | 词和待查文本过同一个标准化函数，`compact` 自动机里的词也去掉空白和标点；误判用语料测一次（R-CS-17），结果写进验收报告 |
+| 102 | F-MOD-01 异常 | "空、超过 64 个码点"只写了导入，单个添加没写 | 单个添加同样校验，400 / 4000（导入是跳过并计数） |
+| 103 | F-MOD-01 规则 1、AC-MOD-01-7 | 批量导入的格式没写；结果汇总的三项（新增、重复、无效）没有字段名 | 接口收 JSON `{words: [...]}`；后台页面读 txt（一行一个，UTF-8）后拆成数组再提交，文件内容不上传到 console 以外的地方；结果 `{added, duplicate, invalid}` |
+| 104 | F-MOD-04 规则 3、4 | 规则 4 只写了 `IM_C2C_BODY_ACCESS=off` 时单聊证据 403；`on` 时单聊证据用什么权限读没写：只要 `report.evidence`，还是另要 `msg.read.c2c`（PRD-admin 5.2 节，审核才有） | **要 Frank 定（隐私口径，不阻塞：第一批开关是 `off`，法务确认前不会打开）**。建议：`on` 时和群一样只要 `report.evidence` 的授权流程，im-server 照常检查开关；两个权限点都只在审核角色上，区别只在以后有自定义角色时。定之前 `on` 的路径按建议实现，用例只覆盖 `off` |
+| 105 | F-MOD-02 规则 4、第 4.1 节 | `IM_CLIENT_CUSTOM_MSG` 是不是只在 `IM_MOD_ENABLED=1` 时生效 | **按 PRD 原文，不是新决定**：第 4.1 节是独立的配置项，"生产关、测试开"，规则 4 也没有挂开关。所以 C6 部署后生产环境的客户端就不能发 `custom`（不管 `IM_MOD_ENABLED`）；开发、测试环境默认开，现有 e2e 不受影响。部署说明写明 |
+| 106 | AC-ACC-01-19、AC-ACC-01-9 | C1 的 AC-ACC-01-19 写"open 模式拒绝启动（C6 未上线）"，C6 之后 open 满足四个条件就能启动 | **按 PRD 原文，不是新决定**：F-ACC-01 规则 2 写的就是四个条件；AC-ACC-01-19 的输入没有这些条件，结果仍是拒绝，断言不变，只是错误信息从"还没有实现"变成逐项指出缺什么（`checks.go` 第 133 行的注释已写"逐项报错随 C6"） |
+| 107 | 第 14.2 节、F-MOD-04 规则 7 | 指标表只有名字 `im_reports_pending`，没说是全部待处理还是超过 24 小时的 | **按 PRD 原文**：规则 7 写的是"超过 24 小时未处理的数量进指标"，就是它；不加标签 |
+| 108 | 第 4.1 节共同规则 | `IM_MOD_ENABLED` 打开过、又关掉以后：后台词库维护、举报队列、证据读取、结案还能不能用，`report_purge`、`moderation_hits_purge` 还跑不跑，没写 | **要 Frank 确认**（同 P-46 第 81 条的口径）。建议：只拦客户端的 `report` 和敏感词检查；后台接口照常可用（已有的举报要能处理完）；**清理任务照常跑**（保留期是对用户的承诺，不能因为关开关而延长） |
+| 109 | 第 11.6 节 `fetch` 一行（v1.6） | "带 `grantId` 时只认这一个授权……是隔离授权（`quarantine=true`）"只写了 `msg.quarantine` 路径；`report.evidence` 路径的授权怎么找没写 | 带 `report.evidence` 的调用方：`grantId` 必须是这个调用方 + 操作人的、没过期的**举报授权**，而且这条举报的证据引用了这个 `fileId`；任何一条不符合（含没有 `grantId`）403 / 4039。`msg.quarantine` 路径不变（BE-496 第 4 条） |
+| 110 | F-MOD-02 规则 7、第 14.2 节 | `moderation_hits` 的"场景"和 `im_blocked_total{scene}` 的取值没写 | `text`、`fileName`、`nickname`、`username`、`groupName`、`groupNotice`、`friendApply`，两处一致；标签有界 |
+| 111 | F-MOD-02 规则 2、AC-MOD-02-4 | "`image`、`file` 的文件名"查哪一份：客户端在 `send` 里带的，还是上传时服务端记录的 | 查服务端记录的 `files.name`（下发以服务端记录为准，第 11.1 节）；上传申请时不查（发出之前别人看不到） |
+| 112 | F-MOD-02 规则 2、5，AC-MOD-02-5 | 规则 5 说敏感词放在所有权限判定之后，但附言要"在 F-SOC-02 的存在性判断之前"；注册用户名的检查放在哪一步没写 | 附言：格式、限流之后，存在性判断之前（原文）。注册：邀请码校验之后、用户名唯一性判断之前（同样不泄露"这个用户名已存在"）。改资料、建群、改群：各自的权限判定之后 |
+| 113 | F-MOD-02 规则 7 | 注册时命中，还没有 userId，`moderation_hits` 写什么没写 | 不写行，只计 `im_blocked_total{scene="username"}` 和 `nickname`；不记尝试的用户名 |
+| 114 | F-MOD-02 规则 7、AC-MOD-02-14 | `/admin/moderation/hits?userId=` 的响应没写 | 保留期内按场景的次数 + 最近 50 条（时间、场景、`word_id`），没有任何内容；看词要另有 `moderation.words` |
+| 115 | F-MOD-03 规则 4 | 每天 20 次算哪些：幂等的重复、4040 的算不算 | 通过格式和开关之后的请求都算，包括 4040（防止用举报试探关系，响应本来就相同）；**幂等的重复不算**（没有新记录，AC-MOD-03-3 提交 3 次都成功）；按 Asia/Shanghai 自然日 |
+| 116 | F-MOD-03 规则 3 | "有共同会话"怎么判断没写 | 两人的单聊有过消息（`conv_seq` 有行且 `max_seq > 0`），包括一方删除了会话（C5，后台查询不受影响，关系也还在） |
+| 117 | F-MOD-03 规则 4、F-MOD-04 规则 1、AC-MOD-04-6 | 幂等的"同一对象"和队列聚合的"相同对象"没定义；"同一用户被 3 人举报"可能是 3 条用户举报，也可能是举报他的 3 条不同消息 | 幂等键：消息是 `convId` + 排序后的 `msgIds`，用户是 `userId`，群是 `groupId`（都加举报人）。队列按同样的对象聚合显示次数；详情另显示"该用户被举报的总次数"（所有类型，F-MOD-04 规则 4 也用它）。AC-MOD-04-6 用 3 条用户举报 |
+| 118 | F-MOD-03 规则 5、F-MOD-04 规则 2、3 | **举报用户、举报群**的证据存什么没写（规则 5 只写了消息）；它们的 `note`"按正文对待、走规则 3 的授权"，但规则 3 是群消息证据的流程，用户举报不属于任何会话，单聊开关管不管它没写 | **要 Frank 定（收集范围和隐私口径）**。建议（按最保守）：用户、群举报只存元数据（对象 ID、举报时间），不快照昵称、群名、公告（规则 2"不扩大收集范围"）；`note` 都加密存；群举报和群消息举报的 `note` 走规则 3 的授权；**用户举报和单聊消息举报的 `note` 按单聊对待**，`IM_C2C_BODY_ACCESS=off` 时看不到（单聊骚扰多数走用户举报，`note` 里很可能是转述的单聊内容）。另一个选项：用户举报的 `note` 也走授权、不受单聊开关限制，代价是单聊内容可能经 `note` 绕过 X-7 |
+| 119 | F-MOD-03 规则 6、第 12.1 节 | 证据 180 天物理删除；`reports` 行（举报人、对象、理由、结论、处理人）保留多久没写，隐私说明要写 | **要 Frank 定（保留期，隐私口径）**。建议：和证据一起在 180 天删除整条举报（最少保留；"被举报次数"只按 180 天算）。另一个选项：`reports` 行保留到审计保留期（1 年），代价是举报人和被举报人的关系多留半年 |
+| 120 | PRD-admin 5.2 节、F-KEY-02、PRD-chat 第 14.1、16.1 节 | PRD-admin 现在是 `word.write`（P2，只有审核），PRD-chat 是 `moderation.words`（运营、审核）；PRD-admin 矩阵没有 `report.*` | **按 PRD 原文，不是新决定**：第 16.1 节已写 PRD-admin 的 F-ADM-60、F-KEY-02、第 5 节矩阵按第 11.6、14.1 节改，BE-497 第 1 条落实（超管默认没有 `report.evidence`，第 14.1 节） |
+| 121 | 第 14.1 节词库一行、F-MOD-02 规则 7、第 11.6 节 | 第 14.1 节写词库页有"命中统计"、权限 `moderation.words`（运营也有）；第 11.6 节按用户查命中次数要 `report.read`。按用户查"谁反复试探"是个人行为数据，运营能不能看没写 | **要 Frank 定（权限口径）**。建议：命中统计（按用户查次数）只对有 `report.read` 的（审核）显示，词库页和举报详情都有入口；只有 `moderation.words` 的运营看不到这个入口（第 11.6 节没有按词统计的接口，不新增）。另一个选项：运营也能查，代价是运营能看到具体用户的试探记录。console 一侧见 console-chat 第 27 条 |
+| 122 | F-MOD-03 规则 1、5，AC-MOD-03-8 | `note` 存在 `reports` 行还是证据里没写；规则 2 说 `note` 和文件名按正文对待 | `note` 和文件名只在加密的 `report_evidence` 里，`reports` 行只有 ID、类型、理由、状态；日志和审计只记 `reportId` |
 
 ### C3 暂停时的状态（2026-11-10）
 

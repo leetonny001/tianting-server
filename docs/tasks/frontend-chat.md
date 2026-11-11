@@ -1,14 +1,14 @@
-# 前端任务单：天听聊天产品第一批（三套 SDK、H5、Android、iOS、管理后台页面，C1、C2、C3、C4、C5）
+# 前端任务单：天听聊天产品第一批（三套 SDK、H5、Android、iOS、管理后台页面，C1、C2、C3、C4、C5、C6）
 
 | 项 | 内容 |
 |---|---|
-| 依据 | [PRD-chat v1.7](../prd/PRD-chat-v1.7.md)（冻结）第 5～9、13、14.1、15、20.3 节；[PRD-ui v1.2](../prd/PRD-ui-v1.5.md)（界面规则 B-1～B-8，第 6 节视觉）；[SDK 设计说明](../sdk/README.md)；[errors.json](../../protocol/errors.json) |
-| 范围 | **C1、C2、C3、C4 和公共部分**（CH-27）。C3 是 Frank 2026-11-10 决定按顺序继续的，同一天又决定"推送后续做，先做功能"，**C3 已暂停**（任务和用例保留）；C4（撤回、引用、@）同一天决定接着做；**C5（置顶、免打扰、删除会话）是 Frank 2026-11-10 说"开始 C5"后分发的**（QUEUE Q29）。举报的接口和界面不做（C6）；设备通知（C3）只有原生端，H5 没有离线通知（第 13.2 节）；【全部】的 AC 验证到 C5 为止的页面（第 15 节累计表，C3 那一列等 C3 恢复） |
+| 依据 | [PRD-chat v1.7](../prd/PRD-chat-v1.7.md)（冻结）第 5～10、13、14.1、15、20.3 节；[PRD-ui v1.2](../prd/PRD-ui-v1.5.md)（界面规则 B-1～B-8，第 6 节视觉）；[SDK 设计说明](../sdk/README.md)；[errors.json](../../protocol/errors.json) |
+| 范围 | **C1、C2、C3、C4 和公共部分**（CH-27）。C3 是 Frank 2026-11-10 决定按顺序继续的，同一天又决定"推送后续做，先做功能"，**C3 已暂停**（任务和用例保留）；C4（撤回、引用、@）同一天决定接着做；**C5（置顶、免打扰、删除会话）是 Frank 2026-11-10 说"开始 C5"后分发的**（QUEUE Q29）；**C6（敏感词和举报）是 Frank 2026-11-11 说"开始 C6"后分发的**（PENDING P-47，QUEUE Q30）；设备通知（C3）只有原生端，H5 没有离线通知（第 13.2 节）；【全部】的 AC 验证到 C6 为止的页面（第 15 节累计表，C3 那一列等 C3 恢复） |
 | 负责 | 前端（AI） |
 | 仓库 | tianting-sdk-ts、tianting-sdk-kotlin（`sdk-core` 纯 JVM）、tianting-sdk-swift、tianting-web（H5）、tianting-android、tianting-ios、tianting-admin |
-| 编号 | **FE-600 起**。公共 FE-600～602，C1 FE-610～620，C2 FE-630～640，C3 FE-650～656，C4 FE-660～672，C5 FE-680～686 |
+| 编号 | **FE-600 起**。公共 FE-600～602，C1 FE-610～620，C2 FE-630～640，C3 FE-650～656，C4 FE-660～672，C5 FE-680～686，C6 FE-690～698 |
 | 端的范围 | PC（Tauri）排除：`tianting-web` 宽屏界面照常实现，不验收打包形态（第 2.5 节）。Web Push、拍照不做 |
-| 完成定义 | 任务内的 AC 有通过的测试（SDK：假 HTTP + `FakeTransport` + 假时钟 + 共享向量；H5：Vitest、Playwright；原生：Compose UI Test、XCUITest），用例编号见 [TC-ACC](../testcases/TC-ACC.md)、[TC-FILE](../testcases/TC-FILE.md)、[TC-APN](../testcases/TC-APN.md)、[TC-RCL](../testcases/TC-RCL.md)、[TC-QUO](../testcases/TC-QUO.md)、[TC-MEN](../testcases/TC-MEN.md)、[TC-CVS](../testcases/TC-CVS.md)、[TC-CHAT](../testcases/TC-CHAT.md)。**CI 现在不运行（P-21），原生 CI 也缺 P-15，真机和其他浏览器在 P-13**，结果都要标明环境。**C3 收到真实系统通知要 Frank 先做第 20.3 节的 APNs、FCM 步骤**（PENDING P-40），之前原生端用令牌和授权的测试替身 + 服务端假通道 |
+| 完成定义 | 任务内的 AC 有通过的测试（SDK：假 HTTP + `FakeTransport` + 假时钟 + 共享向量；H5：Vitest、Playwright；原生：Compose UI Test、XCUITest），用例编号见 [TC-ACC](../testcases/TC-ACC.md)、[TC-FILE](../testcases/TC-FILE.md)、[TC-APN](../testcases/TC-APN.md)、[TC-RCL](../testcases/TC-RCL.md)、[TC-QUO](../testcases/TC-QUO.md)、[TC-MEN](../testcases/TC-MEN.md)、[TC-CVS](../testcases/TC-CVS.md)、[TC-MOD](../testcases/TC-MOD.md)、[TC-CHAT](../testcases/TC-CHAT.md)。**CI 现在不运行（P-21），原生 CI 也缺 P-15，真机和其他浏览器在 P-13**，结果都要标明环境。**C3 收到真实系统通知要 Frank 先做第 20.3 节的 APNs、FCM 步骤**（PENDING P-40），之前原生端用令牌和授权的测试替身 + 服务端假通道 |
 
 格式说明：每个任务的 `- AC：` 一行列出它负责满足的验收标准，追溯矩阵由 `tools/trace.py` 从这一行生成。工具只查"有一个任务"，**端到端 AC 和【前端】AC 按端拆开列**，所以同一条 AC 会出现在多个任务里。标了（Android、iOS）的只进原生任务，标了（H5）的只进 H5 任务，（三套 SDK）的只进 SDK 任务。
 
@@ -62,26 +62,27 @@
 | FE-684 | ✅ 完成（Android；AC-CVS-02-6 等 C3 补跑） | tianting-android@f0556b1，SDK tianting-sdk-kotlin@7f13c3f（composite build；**模拟器，本地；CI 不运行，真机（P-13）未执行**，emulator-5556，Pixel_10_Pro_XL）。会话菜单按 `features.convSettings`（关闭或老服务端没有菜单、没有辅助操作，已有置顶、免打扰照常显示，P-46 ②）：长按（名称"会话操作"）出"置顶 / 取消置顶""免打扰 / 取消免打扰""删除"，文字按当前状态；同样三项也是辅助操作；"删除"先确认。SDK 乐观更新，页面只提示、不重试（问题 56）：4220"最多置顶 20 个会话"，convSet / convDelete 的 4290"操作过于频繁"（问题 71）。置顶背景 `color.surface.pinned`（同 H5、PRD-ui v1.5）；免打扰小红点、"[N 条]"（照实）、`bell-off`（可读名称"免打扰"）；前缀"[有人@我]" > "[草稿]" > "[N 条]"（问题 61）。"消息"标签角标用 SDK `totalUnread`。`IMEvent.ConvDeleted` 清本机草稿和打开着的输入框，关掉这个会话的菜单和确认框，丢掉被丢弃附件的上传进度（问题 55、59）；`FilesExpired` 丢掉下载状态和内存里的图。AC-CVS-02-6：`AppDeps.alert` 是留给 C3 的出口（不调用），用例断言没有通知、替身没调用；C3 后 FE-653 补跑。用例：JVM `C5Test` 5 个 + 对比度 5 组；`C5UiTest` 16 个；真实 im-server + 假 S3 `C5E2eTest` 6 个（04-01 两个方向、03-02、04-05、04-02 断网、03-08 缓存和沙盒副本、规则 4）；`C5KillE2e`（AC-CVS-03-10 界面部分，D2 飞行模式离线，冷启动后本地库和缓存搜不到特征串）。全量（本地）：ui 294 通过；e2e 77 个：74 通过、2 按设计跳过、1 个 `C4E2eTest.tc_rcl_01_08` 失败（模拟器时钟比 Mac 慢 9 秒，问题 72，和 C5 无关）；kill 7 个场景通过；`checkTianting`、`lintDebug`、单测 69 个通过。变异 16 项全部被发现，e2e、kill 反证各 1 项按预期失败。**补（问题 72）**：tianting-android@b1466ff（只改测试）。`tc_rcl_01_08` 改用 SDK 校正后的服务端时间 `serverNow()`，2 分钟时限不变；单独连跑 3/3 通过（这次模拟器时钟差 0 秒，修复靠原理成立）；反证 `IM_RECALL_WINDOW_SEC=60` 时失败（见问题 73）。`C5E2eTest` 03-08、04-05 查草稿改为等 ack 之后的 `ConvDeleted`（04-05 仍限 2 秒，结果要求不变）。用 sdk-kotlin@6835069 重跑全量（模拟器，本地）：单测 69、lint、`checkTianting` 通过；ui 294 通过；e2e 77 个：73 过、2 按设计跳过、03-08 时序失败 1 次（已修，之后 6/6 连跑 2 次）、`FilesE2eTest.tc_file_02_06` 偶发（问题 74）；kill 7 个通过。**补（问题 74）**：tianting-android@17b2ee7（只改测试）。`tc_file_02_06` 先调慢假 S3 再让对方发图；原纯色缩略图只有 1797 字节（假 S3 每 16 KiB 才等一次，调慢不起作用），改用大于 48 KiB 的噪点缩略图，宣称尺寸和其他断言不变，另加"量位置时还在加载"（更严格）。单独连跑 5/5，加检查后再 5/5；反证去掉调慢后 3 次里 2 次看不到加载状态；`FilesE2eTest` 整个类 20/20 通过 |
 | FE-685 | ✅ 完成（iOS） | tianting-ios@2b06bda，SDK tianting-sdk-swift@141357f（本地 SPM 路径依赖；**模拟器 iPhone 16 Pro，本地；CI 不运行，真机（P-13）未执行**），服务端 im-mvp@df461f0 已提交的内容（`git archive` 导出构建）。会话菜单按 `features.convSettings`（关闭、老服务端、老缓存都没有菜单，已有置顶、免打扰照常显示，P-46 ②）：长按系统菜单三项，文字按当前状态，同样三项是 VoiceOver 的"操作"；4220"最多置顶 20 个会话"，convSet、convDelete 的 4290"操作过于频繁"（问题 56、71），不自动重试。置顶背景 `color.surface.pinned`（同 H5，对比度 L/D27～31 进 `check_tokens.py`）；免打扰小红点、"[N 条]"、Lucide `bell-off`（PRD-ui 6.6、B-3；协调方任务说明误写成 SF Symbol，按 PRD 执行），整行读"免打扰"；前缀"[有人@我]" > "[草稿]" > "[N 条]"（问题 61）。"消息"标签角标按 SDK `totalUnread()`，可读名称"消息，5 条未读"（问题 67）。删除确认框；`.convDeleted` 清草稿、开着的输入框和权限提示，关掉开着的确认框（问题 55）。修了空群一直"加载中…"（问题 66）。AC-CVS-02-6：提示音、震动、本地通知只能写在 `Core/Alerts.swift`（`check_sources.py` 检查），用例断言通知为 0、替身没有调用；C3 后 FE-655 补跑；App 图标角标随 C3（问题 60）。Kit 单测 161 个：157 通过、4 原有跳过（新增 `C5Tests` 13）；XCUITest C5 13 个全部通过（`C5E2ETests` 10、`C5FakeServerTests` 1、`C5FilesE2ETests` 2），覆盖 AC-CVS-01-6、02-2、02-3、02-5、02-6、03-2、03-8、03-10（界面部分）、04-1、04-2、04-5，AC-CHAT-90-8、90-9。反证 15 项，14 项被发现（"列表不随事件更新"对 03-10 存活：冷启动后状态靠 SDK 清除，FE-682 已反证）。全量 XCUITest 197 个：186 通过、7 原有跳过、4 失败（问题 53 的 `testTC_ACC_03_40`；`testTC_ACC_10_01`、`testImageSaveToPhotosAndRefusedPermission`、`testTC_FILE_04_10` 单独重跑都通过，偶发）；`check_e2e_leftovers.py` CFNetwork 带文件名为 0 |
 | FE-686 | 🟡 完成（AC-CVS-02-6 的通知部分等 C3） | 报告 [c5-frontend-acceptance-2026-11-11.md](../reports/c5-frontend-acceptance-2026-11-11.md)（**本地结果，CI 不运行**；Chrome、模拟器，真机和 WebKit 未执行）。18 条 AC：通过 14、部分通过 4（AC-CVS-02-6 通知部分等 C3；AC-CHAT-90-8、90-9 原生图标清单和 axe 等价；AC-CHAT-90-2 等 P-12）、未执行 0、失败 0。跨端 6 个方向（同一用户 D1、D2 分在两端同时在线：置顶、免打扰 2 秒内，删除消失并清草稿，重新出现只算新消息，离线删除重连后一致）都通过，三个接收端反证都按预期失败；跨端用例 tianting-web@145d0fe、tianting-android@b81c592、tianting-ios@b80cd93。没有改实现。全量：三套 SDK 重跑通过；H5、管理后台、Android ui/e2e、iOS 全量采用同日第一段的日志；Android kill 偶发崩溃记问题 75；iOS 问题 53 仍稳定失败。问题 73 结论：PRD 不要求客户端跟随服务端配置 |
+| FE-690～FE-698 | ⬜ 未开始 | 2026-11-11 分发（C6，QUEUE Q30）。不依赖 C3；开发和测试只用特征词 |
 | 其余 | ⬜ 未开始 | Kotlin、Swift 照 [SDK 设计说明第 6 节](../sdk/README.md) 做 |
 
 ## 总览
 
-| 第 18 节的列 | 公共 | C1 | C2 | C3 | C4 | C5 | 任务 |
-|---|---|---|---|---|---|---|---|
-| sdk-ts | 1 | 3.5 | 3.5 | 0 | 3 | 1.5 | FE-600、FE-610、FE-630；C3 只同步协议副本（BE-450）；C4 FE-660；C5 FE-680 |
-| sdk-kotlin | 1 | 4 | 5.5 | 3 | 4.5 | 2.5 | FE-601、FE-611、FE-631、FE-650、FE-661（3）、FE-662（1.5）；FE-681（2.5） |
-| sdk-swift | 1 | 4 | 5.5 | 3 | 4.5 | 2.5 | FE-602、FE-612、FE-632、FE-651、FE-663（3）、FE-664（1.5）；FE-682（2.5） |
-| H5 | 0 | 5 | 6 | 0 | 5 | 2 | FE-613（2.5）、FE-614（2.5）；FE-633（3）、FE-634（3）；C3 没有（H5 无离线通知）；FE-665（3）、FE-666（2）；FE-683（2） |
-| Android | 0 | 5.5 | 8 | 5 | 6 | 3 | FE-615（2.5）、FE-616（3）；FE-635（4）、FE-636（4）；FE-652（2.5）、FE-653（2.5）；FE-667（3.5）、FE-668（2.5）；FE-684（3） |
-| iOS | 0 | 5.5 | 8 | 5 | 6 | 3 | FE-617（2.5）、FE-618（3）；FE-637（4）、FE-638（4）；FE-654（2.5）、FE-655（2.5）；FE-669（3.5）、FE-670（2.5）；FE-685（3） |
-| console + 后台页面（页面部分） | 0 | 1 | 1 | 0 | 1 | 0 | FE-619、FE-639；其余 CS-200～203；C4 FE-671，console 部分 CS-204（CS-202 人日在 C2）；C5 没有页面改动，console 部分 CS-205（0.5） |
-| 测试（前端部分） | 0 | 3.5 | 4 | 2.5 | 3.5 | 1.5 | FE-620、FE-640、FE-656；其余 BE-422、BE-440、BE-459；C4 FE-672，其余 BE-478、BE-480；C5 FE-686，其余 BE-487、BE-489 |
-| 文档（前端部分） | 0 | 0.5 | 0 | 0 | 0 | 0 | FE-620；C4 的 `docs/sdk/README.md` 在 BE-479；C5 的 `docs/sdk/README.md` 在 BE-488 |
-| **本单合计** | **3** | **32.5** | **41.5** | **18.5** | **33.5** | **16** | **145** |
+| 第 18 节的列 | 公共 | C1 | C2 | C3 | C4 | C5 | C6 | 任务 |
+|---|---|---|---|---|---|---|---|---|
+| sdk-ts | 1 | 3.5 | 3.5 | 0 | 3 | 1.5 | 1 | FE-600、FE-610、FE-630；C3 只同步协议副本（BE-450）；C4 FE-660；C5 FE-680；C6 FE-690 |
+| sdk-kotlin | 1 | 4 | 5.5 | 3 | 4.5 | 2.5 | 1 | FE-601、FE-611、FE-631、FE-650、FE-661（3）、FE-662（1.5）；FE-681（2.5）；FE-691（1） |
+| sdk-swift | 1 | 4 | 5.5 | 3 | 4.5 | 2.5 | 1 | FE-602、FE-612、FE-632、FE-651、FE-663（3）、FE-664（1.5）；FE-682（2.5）；FE-692（1） |
+| H5 | 0 | 5 | 6 | 0 | 5 | 2 | 1.5 | FE-613（2.5）、FE-614（2.5）；FE-633（3）、FE-634（3）；C3 没有（H5 无离线通知）；FE-665（3）、FE-666（2）；FE-683（2）；FE-693（1.5） |
+| Android | 0 | 5.5 | 8 | 5 | 6 | 3 | 2 | FE-615（2.5）、FE-616（3）；FE-635（4）、FE-636（4）；FE-652（2.5）、FE-653（2.5）；FE-667（3.5）、FE-668（2.5）；FE-684（3）；FE-694（2） |
+| iOS | 0 | 5.5 | 8 | 5 | 6 | 3 | 2 | FE-617（2.5）、FE-618（3）；FE-637（4）、FE-638（4）；FE-654（2.5）、FE-655（2.5）；FE-669（3.5）、FE-670（2.5）；FE-685（3）；FE-695（2） |
+| console + 后台页面（页面部分） | 0 | 1 | 1 | 0 | 1 | 0 | 3 | FE-619、FE-639；其余 CS-200～203；C4 FE-671，console 部分 CS-204（CS-202 人日在 C2）；C5 没有页面改动，console 部分 CS-205（0.5）；C6 FE-696（1）、FE-697（2），console 部分 CS-206～208（3） |
+| 测试（前端部分） | 0 | 3.5 | 4 | 2.5 | 3.5 | 1.5 | 2.5 | FE-620、FE-640、FE-656；其余 BE-422、BE-440、BE-459；C4 FE-672，其余 BE-478、BE-480；C5 FE-686，其余 BE-487、BE-489；C6 FE-698，其余 BE-499 |
+| 文档（前端部分） | 0 | 0.5 | 0 | 0 | 0 | 0 | 0 | FE-620；C4 的 `docs/sdk/README.md` 在 BE-479；C5 的 `docs/sdk/README.md` 在 BE-488；C6 的 `docs/sdk/README.md` 在 BE-497 |
+| **本单合计** | **3** | **32.5** | **41.5** | **18.5** | **33.5** | **16** | **14** | **145** |
 
-**差异说明**：和第 18 节一致（按列拆分，不是独立重估，**低置信**）。三份任务单合计 145（C1 + C2 + 公共），加 C3 38.5 共 183.5，再加 C4 48.5（本单 33.5、backend-chat 14.5、console-chat 0.5）共 232，再加 C5 24.5（本单 16、backend-chat 8、console-chat 0.5）共 256.5，对照见 [backend-chat](backend-chat.md)。把每个端拆成两个任务只是为了每个任务不超过 4 人日，两个任务的 SDK 接口是同一套。
+**差异说明**：和第 18 节一致（按列拆分，不是独立重估，**低置信**）。三份任务单合计 145（C1 + C2 + 公共），加 C3 38.5 共 183.5，再加 C4 48.5（本单 33.5、backend-chat 14.5、console-chat 0.5）共 232，再加 C5 24.5（本单 16、backend-chat 8、console-chat 0.5）共 256.5，再加 C6 28（本单 14、backend-chat 11、console-chat 3）共 284.5，和第 18 节合计一致，对照见 [backend-chat](backend-chat.md)。把每个端拆成两个任务只是为了每个任务不超过 4 人日，两个任务的 SDK 接口是同一套。
 
-**依赖顺序**：BE-400 → FE-600 → FE-601、FE-602 → FE-610 → FE-611、FE-612 → FE-613、FE-615、FE-617 → FE-614、FE-616、FE-618 → FE-619 → FE-620 →（C1 校准）→ BE-403 → FE-630 → FE-631、FE-632 → FE-633、FE-635、FE-637 → FE-634、FE-636、FE-638 → FE-639 → FE-640 →（C2 校准，Frank 决定 C3）→ BE-450 → FE-650、FE-651（先用 `FakeTransport`，BE-452、BE-454 好了接真实 im-server）→ FE-652、FE-654 → FE-653、FE-655 → FE-656（真机部分等第 20.3 节和 P-13）。**C3 暂停后先做 C4**：BE-470、BE-478 → FE-660 → FE-661、FE-663（可以并行）→ FE-662、FE-664；FE-660 → FE-665 → FE-666；FE-661 → FE-667 → FE-668；FE-663 → FE-669 → FE-670；CS-204、CS-202 → FE-671；全部 → FE-672。**C5**：BE-482、BE-487 → FE-680 → FE-681、FE-682（可以并行）；FE-680 → FE-683；FE-681 → FE-684；FE-682 → FE-685；BE-489 和三端 → FE-686。
+**依赖顺序**：BE-400 → FE-600 → FE-601、FE-602 → FE-610 → FE-611、FE-612 → FE-613、FE-615、FE-617 → FE-614、FE-616、FE-618 → FE-619 → FE-620 →（C1 校准）→ BE-403 → FE-630 → FE-631、FE-632 → FE-633、FE-635、FE-637 → FE-634、FE-636、FE-638 → FE-639 → FE-640 →（C2 校准，Frank 决定 C3）→ BE-450 → FE-650、FE-651（先用 `FakeTransport`，BE-452、BE-454 好了接真实 im-server）→ FE-652、FE-654 → FE-653、FE-655 → FE-656（真机部分等第 20.3 节和 P-13）。**C3 暂停后先做 C4**：BE-470、BE-478 → FE-660 → FE-661、FE-663（可以并行）→ FE-662、FE-664；FE-660 → FE-665 → FE-666；FE-661 → FE-667 → FE-668；FE-663 → FE-669 → FE-670；CS-204、CS-202 → FE-671；全部 → FE-672。**C5**：BE-482、BE-487 → FE-680 → FE-681、FE-682（可以并行）；FE-680 → FE-683；FE-681 → FE-684；FE-682 → FE-685；BE-489 和三端 → FE-686。**C6**：BE-491 → FE-690 → FE-691、FE-692（可以并行）；FE-690 → FE-693；FE-691 → FE-694；FE-692 → FE-695；CS-206 → FE-696；CS-207、CS-208 → FE-697；BE-499 和三端、后台 → FE-698。
 
 ---
 
@@ -792,6 +793,125 @@
 
 ---
 
+## C6 敏感词和举报
+
+> 2026-11-11 分发（Frank 2026-11-11"开始 C6"，PENDING P-47，QUEUE Q30）。依据 PRD 第 10 节 F-MOD-01～04，第 13.1～13.4、14.1、15 节的 C6 部分。服务端任务见 [backend-chat](backend-chat.md) BE-491～BE-499，console 见 [console-chat](console-chat.md) CS-206～CS-208。
+> **不依赖 C3**（backend-chat 第 94 条）。开发和测试只用特征词（`违规词`、`badword`、`ZXQWORD`、`ZXQ-*`），**任何仓库、用例、截图里都不放真实词库**（F-MOD-01 规则 5）。
+> 现状（2026-11-11 调查，各仓 HEAD：sdk-ts `c9b3127`、sdk-kotlin `ae12932`、sdk-swift `7137fdf`、tianting-web `145d0fe`、tianting-android `b81c592`、tianting-ios `b80cd93`、tianting-admin `aa47b1f`）：七个仓都**没有** `report`、4510、`features.moderation`；消息菜单的代码里都留了"举报随 C6"的注释（sdk-ts `client.ts` 第 298 行，tianting-web `pages/ChatPage.tsx` 第 66 行，tianting-android `ui/pages/ChatPage.kt` 第 218 行，tianting-ios `Core/ChatLogic.swift` 第 122 行）；管理后台没有词库页、举报页（`src/pages/` 现有 21 个页面），C4 的经代理看文件只有 `attachment` 下载（FE-671）。
+> 文案（PRD 原文）：4510"消息包含不当内容，无法发送"；提交前"所选内容将提交给平台审核"；成功"已提交，感谢你的反馈"；4292"今天的举报次数已用完"；后台"单聊正文查看未开启""证据无法解密"。PRD 没写的文案按第 78、82、83 条。
+
+### FE-690 sdk-ts：report、4510、features.moderation
+- 优先级：P0
+- 批次：C6
+- 仓库：tianting-sdk-ts
+- 依赖：BE-491
+- AC：AC-MOD-02-9、AC-MOD-03-1、AC-MOD-03-9、AC-CHAT-90-10
+- 内容：
+  1. 模型（第 11.1 节）：`src/protocol.ts` 加 `ReportReq`（三种 `targetType`）和 ack `{reportId}`；错误枚举加 4510、4098（`client` scope 一致性，F-SYS-01）；`GET /v1/config` 的 `features.moderation`（老服务端没有按 false）。
+  2. 接口（第 13.1 节）：`report({targetType, convId?, msgIds?, userId?, groupId?, reason, note?})` → `reportId`；参数在本地先校验（`note` ≤ 200 码点、`msgIds` 1～20），不合法直接抛 4000 不发帧；4292、4040、4030 原样交给页面，**不自动重试**。第一批页面只举报单条，接口保留数组（R-CF-21）。
+  3. **4510**（F-MOD-02 规则 6、AC-MOD-02-9）：`send`、`sendImage`、`sendFile` 收到 4510 时消息标记失败、**不自动重发**，错误里不含任何词（服务端本来就不给）；失败原因可以让页面区分 4510（第 81 条：4510 的失败消息不提供"重发"）。账号接口（注册、改昵称）的 4510 原样抛出。
+  4. 共享向量：同步 `protocol/` 副本到 BE-491 之后的提交，跑 `frames.json` 的 `report` 新帧和 4510 错误 ack（AC-CHAT-90-10，`test/frames-schema.test.ts`）。C6 没有 `chat-sync.json` 用例（第 15 节 AC-CHAT-90-15 的 C6 列是"—"）。
+  5. SDK 日志不打印 `note`。
+- 工作量：1 人日（sdk-ts）
+
+### FE-691 sdk-kotlin：report、4510、features.moderation
+- 优先级：P0
+- 批次：C6
+- 仓库：tianting-sdk-kotlin（`sdk-core`）
+- 依赖：FE-690
+- AC：AC-MOD-02-9、AC-MOD-03-1、AC-MOD-03-9、AC-CHAT-90-10
+- 内容：
+  1. 语义同 FE-690。`Protocol.kt` 加帧和错误码；`IMClient.report(...)`（`suspend`）；4510 的失败消息进本地库时带失败原因，冷启动后仍不提供"重发"。
+  2. `frames.json`（`VectorsTest.kt`）。
+- 工作量：1 人日（sdk-kotlin）
+
+### FE-692 sdk-swift：report、4510、features.moderation
+- 优先级：P0
+- 批次：C6
+- 仓库：tianting-sdk-swift
+- 依赖：FE-690
+- AC：AC-MOD-02-9、AC-MOD-03-1、AC-MOD-03-9、AC-CHAT-90-10
+- 内容：
+  1. 语义同 FE-691。`report(...)` 用 `async throws`；本地库的失败原因同 FE-691。
+  2. `frames.json`（`VectorTests.swift`、`SchemaValidator.swift`）。
+- 工作量：1 人日（sdk-swift）
+
+### FE-693 H5：举报入口和举报单、4510 的提示
+- 优先级：P0
+- 批次：C6
+- 仓库：tianting-web
+- 依赖：FE-690
+- AC：AC-MOD-02-9、AC-MOD-03-1、AC-MOD-03-9、AC-MOD-03-11、AC-CHAT-90-8、AC-CHAT-90-9
+- 内容：
+  1. **入口**（F-MOD-03 规则 8，第 13.3 节，`features.moderation` 关时都没有，第 76 条）：消息菜单"举报"（按状态显示，显示条件见第 77 条，`pages/ChatPage.tsx` 第 66 行旁边）；撤回提示行"举报"（别人撤回的、本机看过的，AC-MOD-03-11）；资料卡、群信息页"举报"。
+  2. **举报单**：理由单选（6 项，文案见第 78 条）、补充说明（可选，0～200 码点，计数显示）、提示"所选内容将提交给平台审核"；提交中禁用按钮；成功轻提示"已提交，感谢你的反馈"；**单聊消息和用户举报成功后询问是否拉黑**（第 79 条）；4292"今天的举报次数已用完"；4040 按第 83 条；网络错误可以重试（手动）。
+  3. **4510**（AC-MOD-02-9）：消息在列表标记失败，**输入框清空**（和其他发送失败一致，可以从气泡复制），提示"消息包含不当内容，无法发送"，不自动重发，失败气泡没有"重发"（第 81 条）；注册、改昵称、建群、改群名和公告、好友申请的 4510 按第 82 条的文案提示，表单内容保留可修改。
+  4. 无障碍和视觉：新增的"举报"图标进 PRD-ui 6.6 节清单（第 80 条），颜色走 token；举报单可以只用键盘完成（Tab、方向键选理由、Esc 关闭），菜单的键盘入口沿用 C4（AC-CHAT-90-8、90-9，TC-CHAT-90-44、45）。
+- 工作量：1.5 人日（H5）
+
+### FE-694 Android：举报入口和举报单、4510 的提示
+- 优先级：P0
+- 批次：C6
+- 仓库：tianting-android
+- 依赖：FE-691
+- AC：AC-MOD-02-9、AC-MOD-03-1、AC-MOD-03-9、AC-MOD-03-11、AC-CHAT-90-8、AC-CHAT-90-9
+- 内容：
+  1. 同 FE-693：消息菜单（`ui/pages/ChatPage.kt` 第 218 行旁边）、撤回提示行、资料卡、群信息页的"举报"；举报单用底部弹层（理由单选、补充说明、提示）；成功后单聊询问拉黑；4510 和其他场景的提示。
+  2. 辅助操作：消息的长按菜单已有辅助操作（C4），撤回提示行的"举报"要有可读名称；深色、token。
+- 工作量：2 人日（Android）
+
+### FE-695 iOS：举报入口和举报单、4510 的提示
+- 优先级：P0
+- 批次：C6
+- 仓库：tianting-ios
+- 依赖：FE-692
+- AC：AC-MOD-02-9、AC-MOD-03-1、AC-MOD-03-9、AC-MOD-03-11、AC-CHAT-90-8、AC-CHAT-90-9
+- 内容：
+  1. 同 FE-694：`Core/ChatLogic.swift` 第 122 行的菜单项加"举报"；举报单用 sheet；撤回提示行、资料卡、群信息页的入口；`accessibilityAction`。
+  2. 4510 和其他场景的提示；深色、token。
+- 工作量：2 人日（iOS）
+
+### FE-696 管理后台：词库页和命中统计
+- 优先级：P0
+- 批次：C6
+- 仓库：tianting-admin
+- 依赖：CS-206
+- AC：AC-MOD-01-7
+- 内容：
+  1. 新页面"词库"（第 14.1 节，菜单和路由按 `moderation.words` 守卫，同 FE-401 的做法）：列表（原文、状态、更新时间），搜索，单个添加，停用 / 启用，删除（确认框）；**内容一律按纯文本渲染**（不用 `dangerouslySetInnerHTML`，lint 规则已有）。
+  2. 批量导入：选择 txt 文件（UTF-8，一行一个），浏览器里拆成数组，超过 5000 行直接提示"一次最多 5000 条"不提交；提交后显示结果汇总：新增、重复、无效（AC-MOD-01-7，第 86 条）。
+  3. 命中统计：按用户 ID 查次数（按场景）和最近记录，**只对有 `report.read` 的显示**（console-chat 第 27 条，要 Frank 定；定之前按这个做）。
+  4. 页面不缓存词列表到本地存储；截图用例只用特征词。
+- 工作量：1 人日（console + 后台页面列）
+
+### FE-697 管理后台：举报队列、详情、证据、结案
+- 优先级：P0
+- 批次：C6
+- 仓库：tianting-admin
+- 依赖：CS-207、CS-208、FE-671
+- AC：AC-MOD-03-1、AC-MOD-03-11、AC-MOD-04-1、AC-MOD-04-6、AC-MOD-04-12、AC-MOD-04-15
+- 内容：
+  1. 新页面"举报"（`report.read` 守卫）：按状态（待处理、已处理、已驳回）、理由、时间筛选；**相同对象聚合显示"N 次"**，点开看每条（AC-MOD-04-6，聚合口径见 backend-chat 第 117 条）；被举报内容、昵称、理由一律纯文本渲染。
+  2. 详情：元数据（举报人、被举报人、时间、理由、消息类型和长度、该用户被举报的总次数）；单聊举报打开前弹理由框（每天 50 个，429 / 4292 的提示）；**没有授权时不显示 `note` 和文件名**。
+  3. 证据：群消息"查看证据"→ 弹框（理由 + 当次动态码，工单号自动填举报 ID 不可改）→ 正文、隔离原文（撤回的，AC-MOD-03-11）、补充说明、文件名，**平铺水印**（同 FE-421：账号名 + 时间到分钟 + 授权前 8 位）；**图片同时显示缩略图和原图**，经 console 同源加载；其他文件只有"下载"（`attachment`），html 也是下载（AC-MOD-04-12）；文件名含 `<script>` 按纯文本显示（AC-MOD-04-15）；生产 CSP 下没有违规（Playwright 监听 `securitypolicyviolation`）；单聊显示"单聊正文查看未开启"，只能看元数据和被举报次数；`undecryptable` 显示"证据无法解密"，仍可结案；任何请求 4039 弹同一个授权框。
+  4. 结案：结论（已处理 / 驳回）+ 理由；4098 提示"举报已被处理"并刷新；页面上有跳转到已有操作的链接（删除消息、禁言、封禁、强制下线、解散群），**不自动执行**（F-MOD-04 规则 5）。AC-MOD-04-1 的完整流程（读证据 → 删除消息 → 结案）随 FE-698。
+- 工作量：2 人日（console + 后台页面列）
+
+### FE-698 C6 三端和管理后台验收
+- 优先级：P0
+- 批次：C6
+- 仓库：tianting-web、tianting-android、tianting-ios、tianting-admin、三套 SDK
+- 依赖：FE-693、FE-694、FE-695、FE-696、FE-697、BE-499
+- AC：AC-MOD-01-7、AC-MOD-02-9、AC-MOD-03-1、AC-MOD-03-9、AC-MOD-03-11、AC-MOD-04-1、AC-MOD-04-6、AC-MOD-04-12、AC-MOD-04-15、AC-CHAT-90-8、AC-CHAT-90-9
+- 内容：
+  1. 按 [TC-MOD](../testcases/TC-MOD.md) 落地三端用例（Playwright、Compose UI Test、XCUITest，真实 im-server 测试模式，`IM_MOD_ENABLED=1`、`IM_V13_ADMIN_FEATURES=1`、测试里现场生成的 `IM_REPORT_KEY`；涉及撤回的再开 `IM_MSG_ACTIONS_ENABLED=1`）和管理后台用例（Playwright，真实 console-server + im-server + Postgres，生产 CSP 响应头）。
+  2. 端到端 AC：AC-MOD-03-1（三端各举报一次，后台队列出现，被举报人收不到帧）、AC-MOD-04-1（审核员在后台走完查看、授权、读证据、删除、结案，被删除的消息在三端消失）。
+  3. 【全部】的 C6 部分：AC-CHAT-90-8、90-9（举报入口、举报单、后台两个新页面，TC-CHAT-90-44、45）。
+  4. 写验收报告 `docs/reports/c6-frontend-acceptance-<日期>.md`：本地结果、CI 不运行；真机和 WebKit 未执行；新消息播报按 P-39 ① 仍是已知缺口；第 82 条文案等待决定时的实现。
+- 工作量：2.5 人日（测试）
+
+---
+
 ## 实现时发现的问题
 
 PRD 冻结，没有改，都按最保守的理解实现，等 Frank 决定。第 1 条是协议文件和服务端不一致，SDK 跟服务端走。S1、S3、K5、K7 已处理，三套 SDK 的提交是 tianting-sdk-ts@20be2f0、tianting-sdk-kotlin@4feed19、tianting-sdk-swift@5f3f614，结果是本地的，CI 不运行。
@@ -1020,3 +1140,20 @@ C5 分发时发现的（2026-11-10，PRD 冻结，没有改；按"建议"一列�
 | 73 | F-RCL-01 规则 1（问题 72 反证时发现） | SDK 本地判断"撤回"菜单项的 120 秒是写死的，不读服务端的 `IM_RECALL_WINDOW_SEC`；服务端改了时限时，菜单仍显示"撤回"，点下去才回 4097 | 记录。默认配置下两边一致，不影响 C5。**FE-686 结论：PRD 不要求客户端跟随**（F-RCL-01 规则 1 写死 120 秒，AC-RCL-01-8 按 ts 和服务端时间判断，4097 文案固定"2 分钟"，`/v1/config` 的 `limits` 不下发时限），不改代码；要可配需 PRD 加下发字段，属新需求 |
 | 74 | AC-FILE（FE-684 复跑时发现） | C2 用例 `FilesE2eTest.tc_file_02_06` 偶发失败：先打开聊天页、让对方发图，然后才调慢假 S3，缩略图可能已经正常下完，看不到"image-loading" | 用例写法问题，和 C5 无关。改成先调慢假 S3 再发图，断言不变；FE-686 之前修。**已修**（tianting-android@17b2ee7） |
 | 75 | Android kill 用例第二阶段（FE-686 全量发现） | 冷启动新进程时 App 偶发崩溃 `Detected multithreaded access to SnapshotStateObserver: previousThreadId=47, currentThread=main`（主线程 `dispatchDraw` 的 `observeReads`）。出现在 C2 `FilesKillE2e.uploadKilled`、C4 `C4KillE2e.recallWhileKilled`，大约 10 次里 2～3 次；C5 `C5KillE2e` 没有出现；FE-684 时没有出现，之后 App 只改过测试 | 记录，没有改。不是 C5 的问题；谁在主线程之外做了绘制或测量没有查清，要另开任务（堆栈见 c5-frontend-acceptance-2026-11-11 第 8 节） |
+
+C6 分发时发现的（2026-11-11，PRD 冻结，没有改；按"建议"一列实现，Frank 不同意再改）。**要 Frank 定的是第 82 条（文案，不阻塞）**，另有 backend-chat 第 104、108、118、119、121 条影响后台页面和隐私清单；第 76 条是"PRD 别处已写明"；其余是缺口或记录：
+
+| # | 位置 | 问题 | 建议 |
+|---|---|---|---|
+| 76 | 第 4.1 节共同规则、F-MOD-03 规则 8 | 举报入口什么时候隐藏 | **按 PRD 原文**：`features.moderation=false`（backend-chat 第 96 条）时三类入口都不显示；4510 的提示和开关无关（服务端返回了就显示） |
+| 77 | F-MOD-03 规则 2、2a、8，F-UI-09 | 消息菜单"举报"对哪些消息显示没写 | 别人发的、已经发送成功的 `text`、`image`、`file`；自己的、`tip`、`custom`、发送中和失败的都没有；撤回提示行只在**别人**撤回的消息上有（隔离原文过期后点了仍会成功，证据只有元数据，AC-MOD-03-12）。资料卡对自己不显示；群信息页只对当前成员显示 |
+| 78 | F-MOD-03 规则 1 | 6 个 `reason` 的界面文案没写 | 垃圾广告（`spam`）、辱骂骚扰（`abuse`）、色情低俗（`porn`）、诈骗（`fraud`）、违法违规（`illegal`）、其他（`other`），三端和后台一致；默认不选，必须选一个才能提交 |
+| 79 | F-MOD-03 规则 8 | "提交成功后询问是否拉黑（单聊）"：举报用户时问不问、已经拉黑的问不问没写 | 单聊里的消息举报和从资料卡举报用户都问；对方已在黑名单、群消息、群举报不问；选"拉黑"走现有的拉黑接口，失败单独提示，不影响举报结果 |
+| 80 | 第 13.3 节、PRD-ui 6.6 节 | "举报"的图标不在 6.6 节清单 | 用 Lucide `flag`，BE-497 第 4 条加进 PRD-ui 6.6 节（同第 57 条的做法） |
+| 81 | F-MOD-02 规则 6 | 4510 的失败消息能不能"重发"没写（原样重发一定还是 4510） | 4510 的失败气泡只有"复制""删除"，没有"重发"；SDK 记失败原因（FE-690 第 3 条），原生端冷启动后也一样 |
+| 82 | 第 11.5 节 4510 文案、F-MOD-02 规则 2 | 4510 的文案是"消息包含不当内容，无法发送"，昵称、用户名、群名、群公告、好友申请附言被拦截时用这句不贴切 | **要 Frank 定（界面文案，不阻塞）**。建议：消息用原文；其他场景"内容包含不当信息，请修改后重试"，表单内容保留；`errors.json` 的 `message` 不变，客户端按"命令 + 码"区分（同 4292 的做法，RC2-20）。定之前按建议实现 |
+| 83 | 第 11.5 节 4040 `reportTargetInvalid` | 举报 4040 的文案没写 | "无法举报该内容"（不说明原因，响应本来相同）；4030 `featureDisabled` 时入口本来不显示，竞态下提示"举报功能暂不可用" |
+| 84 | F-MOD-03 规则 1 | `note` 的 200 个码点在客户端怎么数 | 按码点数（和服务端一致），超出不能再输入；粘贴超长的截断到 200 并提示 |
+| 85 | F-MOD-03 规则 2、R-CF-21 | 第一批客户端只举报单条，协议允许 20 条 | 三端只传 1 个 `msgId`；多选在后续批 |
+| 86 | F-MOD-01 规则 1、AC-MOD-01-7 | 后台批量导入的文件格式没写 | txt、UTF-8、一行一个（去掉首尾空白，空行交给服务端计入无效），浏览器里拆成数组提交，超过 5000 行不提交（backend-chat 第 103 条） |
+| 87 | F-MOD-04 规则 1、4 | 后台举报详情里"该用户被举报的次数"按什么算 | 按被举报用户，所有类型都算（backend-chat 第 117 条），保留期内（第 119 条定了之后可能变） |

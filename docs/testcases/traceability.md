@@ -2,8 +2,8 @@
 
 > 由 `python3 tools/trace.py` 生成，不要手工编辑。
 
-- AC 总数：1635，完全覆盖：1635，有缺口：0
-- 关联到 AC 的测试用例数：1978
+- AC 总数：1696，完全覆盖：1696，有缺口：0
+- 关联到 AC 的测试用例数：2046
 - 引用了不存在的 AC：无
 - 重复的 AC 编号：无
 
@@ -15,7 +15,7 @@
 | admin-v1.4 | 280 | 280 |
 | ops-v1.5 | 172 | 172 |
 | live-v1.2 | 113 | 113 |
-| chat-v1.7 | 459 | 459 |
+| chat-v1.7 | 520 | 520 |
 
 | AC | PRD | 验证层 | 后端任务（BE / CS） | 前端任务 | 测试用例 | 状态 |
 |---|---|---|---|---|---|---|
@@ -1203,6 +1203,7 @@
 | AC-ACC-01-6 | chat-v1.7 | 后端 | BE-413 | — | TC-ACC-01-07 | ✅ |
 | AC-ACC-01-7 | chat-v1.7 | 后端 | BE-413 | — | TC-ACC-01-08 | ✅ |
 | AC-ACC-01-8 | chat-v1.7 | 后端 | BE-413 | — | TC-ACC-01-09 | ✅ |
+| AC-ACC-01-9 | chat-v1.7 | 后端 | BE-492 | — | TC-ACC-01-22 | ✅ |
 | AC-ACC-01-10 | chat-v1.7 | 后端 | BE-413 | — | TC-ACC-01-10 | ✅ |
 | AC-ACC-01-11 | chat-v1.7 | 后端 | BE-413 | — | TC-ACC-01-11 | ✅ |
 | AC-ACC-01-12 | chat-v1.7 | 前端 | — | FE-613、FE-615、FE-617 | TC-ACC-01-12 | ✅ |
@@ -1372,6 +1373,7 @@
 | AC-ACC-10-2 | chat-v1.7 | 后端 | BE-413 | — | TC-ACC-10-02 | ✅ |
 | AC-ACC-10-3 | chat-v1.7 | 前端 | — | FE-613、FE-615、FE-617 | TC-ACC-10-03 | ✅ |
 | AC-ACC-10-4 | chat-v1.7 | 后端 | BE-471 | — | TC-ACC-10-04 | ✅ |
+| AC-ACC-10-5 | chat-v1.7 | 后端 | BE-492、BE-498 | — | TC-ACC-10-05 | ✅ |
 | AC-FILE-01-1 | chat-v1.7 | 后端 | BE-433 | — | TC-FILE-01-01 | ✅ |
 | AC-FILE-01-2 | chat-v1.7 | 后端 | BE-433 | — | TC-FILE-01-02 | ✅ |
 | AC-FILE-01-3 | chat-v1.7 | 后端 | BE-433 | — | TC-FILE-01-03 | ✅ |
@@ -1635,22 +1637,81 @@
 | AC-CVS-04-3 | chat-v1.7 | 后端 | BE-490 | — | TC-CVS-04-03 | ✅ |
 | AC-CVS-04-4 | chat-v1.7 | 后端 | BE-484 | — | TC-CVS-04-04 | ✅ |
 | AC-CVS-04-5 | chat-v1.7 | 端到端 | BE-486 | FE-680、FE-681、FE-682、FE-683、FE-684、FE-685、FE-686 | TC-CVS-04-05 | ✅ |
-| AC-CHAT-90-1 | chat-v1.7 | 后端 | BE-422、BE-440、BE-459、BE-480 | — | TC-CHAT-90-01、TC-CHAT-90-27 | ✅ |
-| AC-CHAT-90-2 | chat-v1.7 | 后端 | BE-422、BE-431、BE-440、BE-451、BE-459、BE-471、BE-480、BE-483、BE-489 | — | TC-CHAT-90-02、TC-CHAT-90-19、TC-CHAT-90-28、TC-CHAT-90-35 | ✅ |
+| AC-MOD-01-1 | chat-v1.7 | 后端 | BE-493 | — | TC-MOD-01-01 | ✅ |
+| AC-MOD-01-2 | chat-v1.7 | 后端 | BE-493 | — | TC-MOD-01-02 | ✅ |
+| AC-MOD-01-3 | chat-v1.7 | 后端 | BE-493 | — | TC-MOD-01-03 | ✅ |
+| AC-MOD-01-4 | chat-v1.7 | 后端 | BE-493 | — | TC-MOD-01-04 | ✅ |
+| AC-MOD-01-5 | chat-v1.7 | 后端 | CS-206 | — | TC-MOD-01-05 | ✅ |
+| AC-MOD-01-6 | chat-v1.7 | 后端 | BE-493、CS-206 | — | TC-MOD-01-06 | ✅ |
+| AC-MOD-01-7 | chat-v1.7 | 前端 | — | FE-696、FE-698 | TC-MOD-01-07 | ✅ |
+| AC-MOD-01-8 | chat-v1.7 | 后端 | BE-493 | — | TC-MOD-01-08 | ✅ |
+| AC-MOD-01-9 | chat-v1.7 | 后端 | BE-493 | — | TC-MOD-01-09 | ✅ |
+| AC-MOD-01-10 | chat-v1.7 | 后端 | BE-492、BE-498 | — | TC-MOD-01-10 | ✅ |
+| AC-MOD-02-1 | chat-v1.7 | 后端 | BE-494 | — | TC-MOD-02-01 | ✅ |
+| AC-MOD-02-2 | chat-v1.7 | 后端 | BE-494 | — | TC-MOD-02-02 | ✅ |
+| AC-MOD-02-3 | chat-v1.7 | 后端 | BE-494 | — | TC-MOD-02-03 | ✅ |
+| AC-MOD-02-4 | chat-v1.7 | 后端 | BE-494 | — | TC-MOD-02-04 | ✅ |
+| AC-MOD-02-5 | chat-v1.7 | 后端 | BE-494 | — | TC-MOD-02-05 | ✅ |
+| AC-MOD-02-6 | chat-v1.7 | 后端 | BE-494 | — | TC-MOD-02-06 | ✅ |
+| AC-MOD-02-7 | chat-v1.7 | 后端 | BE-494 | — | TC-MOD-02-07 | ✅ |
+| AC-MOD-02-8 | chat-v1.7 | 后端 | BE-494 | — | TC-MOD-02-08 | ✅ |
+| AC-MOD-02-9 | chat-v1.7 | 前端 | — | FE-690、FE-691、FE-692、FE-693、FE-694、FE-695、FE-698 | TC-MOD-02-09 | ✅ |
+| AC-MOD-02-10 | chat-v1.7 | 后端 | BE-492 | — | TC-MOD-02-10 | ✅ |
+| AC-MOD-02-11 | chat-v1.7 | 后端 | BE-494 | — | TC-MOD-02-11 | ✅ |
+| AC-MOD-02-12 | chat-v1.7 | 后端 | BE-494 | — | TC-MOD-02-12 | ✅ |
+| AC-MOD-02-13 | chat-v1.7 | 后端 | BE-494 | — | TC-MOD-02-13 | ✅ |
+| AC-MOD-02-14 | chat-v1.7 | 后端 | BE-494、CS-206 | — | TC-MOD-02-14 | ✅ |
+| AC-MOD-02-15 | chat-v1.7 | 后端 | BE-492 | — | TC-MOD-02-15 | ✅ |
+| AC-MOD-02-16 | chat-v1.7 | 后端 | BE-494 | — | TC-MOD-02-16 | ✅ |
+| AC-MOD-03-1 | chat-v1.7 | 端到端 | BE-495、BE-499、CS-207 | FE-690、FE-691、FE-692、FE-693、FE-694、FE-695、FE-697、FE-698 | TC-MOD-03-01 | ✅ |
+| AC-MOD-03-2 | chat-v1.7 | 后端 | BE-495 | — | TC-MOD-03-02 | ✅ |
+| AC-MOD-03-3 | chat-v1.7 | 后端 | BE-495 | — | TC-MOD-03-03 | ✅ |
+| AC-MOD-03-4 | chat-v1.7 | 后端 | BE-495 | — | TC-MOD-03-04 | ✅ |
+| AC-MOD-03-5 | chat-v1.7 | 后端 | BE-495、BE-496、BE-499、CS-208 | — | TC-MOD-03-05 | ✅ |
+| AC-MOD-03-6 | chat-v1.7 | 后端 | BE-495 | — | TC-MOD-03-06 | ✅ |
+| AC-MOD-03-7 | chat-v1.7 | 后端 | BE-495 | — | TC-MOD-03-07 | ✅ |
+| AC-MOD-03-8 | chat-v1.7 | 后端 | BE-495 | — | TC-MOD-03-08 | ✅ |
+| AC-MOD-03-9 | chat-v1.7 | 前端 | — | FE-690、FE-691、FE-692、FE-693、FE-694、FE-695、FE-698 | TC-MOD-03-09 | ✅ |
+| AC-MOD-03-10 | chat-v1.7 | 后端 | BE-495 | — | TC-MOD-03-10 | ✅ |
+| AC-MOD-03-11 | chat-v1.7 | 前端 | BE-495、BE-496、CS-208 | FE-693、FE-694、FE-695、FE-697、FE-698 | TC-MOD-03-11 | ✅ |
+| AC-MOD-03-12 | chat-v1.7 | 后端 | BE-495 | — | TC-MOD-03-12 | ✅ |
+| AC-MOD-03-13 | chat-v1.7 | 后端 | BE-495 | — | TC-MOD-03-13 | ✅ |
+| AC-MOD-03-14 | chat-v1.7 | 后端 | BE-492、BE-495 | — | TC-MOD-03-14 | ✅ |
+| AC-MOD-03-15 | chat-v1.7 | 后端 | BE-495 | — | TC-MOD-03-15 | ✅ |
+| AC-MOD-04-1 | chat-v1.7 | 端到端 | BE-496、BE-499、CS-207、CS-208 | FE-697、FE-698 | TC-MOD-04-01 | ✅ |
+| AC-MOD-04-2 | chat-v1.7 | 后端 | CS-207 | — | TC-MOD-04-02 | ✅ |
+| AC-MOD-04-3 | chat-v1.7 | 后端 | BE-496、CS-208 | — | TC-MOD-04-03 | ✅ |
+| AC-MOD-04-4 | chat-v1.7 | 后端 | BE-496、CS-208 | — | TC-MOD-04-04 | ✅ |
+| AC-MOD-04-5 | chat-v1.7 | 后端 | BE-496、CS-207 | — | TC-MOD-04-05 | ✅ |
+| AC-MOD-04-6 | chat-v1.7 | 前端 | — | FE-697、FE-698 | TC-MOD-04-06 | ✅ |
+| AC-MOD-04-7 | chat-v1.7 | 后端 | BE-496 | — | TC-MOD-04-07 | ✅ |
+| AC-MOD-04-8 | chat-v1.7 | 后端 | BE-492 | — | TC-MOD-04-08 | ✅ |
+| AC-MOD-04-9 | chat-v1.7 | 后端 | CS-208 | — | TC-MOD-04-09 | ✅ |
+| AC-MOD-04-10 | chat-v1.7 | 后端 | BE-496、CS-207 | — | TC-MOD-04-10 | ✅ |
+| AC-MOD-04-11 | chat-v1.7 | 后端 | BE-496、CS-207 | — | TC-MOD-04-11 | ✅ |
+| AC-MOD-04-12 | chat-v1.7 | 前端 | CS-208 | FE-697、FE-698 | TC-MOD-04-12 | ✅ |
+| AC-MOD-04-13 | chat-v1.7 | 后端 | BE-496、CS-208 | — | TC-MOD-04-13 | ✅ |
+| AC-MOD-04-14 | chat-v1.7 | 后端 | BE-496、CS-207 | — | TC-MOD-04-14 | ✅ |
+| AC-MOD-04-15 | chat-v1.7 | 前端 | — | FE-697、FE-698 | TC-MOD-04-15 | ✅ |
+| AC-MOD-04-16 | chat-v1.7 | 后端 | BE-496、CS-208 | — | TC-MOD-04-16 | ✅ |
+| AC-MOD-04-17 | chat-v1.7 | 后端 | BE-496 | — | TC-MOD-04-17 | ✅ |
+| AC-CHAT-90-1 | chat-v1.7 | 后端 | BE-422、BE-440、BE-459、BE-480、BE-499 | — | TC-CHAT-90-01、TC-CHAT-90-27、TC-CHAT-90-40 | ✅ |
+| AC-CHAT-90-2 | chat-v1.7 | 后端 | BE-422、BE-431、BE-440、BE-451、BE-459、BE-471、BE-480、BE-483、BE-489、BE-492、BE-499 | — | TC-CHAT-90-02、TC-CHAT-90-19、TC-CHAT-90-28、TC-CHAT-90-35、TC-CHAT-90-41 | ✅ |
 | AC-CHAT-90-3 | chat-v1.7 | 后端 | BE-438、BE-440、BE-459 | — | TC-CHAT-90-03、TC-CHAT-90-20 | ✅ |
-| AC-CHAT-90-5 | chat-v1.7 | 后端 | BE-422、BE-440、BE-459、BE-480 | — | TC-CHAT-90-04、TC-CHAT-90-05、TC-CHAT-90-21、TC-CHAT-90-29 | ✅ |
+| AC-CHAT-90-4 | chat-v1.7 | 后端 | BE-493、BE-499 | — | TC-CHAT-90-42 | ✅ |
+| AC-CHAT-90-5 | chat-v1.7 | 后端 | BE-422、BE-440、BE-459、BE-480、BE-499 | — | TC-CHAT-90-04、TC-CHAT-90-05、TC-CHAT-90-21、TC-CHAT-90-29、TC-CHAT-90-43 | ✅ |
 | AC-CHAT-90-6 | chat-v1.7 | 后端 | BE-410 | — | TC-CHAT-90-06 | ✅ |
 | AC-CHAT-90-7 | chat-v1.7 | 前端 | — | FE-660、FE-661、FE-663、FE-672 | TC-CHAT-90-26 | ✅ |
-| AC-CHAT-90-8 | chat-v1.7 | 前端 | — | FE-614、FE-616、FE-618、FE-620、FE-634、FE-636、FE-638、FE-640、FE-653、FE-655、FE-656、FE-665、FE-666、FE-667、FE-668、FE-669、FE-670、FE-672、FE-683、FE-684、FE-685、FE-686 | TC-CHAT-90-07、TC-CHAT-90-22、TC-CHAT-90-30、TC-CHAT-90-36 | ✅ |
-| AC-CHAT-90-9 | chat-v1.7 | 前端 | — | FE-614、FE-616、FE-618、FE-620、FE-634、FE-636、FE-638、FE-640、FE-653、FE-655、FE-656、FE-665、FE-666、FE-667、FE-668、FE-669、FE-670、FE-672、FE-683、FE-684、FE-685、FE-686 | TC-CHAT-90-08、TC-CHAT-90-23、TC-CHAT-90-31、TC-CHAT-90-37 | ✅ |
-| AC-CHAT-90-10 | chat-v1.7 | 后端 | BE-400、BE-401、BE-402、BE-403、BE-450、BE-470、BE-482、BE-489 | FE-600、FE-601、FE-602、FE-650、FE-651、FE-660、FE-661、FE-663、FE-680、FE-681、FE-682 | TC-CHAT-90-09、TC-CHAT-90-24、TC-CHAT-90-32、TC-CHAT-90-38 | ✅ |
+| AC-CHAT-90-8 | chat-v1.7 | 前端 | — | FE-614、FE-616、FE-618、FE-620、FE-634、FE-636、FE-638、FE-640、FE-653、FE-655、FE-656、FE-665、FE-666、FE-667、FE-668、FE-669、FE-670、FE-672、FE-683、FE-684、FE-685、FE-686、FE-693、FE-694、FE-695、FE-698 | TC-CHAT-90-07、TC-CHAT-90-22、TC-CHAT-90-30、TC-CHAT-90-36、TC-CHAT-90-44 | ✅ |
+| AC-CHAT-90-9 | chat-v1.7 | 前端 | — | FE-614、FE-616、FE-618、FE-620、FE-634、FE-636、FE-638、FE-640、FE-653、FE-655、FE-656、FE-665、FE-666、FE-667、FE-668、FE-669、FE-670、FE-672、FE-683、FE-684、FE-685、FE-686、FE-693、FE-694、FE-695、FE-698 | TC-CHAT-90-08、TC-CHAT-90-23、TC-CHAT-90-31、TC-CHAT-90-37、TC-CHAT-90-45 | ✅ |
+| AC-CHAT-90-10 | chat-v1.7 | 后端 | BE-400、BE-401、BE-402、BE-403、BE-450、BE-470、BE-482、BE-489、BE-491、BE-499 | FE-600、FE-601、FE-602、FE-650、FE-651、FE-660、FE-661、FE-663、FE-680、FE-681、FE-682、FE-690、FE-691、FE-692 | TC-CHAT-90-09、TC-CHAT-90-24、TC-CHAT-90-32、TC-CHAT-90-38、TC-CHAT-90-46 | ✅ |
 | AC-CHAT-90-11 | chat-v1.7 | 后端 | BE-422 | — | TC-CHAT-90-10 | ✅ |
 | AC-CHAT-90-12 | chat-v1.7 | 后端 | BE-432、BE-440 | — | TC-CHAT-90-11 | ✅ |
 | AC-CHAT-90-13 | chat-v1.7 | 后端 | BE-455、BE-459 | — | TC-CHAT-90-18 | ✅ |
 | AC-CHAT-90-14 | chat-v1.7 | 后端 | BE-400 | FE-600、FE-601、FE-602 | TC-CHAT-90-12 | ✅ |
 | AC-CHAT-90-15 | chat-v1.7 | 前端 | BE-402、BE-403、BE-478、BE-487 | FE-600、FE-601、FE-602、FE-610、FE-611、FE-612、FE-620、FE-630、FE-631、FE-632、FE-640、FE-660、FE-661、FE-663、FE-672、FE-680、FE-681、FE-682、FE-686 | TC-CHAT-90-13、TC-CHAT-90-33、TC-CHAT-90-39 | ✅ |
 | AC-CHAT-90-16 | chat-v1.7 | 后端 | BE-411 | — | TC-CHAT-90-14 | ✅ |
-| AC-CHAT-90-17 | chat-v1.7 | 后端 | BE-422、BE-423、BE-438、BE-440、BE-458、BE-459、BE-471、BE-480、CS-203 | — | TC-CHAT-90-15、TC-CHAT-90-16、TC-CHAT-90-25、TC-CHAT-90-34 | ✅ |
+| AC-CHAT-90-17 | chat-v1.7 | 后端 | BE-422、BE-423、BE-438、BE-440、BE-458、BE-459、BE-471、BE-480、BE-492、BE-499、CS-203 | — | TC-CHAT-90-15、TC-CHAT-90-16、TC-CHAT-90-25、TC-CHAT-90-34、TC-CHAT-90-47 | ✅ |
 | AC-CHAT-90-18 | chat-v1.7 | 后端 | BE-405 | — | TC-CHAT-90-17 | ✅ |
 | AC-FILE-90-1 | chat-v1.7 | 后端 | BE-439 | — | TC-FILE-90-01 | ✅ |
 | AC-FILE-90-2 | chat-v1.7 | 手工 | BE-439 | FE-640 | TC-FILE-90-02 | ✅ |

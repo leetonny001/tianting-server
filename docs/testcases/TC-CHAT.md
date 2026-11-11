@@ -1,7 +1,7 @@
 # 测试用例：聊天产品非功能（CHAT，C1～C5 部分）
 
 > 依据：[PRD-chat v1.7](../prd/PRD-chat-v1.7.md)（冻结）第 15 节 F-CHAT-90。任务单：[backend-chat](../tasks/backend-chat.md)、[frontend-chat](../tasks/frontend-chat.md)。
-> 范围：标了【C1】【C2】【C3】【C4】【全部】的 AC-CHAT（CH-27）。**【全部】的 AC 每个里程碑发布前跑一次，这里写到 C3 为止的范围**（第 15 节累计表）：C1、C2 是 TC-CHAT-90-01～17，C3 增加的部分是 TC-CHAT-90-19～25（C3 已暂停），C4 的 AC-CHAT-90-7 和 C4 增加的部分是 TC-CHAT-90-26～34（AC-CHAT-90-3 在 C4 没有新增依赖，不另写），C5 增加的部分是 TC-CHAT-90-35～39（90-1、90-3 在 C5 不变，90-5、90-17 是"—"，不另写），C6 增加的部分随对应里程碑。
+> 范围：标了【C1】【C2】【C3】【C4】【全部】的 AC-CHAT（CH-27）。**【全部】的 AC 每个里程碑发布前跑一次，这里写到 C3 为止的范围**（第 15 节累计表）：C1、C2 是 TC-CHAT-90-01～17，C3 增加的部分是 TC-CHAT-90-19～25（C3 已暂停），C4 的 AC-CHAT-90-7 和 C4 增加的部分是 TC-CHAT-90-26～34（AC-CHAT-90-3 在 C4 没有新增依赖，不另写），C5 增加的部分是 TC-CHAT-90-35～39（90-1、90-3 在 C5 不变，90-5、90-17 是"—"，不另写），C6 的 AC-CHAT-90-4 和 C6 增加的部分是 TC-CHAT-90-40～47（90-3 在 C6 不变，90-15 是"—"，不另写）。
 > 判定（R-CQ-22）：主判据用绝对值，增幅只记录；每条写明负载和样本数（≥ 1000），生产配置，3 次取最差，报告写基线提交号。**所有数字都未校准；开发机结果只记录，不算通过，发布判定等 P-12**。
 >
 > 通用约定：
@@ -53,6 +53,14 @@
 | TC-CHAT-90-37 | C5 页面：axe-core、深色模式、键盘打开会话菜单 | AC-CHAT-90-9 | Playwright（H5）+ 原生 UI 测试 | P0 |
 | TC-CHAT-90-38 | 新帧向量（C5）：服务端和三套 SDK 都跑 | AC-CHAT-90-10 | 单测（四方） | P0 |
 | TC-CHAT-90-39 | 共享用例（C5：置顶、删除、总未读） | AC-CHAT-90-15 | SDK 单测（三套） | P0 |
+| TC-CHAT-90-40 | ack P99：开词库（C6） | AC-CHAT-90-1 | 性能 | P0 |
+| TC-CHAT-90-41 | 开关全关（C6：IM_MOD_ENABLED 关） | AC-CHAT-90-2 | 后端 e2e + 性能 | P0 |
+| TC-CHAT-90-42 | 10 万词的词库：单次匹配 P99 ≤ 2 ms | AC-CHAT-90-4 | 性能 | P0 |
+| TC-CHAT-90-43 | 日志和审计搜不到特征串（C6：举报、附言） | AC-CHAT-90-5 | 后端 e2e + 部署 e2e | P0 |
+| TC-CHAT-90-44 | 举报入口和举报单符合 B-1 和 B-3，图标在清单 | AC-CHAT-90-8 | Playwright（H5）+ 原生 UI 测试 | P0 |
+| TC-CHAT-90-45 | C6 页面：axe-core、深色模式、键盘完成举报 | AC-CHAT-90-9 | Playwright（H5）+ 原生 UI 测试 | P0 |
+| TC-CHAT-90-46 | 新帧向量（C6）：服务端和三套 SDK 都跑 | AC-CHAT-90-10 | 单测（四方） | P0 |
+| TC-CHAT-90-47 | 指标和配置检查（C6） | AC-CHAT-90-17 | 后端 e2e | P0 |
 
 ---
 
@@ -592,3 +600,110 @@
   1. 三套 SDK 跑 `chat-sync.json`、`account-session.json`
 - 预期结果：
   1. 全部通过，含置顶排序、`deleted` 判断（不生成 `removed` 快照，`deletedTruncated` 时不推断）、`seq < minSeq` 的本地清除、`convDeleted` 之后的状态、总未读
+
+### TC-CHAT-90-40 ack P99：开词库（C6）
+- 关联 AC：AC-CHAT-90-1
+- 优先级：P0
+- 批次：C6（【全部】，C6 增加的部分）
+- 层级：性能
+- 环境：EP（P-12）；开发机只记录
+- 前置条件：`IM_MOD_ENABLED=1`，词库 10 万个测试现场随机生成的词（不落盘、不提交）；其余同 TC-CHAT-90-01、90-27
+- 步骤：
+  1. 500 条/秒、≥ 1000 条单聊和群聊文本（不命中），生产配置，3 次取最差
+- 预期结果：
+  1. ack P99 ≤ 200 ms（未校准），错误率 0；和不开词库的增幅只记录；开发机结果不算通过
+
+### TC-CHAT-90-41 开关全关（C6：IM_MOD_ENABLED 关）
+- 关联 AC：AC-CHAT-90-2
+- 优先级：P0
+- 批次：C6（【全部】，C6 增加的部分）
+- 层级：后端 e2e + 性能
+- 环境：E1；TC-PERF 在 EP（P-12）
+- 前置条件：`IM_MOD_ENABLED=0`，其他新开关也关；`IM_CLIENT_CUSTOM_MSG` 用开发环境默认（1）
+- 步骤：
+  1. 跑现有 `server/e2e` 全部用例（不改代码）
+  2. 跑 TC-PERF
+- 预期结果：
+  1. e2e 全过（含发送 `custom` 的用例）；`report` 403 / 4030 `featureDisabled`；`features.moderation=false`
+  2. TC-PERF 判定不变（开发机只记录）
+
+### TC-CHAT-90-42 10 万词的词库：单次匹配 P99 ≤ 2 ms
+- 关联 AC：AC-CHAT-90-4
+- 优先级：P0
+- 批次：C6
+- 层级：性能（`go test -bench`）
+- 环境：EP（P-12）；开发机只记录
+- 前置条件：测试现场随机生成 10 万词（中英文，长度 2～8）；5000 码点中文为主、不命中的文本
+- 步骤：
+  1. 单线程测量 10000 次匹配（`norm` 和 `compact` 两遍都算在内）
+- 预期结果：
+  1. P99 ≤ 2 ms（未校准）；同时记录构建自动机的耗时和内存，供部署参考
+
+### TC-CHAT-90-43 日志和审计搜不到特征串（C6：举报、附言）
+- 关联 AC：AC-CHAT-90-5
+- 优先级：P0
+- 批次：C6（【全部】，C6 增加的部分）
+- 层级：后端 e2e + 部署 e2e
+- 环境：E1 + console-server
+- 前置条件：举报备注 `ZXQ-MOD-NOTE`、好友附言 `ZXQ-MOD-APPLY`、被拦截的消息正文 `ZXQ-MOD-BODY 违规词`、词 `ZXQWORD`、证据文件名 `ZXQ-MOD-FILE`
+- 步骤：
+  1. 发附言（被拦截一次、成功一次）、发被拦截的消息、添加词、举报（带备注和文件）、审核员读证据、结案
+  2. 扫描 im-server 日志、`admin_audit`、console 日志和审计
+- 预期结果：
+  1. 都搜不到上述特征串
+
+### TC-CHAT-90-44 举报入口和举报单符合 B-1 和 B-3，图标在清单
+- 关联 AC：AC-CHAT-90-8
+- 优先级：P0
+- 批次：C6（【全部】，C6 增加的部分）
+- 层级：Playwright（H5）+ 原生 UI 测试
+- 环境：Playwright（H5）+ 模拟器
+- 前置条件：C6 新增界面：消息菜单、撤回提示行、资料卡、群信息页的"举报"，举报单，4510 和其他场景的提示
+- 步骤：
+  1. 扫描文案和构建产物（PRD-ui B-1、B-3 的检查脚本）
+  2. 核对新增图标
+- 预期结果：
+  1. 符合 B-1、B-3；构建产物里没有任何词库内容
+  2. "举报"图标在 PRD-ui 6.6 节清单里（backend-chat BE-497 第 4 条加入）
+
+### TC-CHAT-90-45 C6 页面：axe-core、深色模式、键盘完成举报
+- 关联 AC：AC-CHAT-90-9
+- 优先级：P0
+- 批次：C6（【全部】，C6 增加的部分）
+- 层级：Playwright（H5）+ 原生 UI 测试
+- 环境：Playwright（H5）+ 模拟器
+- 前置条件：同 TC-CHAT-90-44 的页面
+- 步骤：
+  1. H5 跑 axe-core（浅色、深色）；原生跑等价检查（Android 语义树、iOS 系统审计）
+  2. H5 只用键盘：打开消息菜单 → "举报" → 方向键选理由 → Tab 到提交 → 回车；原生用辅助操作完成
+- 预期结果：
+  1. 没有 `button-name` 违规；新增颜色都来自 token
+  2. 键盘和辅助操作都能完成举报
+  3. 新消息播报按 P-39 ① 不在本批，记已知缺口
+
+### TC-CHAT-90-46 新帧向量（C6）：服务端和三套 SDK 都跑
+- 关联 AC：AC-CHAT-90-10
+- 优先级：P0
+- 批次：C6（【全部】，C6 增加的部分）
+- 层级：单测（四方）
+- 环境：本地（服务端、sdk-ts、sdk-kotlin、sdk-swift）
+- 前置条件：第 15 节累计表 C6：`report`；`frames.json` 已有 BE-491 的用例
+- 步骤：
+  1. 服务端、三套 SDK 跑 `protocol/vectors/frames.json`；sdk-ts 做 Schema 校验
+- 预期结果：
+  1. 全部通过（含 `message` 缺 `msgIds`、`message` 带 `userId`、`reason` 不在枚举的非法用例，4510 错误 ack 没有 `details`）
+
+### TC-CHAT-90-47 指标和配置检查（C6）
+- 关联 AC：AC-CHAT-90-17
+- 优先级：P0
+- 批次：C6（【全部】，C6 增加的部分）
+- 层级：后端 e2e
+- 环境：E1 + `/metrics`
+- 前置条件：C6：治理指标、配置检查项 `moderation`
+- 步骤：
+  1. 各场景各命中一次；故障注入 `wordsReload` 后添加一个词；造一条 25 小时前的待处理举报
+  2. 抓 `/metrics`、`GET /internal/v1/config`
+- 预期结果：
+  1. `im_blocked_total{scene}` 各场景增加（场景名见 backend-chat 第 110 条）；`im_mod_reload_errors_total` 增加；`im_reports_pending` 为 1
+  2. 配置检查有开关状态、词库是否为空、`IM_REPORT_KEY` 已设置（不含值）、`custom` 告警
+  3. 标签没有 userId、`wordId`、`reportId`

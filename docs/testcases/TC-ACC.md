@@ -1,7 +1,7 @@
 # 测试用例：账号注册和登录（ACC，C1；头像部分 C2）
 
 > 依据：[PRD-chat v1.7](../prd/PRD-chat-v1.7.md)（冻结）第 4、5 节；[ERRORS.md](../../protocol/ERRORS.md)。任务单：[backend-chat](../tasks/backend-chat.md)、[console-chat](../tasks/console-chat.md)、[frontend-chat](../tasks/frontend-chat.md)。
-> 范围：标了【C1】【C2】【C3】【C4】的 AC-ACC（CH-27）。C4 只有 AC-ACC-10-4（TC-ACC-10-04）。C3 只有 AC-ACC-04-26（TC-ACC-04-30）；C1 AC 的推送令牌部分在 [TC-APN](TC-APN.md) TC-APN-91-01～03。C5、C6 的 AC-ACC 不在这里。
+> 范围：标了【C1】【C2】【C3】【C4】的 AC-ACC（CH-27）。C4 只有 AC-ACC-10-4（TC-ACC-10-04）。C3 只有 AC-ACC-04-26（TC-ACC-04-30）；C1 AC 的推送令牌部分在 [TC-APN](TC-APN.md) TC-APN-91-01～03。C6 有 AC-ACC-01-9、AC-ACC-10-5（TC-ACC-01-22、TC-ACC-10-05，2026-11-11 C6 分发）。C5 的 AC-ACC 不在这里。
 >
 > 通用约定：
 > - 环境：**E1 单节点**（1 个 im-server，development，`IM_TEST_MODE=1`，SQLite 独立库；`IM_TRUSTED_PROXIES` 配成测试客户端，换 IP 用 `X-Forwarded-For`，PRD 第 4.5 节）；**E1 + 假 S3**（再加 `objstoretest` 独立进程，`IM_FILES_ENABLED=1`，公开桶和私有桶都在假 S3 上）；**E1 + console-server + tianting-admin**（`CON_TEST_MODE=1`，Postgres）；**真实 MinIO**（`deploy/testenv-ci.sh` 的固定版本）；**EP 性能**（目标机，P-12）；**Postgres**（B6 之后）；**模拟器**（Android 模拟器、iOS Simulator）；**真机**（P-13）。开发机不安装软件。
@@ -38,6 +38,7 @@
 | TC-ACC-01-19 | 生产环境 open 模式拒绝启动（C6 未上线） | AC-ACC-01-19 | 单测 | P0 |
 | TC-ACC-01-20 | open 模式注册 7 天内的账号，每日上传额度 200 MiB | AC-ACC-01-20 | 后端 e2e | P0 |
 | TC-ACC-01-21 | 邀请码自动停用按窗口计：跨窗口的 38 次 4095 不停用 | AC-ACC-01-21 | 后端 e2e | P0 |
+| TC-ACC-01-22 | 生产 open 模式逐项检查：缺 IM_MOD_ENABLED、V13、词库、IM_PUBLIC_OPEN_ACK 都拒绝启动 | AC-ACC-01-9 | 后端单测 + e2e | P0 |
 | TC-ACC-02-01 | 大小写不同的用户名能登录，token 可以连接 | AC-ACC-02-1 | 后端 e2e | P0 |
 | TC-ACC-02-02 | 四种登录失败的响应完全相同 | AC-ACC-02-2 | 后端 e2e | P0 |
 | TC-ACC-02-03 | 时间侧信道：不存在账号和密码错误的耗时中位数相差不超过 5% | AC-ACC-02-3 | 后端 e2e | P0 |
@@ -193,6 +194,7 @@
 | TC-ACC-10-02 | 注册记录同意的版本 | AC-ACC-10-2 | 后端 e2e | P0 |
 | TC-ACC-10-03 | 版本更新：下次登录提示一次 | AC-ACC-10-3 | Playwright（H5）+ 原生 UI 测试 | P0 |
 | TC-ACC-10-04 | 生产、开关开、隐私说明版本为空：拒绝启动 | AC-ACC-10-4 | 后端单测 + e2e | P0 |
+| TC-ACC-10-05 | 生产、C6 开关开、隐私说明版本为空：拒绝启动 | AC-ACC-10-5 | 后端单测 + e2e | P0 |
 | TC-ACC-03-49 | 吊销之后 refresh 的 reason 按原因返回 | AC-ACC-03-49 | 后端 e2e | P0 |
 | TC-ACC-03-50 | 恢复数据库后吊销全部会话 | AC-ACC-03-50 | 后端 e2e | P0 |
 
@@ -493,6 +495,20 @@
 - 预期结果：
   1. 38 次都是 409 / 4095，I1 没有被停用
   2. 最后一次成功
+
+### TC-ACC-01-22 生产 open 模式逐项检查：缺 IM_MOD_ENABLED、V13、词库、IM_PUBLIC_OPEN_ACK 都拒绝启动
+- 关联 AC：AC-ACC-01-9
+- 优先级：P0
+- 批次：C6
+- 层级：后端单测 + e2e
+- 环境：启动参数单独构造（`IM_ENV=production`、`IM_REGISTER_MODE=open`，其余生产必需项都合法，含 `IM_REPORT_KEY`、`IM_PRIVACY_NOTICE_VERSION`）
+- 前置条件：库里事先导入一个特征词（词库非空的情况）；另准备一个空词库的库
+- 步骤：
+  1. 分别缺 `IM_MOD_ENABLED=1`、缺 `IM_V13_ADMIN_FEATURES=1`、用空词库、缺 `IM_PUBLIC_OPEN_ACK=1`，各启动一次
+  2. 四项都满足时启动
+- 预期结果：
+  1. 四次都非 0 退出，错误信息分别指出缺的那一条（不含任何密钥）
+  2. 正常启动（AC-ACC-01-19 的输入不满足这些条件，结果仍是拒绝，TC-ACC-01-19 不变）
 
 ## F-ACC-02 登录
 
@@ -2756,6 +2772,20 @@
   1. 非 0 退出，错误信息指出缺隐私说明版本（不含任何密钥）
   2. 正常启动
   3. 正常启动（只有 C4 开关打开才要求；C6 的同类检查是 AC-ACC-10-5）
+
+### TC-ACC-10-05 生产、C6 开关开、隐私说明版本为空：拒绝启动
+- 关联 AC：AC-ACC-10-5
+- 优先级：P0
+- 批次：C6
+- 层级：后端单测 + e2e
+- 环境：E1 单节点（启动参数单独构造）
+- 前置条件：`IM_ENV=production`、`IM_MOD_ENABLED=1`、`IM_V13_ADMIN_FEATURES=1`、`IM_REPORT_KEY` 等其余生产必需项都合法，`IM_MSG_ACTIONS_ENABLED=0`，`IM_PRIVACY_NOTICE_VERSION` 为空
+- 步骤：
+  1. 启动 im-server
+  2. 补上版本后再启动
+- 预期结果：
+  1. 非 0 退出，错误信息指出缺隐私说明版本（不含任何密钥）
+  2. 正常启动
 
 ---
 
