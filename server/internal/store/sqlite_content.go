@@ -390,3 +390,61 @@ func (s *SQLite) Quarantined(ctx context.Context, msgID string, now int64) (Quar
 	}
 	return q, err == nil, err
 }
+
+func (s *SQLite) ListReports(ctx context.Context, f ReportFilter) ([]Report, error) {
+	where := []string{"1 = 1"}
+	var args []any
+	for _, c := range []struct {
+		col, v string
+	}{{"state", f.State}, {"reason", f.Reason}, {"target_type", f.TargetType}} {
+		if c.v != "" {
+			where = append(where, c.col+" = ?")
+			args = append(args, c.v)
+		}
+	}
+	if f.From > 0 {
+		where = append(where, "created_at >= ?")
+		args = append(args, f.From)
+	}
+	if f.To > 0 {
+		where = append(where, "created_at <= ?")
+		args = append(args, f.To)
+	}
+	args = append(args, f.Limit)
+	// #nosec G202 -- where 是常量片段，取值全部走占位符
+	rows, err := s.db.QueryContext(ctx, `SELECT `+reportColumns+` FROM reports WHERE `+strings.Join(where, " AND ")+` ORDER BY created_at DESC, report_id DESC LIMIT ?`, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []Report
+	for rows.Next() {
+		r, err := scanReport(rows)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, r)
+	}
+	return out, rows.Err()
+}
+
+func (s *SQLite) CountReportsAgainst(ctx context.Context, userID string) (int, error) {
+	var n int
+	err := s.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM reports WHERE target_user = ?`, userID).Scan(&n)
+	return n, err
+}
+
+func (s *SQLite) ResolveReport(ctx context.Context, reportID, result, conclusion, by string, at int64) error {
+	res, err := s.db.ExecContext(ctx, `UPDATE reports SET state = ?, conclusion = ?, handled_by = ?, handled_at = ? WHERE report_id = ? AND state = 'pending'`,
+		result, conclusion, by, at, reportID)
+	if err != nil {
+		return err
+	}
+	if n, _ := res.RowsAffected(); n == 1 {
+		return nil
+	}
+	if _, err := s.GetReport(ctx, reportID); err != nil {
+		return err
+	}
+	return ErrReportHandled
+}

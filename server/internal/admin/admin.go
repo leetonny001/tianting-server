@@ -56,6 +56,7 @@ type Admin struct {
 	mod         *ModerationConfig // 第二批开启时非 nil（IM_V13_ADMIN_FEATURES）
 	pusher      PushService       // 系统推送开启时非 nil（IM_PUSH_ENABLED）
 	content     ContentService    // C6（BE-494～496）：app 一定会接上；测试里单独构造 Admin 时可以为 nil
+	reports     *ReportConfig     // C6 举报处理（BE-496）：app 一定会接上
 	clock       clock.Clock
 	log         *slog.Logger
 	testMode    bool
@@ -141,6 +142,8 @@ func (a *Admin) Register(mux *http.ServeMux) {
 	a.registerModeration(mux)
 	a.registerPush(mux)
 	a.registerWords(mux)
+	a.registerReports(mux)
+	a.registerFetch(mux)
 }
 
 // RegisterTestRoutes 注册故障注入和时钟接口，只能在测试模式下调用（PRD 6.1 节）。

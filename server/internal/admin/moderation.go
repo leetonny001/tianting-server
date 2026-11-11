@@ -75,7 +75,6 @@ func (a *Admin) registerModeration(mux *http.ServeMux) {
 	bodyScopes := []adminauth.Scope{adminauth.ScopeMsgBodyGroup, adminauth.ScopeMsgBodyC2C, adminauth.ScopeMsgQuarantine}
 	a.routeAny(mux, "POST", "/admin/msg-grants", bodyScopes, a.createMsgGrant)
 	a.routeAny(mux, "POST", "/admin/convs/messages/body", bodyScopes, a.readMessageBody)
-	a.registerFetch(mux)
 }
 
 // durationField 区分"没传"和"传了 null（永久）"：漏传时长不能变成永久封禁。

@@ -462,6 +462,12 @@ func New(cfg Config) (*App, error) {
 		}
 		adm.WithModeration(mc)
 	}
+	// C6 举报处理（BE-496）：不跟开关（P-48 ④）。IM_REPORT_KEY 没配置时读证据按"无法解密"。
+	rc := admin.ReportConfig{Cipher: evidence, C2CBodyAccess: cfg.C2CBodyAccess, Undecryptable: m.ReportUndecryptable}
+	if obj != nil {
+		rc.Objects = obj
+	}
+	adm.WithReports(rc)
 	if cfg.Push.Enabled {
 		adm.WithPush(svc)
 	}

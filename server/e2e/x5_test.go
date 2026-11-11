@@ -246,6 +246,12 @@ var adminSamples = map[string]adminSample{
 	"PATCH /admin/moderation/words/{wordId}":  {nil, "PATCH", "/admin/moderation/words/999", map[string]any{"state": "disabled"}, 404},
 	"DELETE /admin/moderation/words/{wordId}": {nil, "DELETE", "/admin/moderation/words/999", nil, 404},
 	"GET /admin/moderation/hits":              {nil, "GET", "/admin/moderation/hits?userId=alice", nil, 200},
+	// C6 举报处理（BE-496），同样不跟开关注册。
+	"GET /admin/reports":                      {nil, "GET", "/admin/reports", nil, 200},
+	"GET /admin/reports/{reportId}":           {nil, "GET", "/admin/reports/rp_none", nil, 404},
+	"POST /admin/reports/{reportId}/resolve":  {nil, "POST", "/admin/reports/rp_none/resolve", map[string]any{"result": "handled", "reason": "x"}, 404},
+	"POST /admin/report-grants":               {nil, "POST", "/admin/report-grants", map[string]any{"reportId": "rp_none", "reason": "x"}, 400},
+	"POST /admin/reports/{reportId}/evidence": {nil, "POST", "/admin/reports/rp_none/evidence", map[string]any{"grantId": "x"}, 404},
 }
 
 // AC-KEY-02-2：遍历全部管理路由 × "有该 scope / 只有其他 scope"两种调用方。

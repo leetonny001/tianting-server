@@ -75,6 +75,22 @@ type ReportStore interface {
 	ReportableUser(ctx context.Context, reporter, target, c2cConvID string) (bool, error)
 	// Quarantined 返回一条消息没过期的隔离原文（密文）；没有时 ok=false（举报撤回的消息，AC-MOD-03-5、03-12）。
 	Quarantined(ctx context.Context, msgID string, now int64) (q QuarantinedMessage, ok bool, err error)
+	// ListReports 按 created_at 倒序返回符合条件的举报（最多 Limit 条），队列在调用方按对象聚合（F-MOD-04 规则 1）。
+	ListReports(ctx context.Context, f ReportFilter) ([]Report, error)
+	// CountReportsAgainst 是"该用户被举报的总次数"（所有类型，保留期内，第 117 条）。
+	CountReportsAgainst(ctx context.Context, userID string) (int, error)
+	// ResolveReport 结案：条件更新 state='pending'，没命中返回 ErrReportHandled（4098），不存在 ErrNotFound。
+	ResolveReport(ctx context.Context, reportID, result, conclusion, by string, at int64) error
+}
+
+// ErrReportHandled 是举报已经结案（409 / 4098，AC-MOD-04-5）。
+var ErrReportHandled = errors.New("report already handled")
+
+// ReportFilter 是举报队列的条件；空串、0 表示不过滤。From、To 是毫秒，闭区间。
+type ReportFilter struct {
+	State, Reason, TargetType string
+	From, To                  int64
+	Limit                     int
 }
 
 // ErrReportQuota 是当天的举报次数用完了（4292，AC-MOD-03-4）。

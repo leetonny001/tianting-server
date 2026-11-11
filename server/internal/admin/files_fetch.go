@@ -6,6 +6,8 @@ import (
 	"io"
 	"net/http"
 	"strconv"
+	"strings"
+	"time"
 
 	"tianting/server/internal/adminauth"
 	"tianting/server/internal/objstore"
@@ -60,20 +62,32 @@ func (a *Admin) fetchFile(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	noteAuditFields(r.Context(), map[string]any{"fileId": fileID, "msgId": req.MsgID, "variant": variant})
-	if perr := a.grantScope(r, conv, true); perr != nil { // scope 和单聊开关，和读隔离原文相同
+	info := AuthFrom(r.Context())
+	now := a.clock.Now()
+	// grantId 是举报授权时走 report.evidence 路径（C6，backend-chat 第 109 条）；是隔离授权或者不带时走 msg.quarantine 路径（C4 不变）。
+	evidence, perr := a.fetchViaReport(r, req.GrantID, info, conv, req.ConvID, req.MsgID, fileID, now)
+	if perr != nil {
 		writeErr(w, perr)
 		return
 	}
-	info := AuthFrom(r.Context())
-	now := a.clock.Now().UnixMilli()
-	ok, err := a.fetchGrantOK(r.Context(), req.GrantID, info, req.ConvID, now)
-	if err != nil {
-		a.internal(w, "check msg grant", err)
-		return
-	}
-	if !ok {
-		writeErr(w, grantRequired())
-		return
+	if !evidence {
+		if a.mod == nil {
+			writeErr(w, protocol.Errorf(protocol.CodeForbidden, "caller lacks scope %s", adminauth.ScopeMsgQuarantine))
+			return
+		}
+		if perr := a.grantScope(r, conv, true); perr != nil { // scope 和单聊开关，和读隔离原文相同
+			writeErr(w, perr)
+			return
+		}
+		ok, err := a.fetchGrantOK(r.Context(), req.GrantID, info, req.ConvID, now.UnixMilli())
+		if err != nil {
+			a.internal(w, "check msg grant", err)
+			return
+		}
+		if !ok {
+			writeErr(w, grantRequired())
+			return
+		}
 	}
 	notFound := protocol.Errorf(protocol.CodeFileNotFound, "file not found")
 	f, err := a.store.GetFile(r.Context(), fileID)
@@ -98,13 +112,14 @@ func (a *Admin) fetchFile(w http.ResponseWriter, r *http.Request) {
 	if variant == "thumb" {
 		key, mime = f.ThumbKey, f.ThumbMime
 	}
-	// 只给被撤回或被后台删除的消息（它们的文件是 revoked），对象还在保留期（file_purge 删了之后 objects_deleted=1）。
-	if f.MsgID != req.MsgID || f.ConvID != req.ConvID || m.ConvID != req.ConvID || (m.RecalledAt == 0 && m.DeletedAt == 0) ||
-		f.State != store.FileRevoked || f.ObjectsDeleted || key == "" {
+	// 隔离路径只给被撤回或被后台删除的消息（它们的文件是 revoked），对象还在保留期（file_purge 删了之后 objects_deleted=1）。
+	// 举报路径按 evidence_until 保留，原消息是否撤回、删除都不影响（证据引用已经在 fetchViaReport 里核对过）。
+	if f.MsgID != req.MsgID || f.ConvID != req.ConvID || m.ConvID != req.ConvID || f.ObjectsDeleted || key == "" ||
+		(!evidence && ((m.RecalledAt == 0 && m.DeletedAt == 0) || f.State != store.FileRevoked)) {
 		writeErr(w, notFound)
 		return
 	}
-	body, oi, err := a.mod.Objects.Get(r.Context(), key)
+	body, oi, err := a.objects().Get(r.Context(), key)
 	switch {
 	case errors.Is(err, objstore.ErrNotFound):
 		writeErr(w, notFound)
@@ -142,10 +157,68 @@ func (a *Admin) fetchGrantOK(ctx context.Context, grantID string, info AuthInfo,
 	return g.Caller == info.Caller && g.Operator == info.Operator && g.ConvID == convID && g.Quarantine && g.ExpiresAt > now, nil
 }
 
-// registerFetch 在第二批管理接口和对象存储都开着时注册（隔离授权只有第二批才有）。
+// objects 是对象存储：第二批和举报处理拿到的是同一个客户端。
+func (a *Admin) objects() ObjectReader {
+	if a.mod != nil && a.mod.Objects != nil {
+		return a.mod.Objects
+	}
+	if a.reports != nil {
+		return a.reports.Objects
+	}
+	return nil
+}
+
+// fetchViaReport 判断这次 fetch 是不是 report.evidence 路径：grantId 指向一个举报授权（msg_grants 里 conv_id 是 report:{id}）。
+// 是的话还要：调用方有 report.evidence（否则 403 / 4030）、单聊 off 时 403 / 4030 c2cBodyDisabled（AC-MOD-04-13）、
+// 授权属于这个调用方 + 操作人、没过期、这条举报的证据引用了 fileId、msgId、convId（否则 403 / 4039，AC-MOD-04-16）。
+func (a *Admin) fetchViaReport(r *http.Request, grantID string, info AuthInfo, conv protocol.Conv, convID, msgID, fileID string, now time.Time) (bool, *protocol.Error) {
+	c := a.callers[info.Caller]
+	hasEvidence := a.reports != nil && c != nil && c.Has(adminauth.ScopeReportEvidence)
+	if grantID == "" {
+		if hasEvidence && (c == nil || !c.Has(adminauth.ScopeMsgQuarantine)) {
+			return true, grantRequired() // report.evidence 路径 grantId 必填（第 109 条）
+		}
+		return false, nil
+	}
+	g, err := a.store.GetMsgGrant(r.Context(), grantID)
+	switch {
+	case errors.Is(err, store.ErrMsgGrantNotFound):
+		if hasEvidence && (c == nil || !c.Has(adminauth.ScopeMsgQuarantine)) {
+			return true, grantRequired()
+		}
+		return false, nil
+	case err != nil:
+		a.log.Error("get grant for fetch", "err", err)
+		return true, protocol.Errorf(protocol.CodeInternal, "internal error")
+	}
+	if !strings.HasPrefix(g.ConvID, reportGrantPrefix) {
+		return false, nil
+	}
+	if !hasEvidence {
+		return true, protocol.Errorf(protocol.CodeForbidden, "caller lacks scope %s", adminauth.ScopeReportEvidence)
+	}
+	if conv.Type == protocol.ConvC2C && !a.reports.C2CBodyAccess {
+		return true, c2cBodyDisabled()
+	}
+	ok, err := a.evidenceFileOK(r.Context(), g, info, convID, msgID, fileID, now)
+	if err != nil {
+		a.log.Error("check report grant for fetch", "err", err)
+		return true, protocol.Errorf(protocol.CodeInternal, "internal error")
+	}
+	if !ok {
+		return true, grantRequired()
+	}
+	return true, nil
+}
+
+// registerFetch 在对象存储开着、并且第二批管理接口（隔离授权）或举报处理（举报授权）至少一个可用时注册。
 func (a *Admin) registerFetch(mux *http.ServeMux) {
-	if a.mod == nil || a.mod.Objects == nil {
+	if a.objects() == nil {
 		return
 	}
-	a.routeAny(mux, "POST", "/admin/files/{fileId}/fetch", []adminauth.Scope{adminauth.ScopeMsgQuarantine}, a.fetchFile)
+	scopes := []adminauth.Scope{adminauth.ScopeReportEvidence}
+	if a.mod != nil {
+		scopes = []adminauth.Scope{adminauth.ScopeMsgQuarantine, adminauth.ScopeReportEvidence}
+	}
+	a.routeAny(mux, "POST", "/admin/files/{fileId}/fetch", scopes, a.fetchFile)
 }
