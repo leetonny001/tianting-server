@@ -1,11 +1,12 @@
 #!/usr/bin/env bash
 # 天听本机演示环境：所有服务都在这台 Mac 上原生运行，只绑 127.0.0.1，不用 docker、不用任何云服务。说明见 README.md。
-#   demo.sh up            构建并启动 im-server、console-server（含临时 Postgres 17）、假 S3、H5、管理后台，灌演示数据
+#   demo.sh up            构建并启动 im-server、console-server（含临时 Postgres 17）、假 S3、H5、管理后台、运维后台，灌演示数据
 #   demo.sh down          停掉 up 起的全部进程（含模拟器），删除 .run/
 #   demo.sh status        各服务的地址和健康状态
 #   demo.sh reset         清空数据（IM 库、后台库、假 S3），重新灌演示数据
 #   demo.sh seed          只灌演示数据（已经灌过就跳过）
-#   demo.sh otp [账号]    后台账号当前的动态码
+#   demo.sh otp [账号]    后台账号（管理后台和运维后台）当前的动态码
+#   demo.sh ops-attach    给没有运维后台的旧环境补上运维后台（重启 im-server 和 console-server，不清数据，登录状态保留）
 #   demo.sh android       启动 AVD Pixel_10_Pro_XL（-port 5556 -read-only），装好指向演示服务端的 App
 #   demo.sh android-down  关掉这个模拟器（emu kill）
 #   demo.sh ios           在 iPhone 16 Pro 模拟器上构建、安装、启动指向演示服务端的 App
@@ -16,7 +17,8 @@ set -euo pipefail
 HERE="$(cd "$(dirname "$0")" && pwd)"
 REPO="$(cd "$HERE/../.." && pwd)"
 WS="$(cd "$REPO/.." && pwd)"
-RUN="$HERE/.run"
+RUN="${DEMO_RUN_DIR:-$HERE/.run}" # 只给自测用：和正在演示的环境并排起第二套时换一个目录（配合 DEMO_PORT_BASE）
+OPS_DIR="${TIANTING_OPS_DIR:-$WS/tianting-ops}"
 
 CONSOLE_DIR="${TIANTING_CONSOLE_DIR:-$WS/tianting-console-server}"
 WEB_DIR="${TIANTING_WEB_DIR:-$WS/tianting-web}"
@@ -32,12 +34,18 @@ P_S3=$((BASE + 2))         # 假 S3
 P_CONSOLE=$((BASE + 3))    # console-server 管理空间，同时托管管理后台页面
 P_WEB=$((BASE + 4))        # H5（生产构建 + vite preview）
 P_PG=$((BASE + 5))         # Postgres 17
+P_OPS=$((BASE + 6))        # console-server 运维空间（同一个进程），托管运维后台页面
+P_IM_OPS=$((BASE + 7))     # im-server 节点运维接口（TLS，只给 console-server）
+P_IM_METRICS=$((BASE + 8)) # im-server 的 Prometheus 指标（这台机器没有 Prometheus，只能 curl 看）
 
 H="127.0.0.1"
 IM_HTTP="http://$H:$P_IM"
 S3_URL="http://$H:$P_S3"
 CONSOLE_URL="http://$H:$P_CONSOLE"
 WEB_URL="http://$H:$P_WEB"
+OPS_URL="http://$H:$P_OPS"
+NODE_ID="n1"
+ALL_PORTS=("$P_IM" "$P_IM_ADMIN" "$P_S3" "$P_CONSOLE" "$P_WEB" "$P_PG" "$P_OPS" "$P_IM_OPS" "$P_IM_METRICS")
 
 AVD="Pixel_10_Pro_XL"
 EMU_PORT=5556
@@ -128,8 +136,34 @@ gen_secrets() {
   } > "$RUN/secrets.env"
 }
 
+# ---- 运维（PRD-ops）：节点运维接口按生产方式走 TLS ----
+# 内部 CA 和节点证书用生产的签发脚本 deploy/pki/issue-node-cert.sh，CA 私钥留在 .run/pki/（down 时删掉）。
+# console-server 代码允许回环地址走明文（没有 tlsServerName 时），这里不用：和生产一样带服务名、只信任内部 CA。
+# 节点签名密钥：console-server 持有种子（.run/ops/n1.key，0600），im-server 只配公钥（IM_OPS_PUBKEYS）。
+gen_ops_keys() {
+  local pki="$RUN/pki" pair
+  if [[ ! -f "$pki/ca.pem" ]]; then
+    timeout 60 "$REPO/deploy/pki/issue-node-cert.sh" ca "$pki" > "$RUN/logs/pki.log" 2>&1 \
+      || { tail -20 "$RUN/logs/pki.log" >&2; die "创建内部 CA 失败"; }
+  fi
+  if [[ ! -f "$pki/$NODE_ID.pem" ]]; then
+    timeout 60 "$REPO/deploy/pki/issue-node-cert.sh" node "$pki" "$NODE_ID" >> "$RUN/logs/pki.log" 2>&1 \
+      || { tail -20 "$RUN/logs/pki.log" >&2; die "签发节点证书失败"; }
+  fi
+  mkdir -p "$RUN/ops"
+  chmod 700 "$RUN/ops"
+  if [[ ! -f "$RUN/ops/$NODE_ID.key" ]]; then
+    pair="$(node "$HERE/lib/keys.mjs")"
+    ( umask 077; printf '%s' "${pair% *}" > "$RUN/ops/$NODE_ID.key"; printf '%s' "${pair#* }" > "$RUN/ops/$NODE_ID.pub" )
+  fi
+  ( umask 077
+    printf '[{"nodeId":"%s","addr":"%s:%s","tlsServerName":"%s.ops.internal","kid":"k1","keyFile":"%s","metricsAddr":"%s:%s"}]\n' \
+      "$NODE_ID" "$H" "$P_IM_OPS" "$NODE_ID" "$RUN/ops/$NODE_ID.key" "$H" "$P_IM_METRICS" > "$RUN/ops/nodes.json" )
+}
+
 write_config() {
   umask 077
+  local ops_pub; ops_pub="$(cat "$RUN/ops/$NODE_ID.pub")"
   local web_origins="$WEB_URL,http://localhost:$P_WEB"
   # 调用方：demo-seed 只给灌数据用；console、console-msgread 的 scope 和 tianting-admin/e2e/stack.mjs 相同。
   cat > "$RUN/callers.json" << JSON
@@ -152,9 +186,14 @@ JSON
   cat > "$RUN/im.env" << ENV
 IM_ADDR=$H:$P_IM
 IM_ADMIN_ADDR=$H:$P_IM_ADMIN
-IM_METRICS_ADDR=off
+IM_METRICS_ADDR=$H:$P_IM_METRICS
 IM_PPROF_ADDR=off
-IM_OPS_ADDR=off
+IM_NODE_ID=$NODE_ID
+IM_OPS_ADDR=$H:$P_IM_OPS
+IM_OPS_PUBKEYS=k1:$ops_pub
+IM_OPS_TLS_CERT=$RUN/pki/$NODE_ID.pem
+IM_OPS_TLS_KEY=$RUN/pki/$NODE_ID.key
+IM_OPS_ALLOWED_CIDRS=127.0.0.1/32
 IM_DB=$RUN/data/im.db
 IM_JWT_SECRET=$JWT_SECRET
 IM_ADMIN_KEY=$ADMIN_KEY
@@ -179,10 +218,15 @@ IM_MOD_ENABLED=1
 IM_REPORT_KEY=$REPORT_KEY
 ENV
   cat > "$RUN/console.env" << ENV
-CON_SPACES=admin
+CON_SPACES=admin,ops
 CON_ADMIN_ADDR=$H:$P_CONSOLE
 CON_ADMIN_ORIGIN=$CONSOLE_URL
 CON_ADMIN_WEB_DIR=$RUN/admin-dist
+CON_OPS_ADDR=$H:$P_OPS
+CON_OPS_ORIGIN=$OPS_URL
+CON_OPS_WEB_DIR=$RUN/ops-dist
+CON_OPS_NODES=$RUN/ops/nodes.json
+CON_OPS_CA_FILE=$RUN/pki/ca.pem
 CON_METRICS_ADDR=off
 CON_OWNER_DATABASE_URL=postgres://postgres:$PG_SUPER@$H:$P_PG/console?sslmode=disable
 CON_DATABASE_URL=postgres://console_app:$PG_APP@$H:$P_PG/console?sslmode=disable
@@ -203,9 +247,8 @@ build_all() {
     [[ -d "$d/node_modules" ]] || die "$d 没有 node_modules（演示脚本不装依赖，请先在那里 npm ci）"
   done
   mkdir -p "$RUN/bin"
-  say "  im-server"
-  (cd "$REPO/server" && timeout 600 go build -o "$RUN/bin/im-server" ./cmd/im-server) > "$RUN/logs/build-im.log" 2>&1 \
-    || { tail -20 "$RUN/logs/build-im.log" >&2; die "im-server 构建失败"; }
+  build_im
+
   say "  console-server"
   (cd "$CONSOLE_DIR" && timeout 600 go build -o "$RUN/bin/console-server" ./cmd/console-server) > "$RUN/logs/build-console.log" 2>&1 \
     || { tail -20 "$RUN/logs/build-console.log" >&2; die "console-server 构建失败"; }
@@ -219,6 +262,19 @@ build_all() {
   say "  管理后台（生产构建，由 console-server 托管，CSP 是 console-server 的响应头）"
   (cd "$ADMIN_DIR" && timeout 300 node node_modules/vite/bin/vite.js build --logLevel warn --outDir "$RUN/admin-dist" --emptyOutDir) \
     > "$RUN/logs/build-admin.log" 2>&1 || { tail -20 "$RUN/logs/build-admin.log" >&2; die "管理后台构建失败"; }
+  build_ops
+}
+build_im() { # 版本号构建时注入（和测试环境 im.Dockerfile 一样），运维后台的"节点""版本"显示它
+  local ver; ver="demo-$(git -C "$REPO" rev-parse --short HEAD 2> /dev/null || echo unknown)"
+  say "  im-server（版本 $ver）"
+  (cd "$REPO/server" && timeout 600 go build -ldflags "-X main.version=$ver" -o "$RUN/bin/im-server" ./cmd/im-server) \
+    > "$RUN/logs/build-im.log" 2>&1 || { tail -20 "$RUN/logs/build-im.log" >&2; die "im-server 构建失败"; }
+}
+build_ops() {
+  [[ -d "$OPS_DIR/node_modules" ]] || die "$OPS_DIR 没有 node_modules（演示脚本不装依赖，请先在那里 npm ci）"
+  say "  运维后台（tianting-ops 生产构建，由 console-server 运维空间托管，CSP 比管理后台更严）"
+  (cd "$OPS_DIR" && timeout 300 node node_modules/vite/bin/vite.js build --logLevel warn --outDir "$RUN/ops-dist" --emptyOutDir) \
+    > "$RUN/logs/build-ops.log" 2>&1 || { tail -20 "$RUN/logs/build-ops.log" >&2; die "运维后台构建失败"; }
 }
 
 # ---- Postgres 17（临时实例，数据在 .run/pg） ----
@@ -273,19 +329,27 @@ start_im() {
   remember im-server $! "$RUN/bin/im-server"
   wait_http "$IM_HTTP/readyz" 60 "im-server"
 }
-start_console() {
+bootstrap_root() { # 空间 用户名：命令行创建空间超管（两个空间各自独立），输出激活码
+  local out
+  out="$( set -a; . "$RUN/console.env"; set +a
+          timeout 60 "$RUN/bin/console-server" account bootstrap --space "$1" --username "$2" 2>> "$RUN/logs/console-bootstrap.log" )" \
+    || { tail -20 "$RUN/logs/console-bootstrap.log" >&2; die "创建 $1 空间超管 $2 失败"; }
+  out="$(printf '%s' "$out" | tail -1 | awk -F': ' '{print $NF}' | tr -d '[:space:]')"
+  [[ -n "$out" ]] || die "没有拿到 $2 的激活码"
+  printf '%s' "$out"
+}
+start_console() { # [ops-only]：库里已有管理空间的账号（ops-attach），只建运维空间的两个超管
   ( set -a; . "$RUN/console.env"; set +a; timeout 120 "$RUN/bin/console-server" migrate up ) > "$RUN/logs/console-migrate.log" 2>&1 \
     || { tail -20 "$RUN/logs/console-migrate.log" >&2; die "console-server 迁移失败"; }
   pg_grant_app
-  local out
-  out="$( set -a; . "$RUN/console.env"; set +a
-          timeout 60 "$RUN/bin/console-server" account bootstrap --space admin --username chaoguan 2> "$RUN/logs/console-bootstrap.log" )" \
-    || { tail -20 "$RUN/logs/console-bootstrap.log" >&2; die "创建后台超管失败"; }
-  ROOT_CODE="$(printf '%s' "$out" | tail -1 | awk -F': ' '{print $NF}' | tr -d '[:space:]')"
-  [[ -n "$ROOT_CODE" ]] || die "没有拿到超管激活码"
+  if [[ "${1:-}" != ops-only ]]; then ROOT_CODE="$(bootstrap_root admin chaoguan)"; fi
+  # 运维空间：授予 ops_engineer 要第二个超管批准（双人批准，PRD-ops），第二个超管也只能命令行建（AC-OPS-01-19）。
+  OPS_ROOT_CODE="$(bootstrap_root ops ywchaoguan)"
+  OPS_ROOT2_CODE="$(bootstrap_root ops ywfuhe)"
   ( set -a; . "$RUN/console.env"; set +a; exec nohup "$RUN/bin/console-server" ) > "$RUN/logs/console-server.log" 2>&1 < /dev/null &
   remember console-server $! "$RUN/bin/console-server"
   wait_http "$CONSOLE_URL/readyz" 60 "console-server"
+  wait_http "$OPS_URL/readyz" 60 "console-server 运维空间"
 }
 start_web() {
   ( cd "$WEB_DIR" && TIANTING_SERVER="$IM_HTTP" VITE_STORAGE_ORIGINS="$S3_URL" \
@@ -299,7 +363,8 @@ write_state() {
   umask 077
   cat > "$RUN/state.json" << JSON
 {"imHttp":"$IM_HTTP","imWs":"ws://$H:$P_IM/ws","imAdmin":"http://$H:$P_IM_ADMIN","consoleOrigin":"$CONSOLE_URL",
- "seedCaller":"demo-seed","seedSecret":"$SEED_SECRET","rootUsername":"chaoguan","rootActivationCode":"$ROOT_CODE"}
+ "seedCaller":"demo-seed","seedSecret":"$SEED_SECRET","rootUsername":"chaoguan","rootActivationCode":"$ROOT_CODE",
+ "opsOrigin":"$OPS_URL","opsRoots":[{"username":"ywchaoguan","code":"$OPS_ROOT_CODE"},{"username":"ywfuhe","code":"$OPS_ROOT2_CODE"}]}
 JSON
 }
 
@@ -307,6 +372,11 @@ seed() {
   [[ -f "$RUN/state.json" ]] || die "服务没有起来，先 demo.sh up"
   DEMO_RUN="$RUN" DEMO_SDK="$SDK_DIR" timeout 300 node "$HERE/lib/seed.mjs" 2>&1 | tee "$RUN/logs/seed.log"
   [[ "${PIPESTATUS[0]}" == 0 ]] || die "灌数据失败，看 $RUN/logs/seed.log"
+  seed_ops
+}
+seed_ops() {
+  DEMO_RUN="$RUN" timeout 300 node "$HERE/lib/seed-ops.mjs" 2>&1 | tee "$RUN/logs/seed-ops.log"
+  [[ "${PIPESTATUS[0]}" == 0 ]] || die "灌运维后台数据失败，看 $RUN/logs/seed-ops.log"
 }
 
 services_up() { # 数据目录已经准备好之后启动 s3、im、console、web
@@ -323,14 +393,15 @@ cmd_up() {
     say "演示环境已经在运行（先 demo.sh down 再 up，或者 demo.sh reset 重灌数据）"; cmd_status; return
   fi
   local p
-  for p in "$P_IM" "$P_IM_ADMIN" "$P_S3" "$P_CONSOLE" "$P_WEB" "$P_PG"; do
-    port_busy "$p" && die "端口 $p 已经被占用（演示环境用 $P_IM～$P_PG，可以用 DEMO_PORT_BASE 换一段）"
+  for p in "${ALL_PORTS[@]}"; do
+    port_busy "$p" && die "端口 $p 已经被占用（演示环境用 $P_IM～$P_IM_METRICS，可以用 DEMO_PORT_BASE 换一段）"
   done
   rm -rf "$RUN"
   mkdir -p "$RUN/pids" "$RUN/logs"
   chmod 700 "$RUN"
   gen_secrets
   load_secrets
+  gen_ops_keys
   write_config
   build_all
   say "启动："
@@ -367,7 +438,7 @@ cmd_reset() {
   stop_proc console-server
   stop_proc im-server
   stop_proc s3
-  rm -rf "$RUN/data" "$RUN/seeded" "$RUN/console-accounts.json"
+  rm -rf "$RUN/data" "$RUN/seeded" "$RUN/seeded-ops" "$RUN/console-accounts.json"
   if ! pg_env "$(pg_bin)/pg_isready" -q 2> /dev/null; then pg_start; fi
   pg_create_db
   say "  IM 库、后台库、假 S3 里的文件都清掉了"
@@ -377,8 +448,43 @@ cmd_reset() {
   say "提示：手机上的 App 本地还留着旧数据，重新运行 demo.sh android / demo.sh ios（会重装 App）"
 }
 
+# 给 up 时还没有运维后台的环境补上：不清数据。只重启 im-server（加运维接口和指标）和 console-server（加运维空间）；
+# H5 会自动重连，管理后台的会话在 Postgres 里，两边的登录状态都保留。新起的 up 不需要这一步。
+cmd_ops_attach() {
+  [[ -f "$RUN/pids/im-server.pid" ]] && alive im-server || die "演示环境没有在运行，先 demo.sh up"
+  if [[ -f "$RUN/seeded-ops" ]]; then say "运维后台已经有了"; cmd_status; return; fi
+  [[ ! -f "$RUN/ops/nodes.json" ]] || die "运维后台补到一半（$RUN/ops 已经有了）：demo.sh down 再 up"
+  local p
+  for p in "$P_OPS" "$P_IM_OPS" "$P_IM_METRICS"; do port_busy "$p" && die "端口 $p 已经被占用"; done
+  load_secrets
+  ROOT_CODE="$(node -e 'console.log(JSON.parse(require("fs").readFileSync(process.argv[1], "utf8")).rootActivationCode)' "$RUN/state.json")"
+  say "补上运维后台："
+  gen_ops_keys
+  write_config
+  build_im
+  build_ops
+  say "重启 im-server（打开节点运维接口）、console-server（打开运维空间）："
+  stop_proc im-server
+  start_im
+  stop_proc console-server
+  start_console ops-only
+  write_state
+  seed_ops
+  cmd_status
+}
+
 health() { # 地址
   if curl -fsS -o /dev/null --max-time 2 "$1" 2> /dev/null; then echo "正常"; else echo "不可用"; fi
+}
+ops_health() { # 节点运维接口只认 console-server 的签名，这里只看 TLS 握手和证书（内部 CA、服务名）能不能通过。
+  # 用 openssl 不用 curl：macOS 自带的 curl 是 LibreSSL，不支持 Ed25519 证书。
+  [[ -f "$RUN/pki/ca.pem" ]] || { echo "不可用"; return; }
+  if timeout 5 openssl s_client -connect "$H:$P_IM_OPS" -servername "$NODE_ID.ops.internal" -CAfile "$RUN/pki/ca.pem" \
+    -verify_return_error -verify_hostname "$NODE_ID.ops.internal" < /dev/null 2> /dev/null | grep -q 'Verify return code: 0 (ok)'; then
+    echo "正常"
+  else
+    echo "不可用"
+  fi
 }
 
 cmd_status() {
@@ -388,7 +494,10 @@ cmd_status() {
   say ""
   say "[$(health "$WEB_URL/")] H5（小明用）        $WEB_URL"
   say "[$(health "$CONSOLE_URL/readyz")] 管理后台            $CONSOLE_URL"
+  say "[$(health "$OPS_URL/readyz")] 运维后台            $OPS_URL（console-server 运维空间，和管理后台同一个进程）"
   say "[$(health "$IM_HTTP/readyz")] im-server           $IM_HTTP（管理接口 http://$H:$P_IM_ADMIN）"
+  say "[$(ops_health)] 节点运维接口        https://$H:$P_IM_OPS（TLS，服务名 $NODE_ID.ops.internal，CA 在 $RUN/pki/ca.pem）"
+  say "[$(health "http://$H:$P_IM_METRICS/metrics")] im-server 指标      http://$H:$P_IM_METRICS/metrics"
   say "[$(health "$S3_URL/__health")] 假 S3               $S3_URL"
   say "[$pg] Postgres 17         $H:$P_PG"
   local a="没有启动" i="没有启动"
@@ -401,6 +510,11 @@ cmd_status() {
     say "演示账号（密码都是 tt-demo-2026）：小明 xiaoming（H5）、小红 xiaohong（Android）、小刚 xiaogang（iOS）、"
     say "  好友 小丽 xiaoli、阿伟 awei，陌生人 路人甲 lurenjia"
     say "后台账号（密码都是 Tianting-Demo-Only-2026，动态码用 demo.sh otp 看）：超管 chaoguan、运营 yunying、审核 shenhe、客服 kefu"
+    if [[ -f "$RUN/seeded-ops" ]]; then
+      say "运维后台账号（同一个密码，demo.sh otp yunwei）：运维值班 yunwei；运维超管 ywchaoguan、ywfuhe（只管账号）"
+    else
+      say "运维后台还没有账号（demo.sh seed）"
+    fi
   else
     say ""
     say "还没有灌演示数据（demo.sh seed）"
@@ -514,6 +628,7 @@ case "${1:-}" in
   reset) cmd_reset ;;
   seed) [[ -f "$RUN/secrets.env" ]] || die "先 demo.sh up"; seed ;;
   otp) cmd_otp "${2:-}" ;;
+  ops-attach) cmd_ops_attach ;;
   android) mkdir -p "$RUN/logs" "$RUN/pids"; cmd_android ;;
   android-down) cmd_android_down ;;
   ios) mkdir -p "$RUN/logs"; cmd_ios ;;
